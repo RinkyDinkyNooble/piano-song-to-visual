@@ -107,7 +107,7 @@ uses = []
 id = "F-11"
 name = "Map all 88 keys to correct keyboard positions"
 milestone = "M2"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = ["fixture:full-keyboard"]
 
@@ -115,7 +115,7 @@ uses = ["fixture:full-keyboard"]
 id = "F-12"
 name = "Falling notes land on their key at the right time"
 milestone = "M2"
-status = "planned"
+status = "done"
 verify = "visual"
 uses = ["fixture:full-keyboard", "song:invention"]
 
@@ -123,7 +123,7 @@ uses = ["fixture:full-keyboard", "song:invention"]
 id = "F-13"
 name = "render_frame is deterministic for the same inputs"
 milestone = "M2"
-status = "planned"
+status = "done"
 verify = "property"
 uses = ["fixture:dynamic-levels"]
 
@@ -131,7 +131,7 @@ uses = ["fixture:dynamic-levels"]
 id = "F-14"
 name = "Encode a video file through ffmpeg"
 milestone = "M2"
-status = "planned"
+status = "done"
 verify = "e2e"
 uses = ["song:invention"]
 
@@ -252,8 +252,8 @@ uses = ["fixture:velocity-ramp", "fixture:dynamic-levels"]
 [[feature]]
 id = "F-29"
 name = "Black-key bars are drawn thinner than white-key bars"
-milestone = "M4"
-status = "planned"
+milestone = "M2"
+status = "done"
 verify = "visual"
 uses = ["fixture:full-keyboard"]
 

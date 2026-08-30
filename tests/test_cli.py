@@ -183,3 +183,90 @@ def test_a_valid_config_is_accepted(
     config = tmp_path / "ok.toml"
     config.write_text("[hands]\nmax_span_semitones = 15\n", encoding="utf-8")
     assert main(["-c", str(config), "inspect", str(midi_path("single-note"))]) == 0
+
+
+# -- render --------------------------------------------------------------
+
+
+@pytest.mark.feature("F-14")
+def test_render_writes_a_video(
+    midi_path: Callable[[str], Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    output = tmp_path / "out.mp4"
+    code = main(
+        [
+            "render",
+            str(midi_path("two-hands")),
+            "-o",
+            str(output),
+            "--seconds",
+            "1",
+            "--width",
+            "160",
+            "--height",
+            "120",
+            "--fps",
+            "10",
+        ]
+    )
+    assert code == 0
+    assert output.exists()
+    assert "wrote" in capsys.readouterr().out
+
+
+@pytest.mark.feature("F-14")
+def test_render_honours_the_size_overrides(
+    midi_path: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """The overrides exist so the debug loop is seconds, not minutes. If they
+    were ignored, every render would cost full 1080p time."""
+    import imageio_ffmpeg
+
+    output = tmp_path / "out.mp4"
+    main(
+        [
+            "render",
+            str(midi_path("single-note")),
+            "-o",
+            str(output),
+            "--seconds",
+            "0.5",
+            "--width",
+            "240",
+            "--height",
+            "160",
+            "--fps",
+            "20",
+        ]
+    )
+    reader = imageio_ffmpeg.read_frames(str(output))
+    meta = next(reader)
+    reader.close()
+    assert meta["size"] == (240, 160)
+
+
+@pytest.mark.feature("F-14")
+def test_render_rejects_an_odd_frame_size(
+    midi_path: Callable[[str], Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = main(
+        [
+            "render",
+            str(midi_path("single-note")),
+            "-o",
+            str(tmp_path / "out.mp4"),
+            "--seconds",
+            "0.5",
+            "--height",
+            "121",
+        ]
+    )
+    assert code == 1
+    assert "must be even" in capsys.readouterr().err
+
+
+@pytest.mark.feature("F-14")
+def test_render_requires_an_output_path(midi_path: Callable[[str], Path]) -> None:
+    with pytest.raises(SystemExit) as exc:
+        main(["render", str(midi_path("single-note"))])
+    assert exc.value.code == 2

@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **M2: the renderer.**
+  - `psv.render.geometry` - 88-key layout as pure arithmetic, so it is checked
+    exhaustively over every key rather than sampled. Black-key bars are drawn thinner
+    than white ones, measured as a fraction of a white bar so the config key means what
+    it says.
+  - `psv.render.frame` - `render_frame(score, config, time)`, a pure function. Same
+    inputs, same pixels, which is what lets four committed reference frames pin the
+    output.
+  - `psv.render.video` - lazy frame generation piped to the ffmpeg that
+    `imageio-ffmpeg` ships, so no system install is needed.
+  - `psv render`, with `--start`, `--seconds`, `--width`, `--height`, and `--fps` for
+    fast iteration.
 - **M1: score model and MIDI ingest.**
   - `psv.model` - `Score`, `Part`, `Note`, `PedalEvent`, and the `Hand`, `Provenance`,
     and `Pedal` enums. Immutable throughout, so stages are `Score -> Score` functions.
@@ -27,8 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     simultaneous span, whether dynamics and pedal data exist, and whether the hands
     already look separated.
   - `psv inspect` and `psv export` commands.
-- 189 tests covering M1, including a `Score -> MIDI -> Score` round trip over all 19
-  fixtures and both committed songs. 14 features marked done; 96% coverage.
+- 276 tests, 96% coverage, 19 of 50 features marked done. Includes a
+  `Score -> MIDI -> Score` round trip over all 19 fixtures and both committed songs,
+  and a hypothesis property test for render determinism.
 
 ### Added (scaffolding)
 
@@ -57,3 +70,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Audio is produced by one of four pluggable backends (`fluidsynth`, `mux`,
   `builtin`, `none`) rather than a single fixed path.
 - Minimum Python raised to 3.12; CI covers 3.12 through 3.14.
+- `visual.width` and `visual.height` must be even. imageio otherwise pads the frame to
+  a multiple of 16 and returns a video that is not the size that was requested.

@@ -50,12 +50,15 @@ all = [
   "piano-song-to-visual[render,synth]",
 ]
 dev = [
+  "hypothesis>=6.100",
   "mypy>=1.10",
   "pre-commit>=3.7",
   "pytest>=8.2",
   "pytest-cov>=5.0",
   "ruff>=0.5",
   "types-setuptools",
+  # The renderer is part of the test suite, so dev installs it too.
+  "piano-song-to-visual[render]",
 ]
 
 [project.urls]

@@ -3,9 +3,10 @@
 Turn a MIDI file into a Synthesia-style falling-notes practice video — no hands, just
 notes flowing onto a keyboard — arranged so a human can actually play it.
 
-> **Status: pre-alpha.** MIDI ingest works: `psv inspect` and `psv export` are real
-> commands you can run today. The arrange, constrain, and render stages are not built
-> yet. See [the roadmap](docs/ROADMAP.md).
+> **Status: pre-alpha.** `psv inspect`, `psv export`, and `psv render` work today, so
+> you can already turn a MIDI into a falling-notes video. What is missing is the part
+> that makes it *playable*: the arrange and constrain stages. Dynamics colour, pedal
+> lanes, and the alignment grid come with them. See [the roadmap](docs/ROADMAP.md).
 
 ## Why this exists
 
@@ -49,7 +50,8 @@ there. Full reasoning, including component choices per stage, is in
 
 ## Install
 
-Requires **Python 3.12+** and **ffmpeg** on your `PATH`.
+Requires **Python 3.12+**. No system ffmpeg needed: the `render` extra brings its
+own binary.
 
 ```bash
 git clone https://github.com/RinkyDinkyNooble/piano-song-to-visual
@@ -97,6 +99,19 @@ Add `-v` for a per-track breakdown.
 
 `psv export song.mid -o copy.mid` parses a file and writes it back out, which is how you
 check that ingest understood it.
+
+Rendering a video:
+
+```bash
+psv render song.mid -o practice.mp4
+```
+
+Iterating on a render is fast if you keep it small and short. A full 1080p60 pass costs
+minutes; this costs about a second:
+
+```bash
+psv render song.mid -o preview.mp4 --start 30 --seconds 5 --width 640 --height 360 --fps 30
+```
 
 Once the remaining stages land:
 

@@ -75,7 +75,7 @@ make visible. Set `pedals.threshold = 64` for the on/off reading.
 
 ---
 
-## M2 - Minimal renderer
+## M2 - Minimal renderer (done)
 
 Deliberately placed *before* the constraint engine. The fastest way to understand and
 trust what the constraint engine does to a piece is to watch a before-and-after video
@@ -100,7 +100,15 @@ No colour mapping, no grid, no pedal lanes - those are M4.
 resolution against committed PNGs.
 
 **Exit criteria:** a solo piano MIDI renders to a silent MP4 whose notes visibly land on
-the right keys at the right times.
+the right keys at the right times. *(Met: verified by eye against the Moonlight Sonata,
+and pinned by four committed reference frames plus a test asserting that a bar's bottom
+edge sits exactly on the keyboard at the note's start time.)*
+
+Two things came out differently from the plan. Black-key bars are already drawn thinner
+than white ones, because that is geometry rather than colour and there was no reason to
+defer it; F-29 is therefore done. And `visual.width`/`height` must now be even, because
+imageio otherwise pads the frame up to a multiple of 16 and hands back a video that is
+not the size that was asked for.
 
 ---
 

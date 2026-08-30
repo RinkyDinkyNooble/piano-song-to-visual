@@ -128,6 +128,13 @@ class VisualConfig:
         for name in ("width", "height", "fps"):
             if getattr(self, name) <= 0:
                 raise ConfigError(f"visual.{name} must be positive")
+        for name in ("width", "height"):
+            # h264 encodes in 2x2 chroma blocks. Rejecting odd sizes here means
+            # the encoder never quietly pads the frame to a size nobody asked for.
+            if getattr(self, name) % 2:
+                raise ConfigError(
+                    f"visual.{name} must be even, got {getattr(self, name)}"
+                )
         if self.lookahead_s <= 0:
             raise ConfigError("visual.lookahead_s must be positive")
         if not 0.0 < self.black_key_bar_width <= 1.0:

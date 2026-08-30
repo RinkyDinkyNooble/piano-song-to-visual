@@ -1,0 +1,273 @@
+"""Frame rendering: timing, determinism, and reference images.
+
+`render_frame` is pure, which is the whole reason these tests can exist. A
+timing bug is caught here as a pixel row rather than as a video that feels
+slightly off.
+"""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from pathlib import Path
+
+import numpy as np
+import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
+from psv.config import Config, VisualConfig
+from psv.midi import read_midi
+from psv.model import Note, Part, Score
+from psv.render.frame import Layout, Palette, parse_hex, render_frame, visible_notes
+from psv.render.geometry import KeyboardGeometry
+from tests.fixtures.midi_builder import FIXTURES
+
+REFERENCE_DIR = Path(__file__).resolve().parent / "assets" / "reference"
+
+#: Small on purpose. Reference images stay tiny in git, and a frame renders in
+#: milliseconds, which is what makes this a usable debugging loop.
+SMALL = VisualConfig(width=320, height=180, fps=10, lookahead_s=3.0)
+
+
+def small_config(**overrides: object) -> VisualConfig:
+    config = replace(SMALL, **overrides)  # type: ignore[arg-type]
+    config.validate()
+    return config
+
+
+def one_note_score(pitch: int = 60, start: float = 1.0, end: float = 2.0) -> Score:
+    return Score(parts=(Part(notes=(Note(pitch=pitch, start=start, end=end),)),))
+
+
+# -- shape and colour ----------------------------------------------------
+
+
+@pytest.mark.feature("F-12")
+def test_a_frame_has_the_configured_shape_and_type() -> None:
+    frame = render_frame(Score(), SMALL, 0.0)
+    assert frame.shape == (180, 320, 3)
+    assert frame.dtype == np.uint8
+
+
+@pytest.mark.feature("F-12")
+def test_an_empty_score_still_draws_the_keyboard() -> None:
+    frame = render_frame(Score(), SMALL, 0.0)
+    layout = Layout.from_config(SMALL)
+    assert frame[: layout.keyboard_top].max() <= 20, "falling area should be empty"
+    assert frame[layout.keyboard_top :].max() > 200, "keyboard should be drawn"
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [("#000000", (0, 0, 0)), ("#ffffff", (255, 255, 255)), ("#4a90d9", (74, 144, 217))],
+)
+def test_hex_colours_parse(text: str, expected: tuple[int, int, int]) -> None:
+    assert parse_hex(text) == expected
+
+
+def test_short_hex_colours_expand() -> None:
+    assert parse_hex("#abc") == parse_hex("#aabbcc")
+
+
+@pytest.mark.feature("F-12")
+def test_the_background_comes_from_config() -> None:
+    config = small_config(background="#204060")
+    frame = render_frame(Score(), config, 0.0)
+    assert tuple(frame[0, 0]) == (32, 64, 96)
+
+
+# -- timing --------------------------------------------------------------
+
+
+@pytest.mark.feature("F-12")
+def test_a_note_reaches_the_keyboard_exactly_at_its_start_time() -> None:
+    """The whole point of the visual: the bar touches the keys when you play."""
+    score = one_note_score(start=1.0, end=2.0)
+    layout = Layout.from_config(SMALL)
+    geometry = KeyboardGeometry(SMALL.width, SMALL.height - layout.keyboard_top)
+    column = round(geometry.key_centre(60))
+
+    strip = render_frame(score, SMALL, 1.0)[: layout.keyboard_top, column]
+    lit = np.flatnonzero(strip.max(axis=1) > 100)
+    assert lit.size, "the note should be on screen at its start time"
+    assert lit.max() == layout.keyboard_top - 1, "its bottom should touch the keyboard"
+
+
+@pytest.mark.feature("F-12")
+def test_a_note_is_off_screen_before_it_enters_the_window() -> None:
+    """Lookahead is 3s, so a note starting at 10s must not show at t=0."""
+    score = one_note_score(start=10.0, end=11.0)
+    frame = render_frame(score, SMALL, 0.0)
+    layout = Layout.from_config(SMALL)
+    assert frame[: layout.keyboard_top].max() <= 20
+
+
+@pytest.mark.feature("F-12")
+def test_a_note_has_passed_once_it_is_over() -> None:
+    score = one_note_score(start=1.0, end=2.0)
+    frame = render_frame(score, SMALL, 5.0)
+    layout = Layout.from_config(SMALL)
+    assert frame[: layout.keyboard_top].max() <= 20
+
+
+@pytest.mark.feature("F-12")
+def test_a_bar_descends_as_time_advances() -> None:
+    score = one_note_score(start=2.5, end=3.0)
+    layout = Layout.from_config(SMALL)
+    geometry = KeyboardGeometry(SMALL.width, SMALL.height - layout.keyboard_top)
+    column = round(geometry.key_centre(60))
+
+    positions = []
+    for time in (0.0, 0.5, 1.0, 1.5, 2.0):
+        strip = render_frame(score, SMALL, time)[: layout.keyboard_top, column]
+        lit = np.flatnonzero(strip.max(axis=1) > 100)
+        positions.append(lit.max() if lit.size else -1)
+
+    assert positions == sorted(positions), f"bar did not descend: {positions}"
+    assert positions[-1] > positions[0]
+
+
+@pytest.mark.feature("F-12")
+def test_a_longer_note_draws_a_taller_bar() -> None:
+    layout = Layout.from_config(SMALL)
+    geometry = KeyboardGeometry(SMALL.width, SMALL.height - layout.keyboard_top)
+    column = round(geometry.key_centre(60))
+
+    def bar_height(end: float) -> int:
+        score = one_note_score(start=1.0, end=end)
+        strip = render_frame(score, SMALL, 0.5)[: layout.keyboard_top, column]
+        return int((strip.max(axis=1) > 100).sum())
+
+    assert bar_height(2.0) > bar_height(1.2)
+
+
+@pytest.mark.feature("F-12")
+def test_notes_land_on_their_own_key_and_not_a_neighbour() -> None:
+    layout = Layout.from_config(SMALL)
+    geometry = KeyboardGeometry(SMALL.width, SMALL.height - layout.keyboard_top)
+    row = layout.keyboard_top - 2
+
+    for pitch in (21, 36, 60, 61, 88, 108):
+        frame = render_frame(one_note_score(pitch, 1.0, 2.0), SMALL, 1.0)
+        lit = np.flatnonzero(frame[row].max(axis=1) > 100)
+        assert lit.size, f"pitch {pitch} drew nothing"
+        centre = (lit.min() + lit.max()) / 2
+        assert centre == pytest.approx(geometry.key_centre(pitch), abs=1.5)
+
+
+@pytest.mark.feature("F-12")
+def test_a_note_off_the_88_keys_is_not_drawn() -> None:
+    """`psv inspect` reports these. Drawing one would put a bar nowhere valid."""
+    frame = render_frame(one_note_score(pitch=12, start=1.0, end=2.0), SMALL, 1.0)
+    layout = Layout.from_config(SMALL)
+    assert frame[: layout.keyboard_top].max() <= 20
+
+
+@pytest.mark.feature("F-12")
+def test_a_sounding_note_highlights_its_key() -> None:
+    score = one_note_score(start=1.0, end=2.0)
+    layout = Layout.from_config(SMALL)
+    keyboard_row = layout.keyboard_top + 4
+
+    before = render_frame(score, SMALL, 0.5)[keyboard_row]
+    during = render_frame(score, SMALL, 1.5)[keyboard_row]
+    assert not np.array_equal(before, during), "the key should light up"
+
+
+def test_visible_notes_matches_the_lookahead_window() -> None:
+    score = Score(
+        parts=(
+            Part(
+                notes=(
+                    Note(pitch=60, start=0.0, end=0.5),
+                    Note(pitch=62, start=2.0, end=2.5),
+                    Note(pitch=64, start=10.0, end=10.5),
+                )
+            ),
+        )
+    )
+    pitches = [note.pitch for note in visible_notes(score, SMALL, 0.0)]
+    assert pitches == [60, 62]
+
+
+# -- determinism ---------------------------------------------------------
+
+
+@pytest.mark.feature("F-13")
+def test_the_same_inputs_give_identical_pixels() -> None:
+    score = read_midi(FIXTURES["dynamic-levels"]())
+    first = render_frame(score, SMALL, 3.0)
+    second = render_frame(score, SMALL, 3.0)
+    assert np.array_equal(first, second)
+
+
+@pytest.mark.feature("F-13")
+@settings(max_examples=40, deadline=None)
+@given(
+    time=st.floats(min_value=0.0, max_value=12.0),
+    width=st.sampled_from([160, 320, 640]),
+    height=st.sampled_from([120, 180, 360]),
+)
+def test_rendering_is_deterministic_for_any_time_and_size(
+    time: float, width: int, height: int
+) -> None:
+    """Purity is what the reference-image tests rest on. If a frame could ever
+    differ between two identical calls, every one of them becomes flaky."""
+    score = read_midi(FIXTURES["two-hands"]())
+    config = small_config(width=width, height=height)
+    assert np.array_equal(
+        render_frame(score, config, time), render_frame(score, config, time)
+    )
+
+
+@pytest.mark.feature("F-13")
+def test_rendering_does_not_mutate_the_score() -> None:
+    score = read_midi(FIXTURES["orchestral"]())
+    before = score.notes
+    render_frame(score, SMALL, 1.0)
+    assert score.notes == before
+
+
+@pytest.mark.feature("F-13")
+def test_a_custom_palette_is_honoured() -> None:
+    palette = Palette(background=(1, 2, 3))
+    frame = render_frame(Score(), SMALL, 0.0, palette=palette)
+    assert tuple(frame[0, 0]) == (1, 2, 3)
+
+
+# -- reference images ----------------------------------------------------
+
+REFERENCE_CASES = [
+    ("full-keyboard", 2.0),
+    ("two-hands", 1.0),
+    ("dynamic-levels", 2.0),
+    ("wide-span-chord", 0.5),
+]
+
+
+@pytest.mark.feature("F-12")
+@pytest.mark.parametrize(("fixture", "time"), REFERENCE_CASES)
+def test_frames_match_their_committed_reference(fixture: str, time: float) -> None:
+    """Pins the rendering. Any change to layout or drawing shows up here as a
+    pixel diff; regenerate with `python scripts/make_references.py` once the
+    change is deliberate.
+    """
+    from PIL import Image
+
+    path = REFERENCE_DIR / f"{fixture}-{time:g}s.png"
+    assert path.exists(), f"missing reference {path.name}; run make_references.py"
+
+    score = read_midi(FIXTURES[fixture]())
+    rendered = render_frame(score, SMALL, time)
+    expected = np.array(Image.open(path).convert("RGB"))
+
+    assert rendered.shape == expected.shape
+    differing = int(np.count_nonzero(np.any(rendered != expected, axis=2)))
+    assert differing == 0, f"{differing} pixels differ from {path.name}"
+
+
+def test_the_default_config_renders_a_full_size_frame() -> None:
+    """Guards against the shipped defaults being unrenderable."""
+    config = Config.load(None).visual
+    frame = render_frame(read_midi(FIXTURES["single-note"]()), config, 0.0)
+    assert frame.shape == (config.height, config.width, 3)
