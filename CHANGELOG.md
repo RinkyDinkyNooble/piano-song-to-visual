@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **M3: the constraint and difficulty engine.** The part of this project that does
+  not exist anywhere else. See `docs/CONSTRAINT-ENGINE.md`.
+  - `psv.constraints.span` - sweep-line detection of every instant a hand is asked to
+    reach further than allowed, plus `verify_span`, which runs on every `constrain`
+    call rather than only under test.
+  - `psv.constraints.repair` - five repairs ranked by what they cost the music:
+    reassign, truncate-under-pedal, octave-shift, truncate, drop. Truncation outranks
+    octave shifting only while the sustain pedal is down, because the string keeps
+    ringing and lifting the key early is then inaudible.
+  - `psv.constraints.difficulty` - texture thinning that only ever removes notes and
+    runs before span enforcement, so no difficulty setting can widen a reach.
+  - `psv.constraints.hands` - a deliberately simple register split, documented as a
+    placeholder until the arrange stage replaces it.
+  - `psv constrain`, with `-vv` to list every individual repair.
 - **M2: the renderer.**
   - `psv.render.geometry` - 88-key layout as pure arithmetic, so it is checked
     exhaustively over every key rather than sampled. Black-key bars are drawn thinner
@@ -39,9 +53,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     simultaneous span, whether dynamics and pedal data exist, and whether the hands
     already look separated.
   - `psv inspect` and `psv export` commands.
-- 276 tests, 96% coverage, 19 of 50 features marked done. Includes a
+- Hand assignment now survives a MIDI round trip, recovered from track names, so
+  pipeline stages can be chained through intermediate files.
+- 371 tests, 96% coverage, 30 of 50 features marked done. Includes a
   `Score -> MIDI -> Score` round trip over all 19 fixtures and both committed songs,
-  and a hypothesis property test for render determinism.
+  and hypothesis property tests for render determinism and for the span guarantee.
 
 ### Added (scaffolding)
 

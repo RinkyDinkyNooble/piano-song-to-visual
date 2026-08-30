@@ -106,7 +106,7 @@ fail, so a fresh clone has a green suite.
 - **M2** renders a real song to a playable video, with reference-image tests pinning
   frame output. *(Done.)*
 - **M3** passes the span property test over thousands of generated scores, and turns
-  BWV 565 into something a human can play.
+  BWV 565 into something a human can play. *(Done.)*
 - **M4** produces a video where dynamics, pedal presses, and alignment are all readable.
   Some of this is a judgement call and gets checked by eye against `moonlight`.
 - **M5** produces synchronised audio under every backend that is available, and a clear

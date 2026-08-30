@@ -3,10 +3,11 @@
 Turn a MIDI file into a Synthesia-style falling-notes practice video — no hands, just
 notes flowing onto a keyboard — arranged so a human can actually play it.
 
-> **Status: pre-alpha.** `psv inspect`, `psv export`, and `psv render` work today, so
-> you can already turn a MIDI into a falling-notes video. What is missing is the part
-> that makes it *playable*: the arrange and constrain stages. Dynamics colour, pedal
-> lanes, and the alignment grid come with them. See [the roadmap](docs/ROADMAP.md).
+> **Status: pre-alpha.** `psv inspect`, `psv export`, `psv constrain`, and
+> `psv render` work today. You can take a MIDI, force it inside your hand span, and
+> watch the result as a falling-notes video. Still missing: reducing a multi-instrument
+> score to two hands (the arrange stage), and the dynamics colour, pedal lanes, and
+> alignment grid. See [the roadmap](docs/ROADMAP.md).
 
 ## Why this exists
 
@@ -99,6 +100,26 @@ Add `-v` for a per-track breakdown.
 
 `psv export song.mid -o copy.mid` parses a file and writes it back out, which is how you
 check that ingest understood it.
+
+Making a piece fit your hands:
+
+```bash
+psv constrain song.mid -o playable.mid
+```
+
+```
+131 span violation(s) found, resolved in 3 pass(es)
+  drop             7
+  octave-shift     55
+  reassign         64
+  truncate         6
+  notes            3651 -> 3629
+```
+
+That is Bach's Toccata and Fugue, written for organ, forced into a 12-semitone reach.
+99.4% of the notes survive. Add `-vv` to see every individual decision. How it works,
+and why the repairs are ranked the way they are, is in
+[docs/CONSTRAINT-ENGINE.md](docs/CONSTRAINT-ENGINE.md).
 
 Rendering a video:
 

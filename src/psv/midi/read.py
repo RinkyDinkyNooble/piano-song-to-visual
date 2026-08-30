@@ -81,11 +81,13 @@ def read_midi(
         notes = _read_notes(track, index, tempo_map)
         pedals.extend(_read_pedals(track, tempo_map, pedal_threshold))
         if notes:
+            name = _track_name(track)
+            hand = hand_from_track_name(name)
             parts.append(
                 Part(
-                    notes=tuple(sorted(notes)),
-                    name=_track_name(track) or f"track {index}",
-                    hand=Hand.UNASSIGNED,
+                    notes=tuple(note.assigned_to(hand) for note in sorted(notes)),
+                    name=name or f"track {index}",
+                    hand=hand,
                     source_track=index,
                 )
             )
@@ -156,6 +158,23 @@ def _track_name(track: mido.MidiTrack) -> str:
             name: str = message.name.strip()
             return name
     return ""
+
+
+def hand_from_track_name(name: str) -> Hand:
+    """Recover a hand from a track name, so intermediates survive a round trip.
+
+    The writer names each track after the hand that plays it, so a score that
+    has been through hand assignment can be written out, edited by hand in any
+    MIDI editor, and read back with the assignment intact. Without this, every
+    stage after the first would have to redo the work.
+
+    Anything else is left unassigned rather than guessed at.
+    """
+    cleaned = name.strip().lower()
+    for hand in (Hand.LEFT, Hand.RIGHT):
+        if cleaned == hand.value:
+            return hand
+    return Hand.UNASSIGNED
 
 
 # -- notes ---------------------------------------------------------------

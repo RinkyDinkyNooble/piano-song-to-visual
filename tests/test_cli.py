@@ -270,3 +270,110 @@ def test_render_requires_an_output_path(midi_path: Callable[[str], Path]) -> Non
     with pytest.raises(SystemExit) as exc:
         main(["render", str(midi_path("single-note"))])
     assert exc.value.code == 2
+
+
+# -- constrain -----------------------------------------------------------
+
+
+@pytest.mark.feature("F-20")
+def test_constrain_writes_a_playable_midi(
+    midi_path: Callable[[str], Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from psv.config import Config
+    from psv.constraints import verify_span
+
+    output = tmp_path / "playable.mid"
+    assert (
+        main(["constrain", str(midi_path("wide-span-chord")), "-o", str(output)]) == 0
+    )
+
+    out = capsys.readouterr().out
+    assert "violation" in out
+    assert "wrote" in out
+
+    result = read_midi_file(output)
+    limit = Config.load(None).hands.max_span_semitones
+    assert verify_span(result, limit) == []
+
+
+@pytest.mark.feature("F-20")
+def test_constrain_respects_the_configured_span(
+    midi_path: Callable[[str], Path], tmp_path: Path
+) -> None:
+    from psv.constraints import verify_span
+
+    config = tmp_path / "narrow.toml"
+    config.write_text("[hands]\nmax_span_semitones = 5\n", encoding="utf-8")
+    output = tmp_path / "narrow.mid"
+
+    assert (
+        main(
+            [
+                "-c",
+                str(config),
+                "constrain",
+                str(midi_path("wide-span-chord")),
+                "-o",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert verify_span(read_midi_file(output), 5) == []
+
+
+@pytest.mark.feature("F-26")
+def test_constrain_can_list_every_individual_repair(
+    midi_path: Callable[[str], Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Auditability: -vv names what happened to each note, so a passage that
+    comes out wrong can be traced to the decision that produced it."""
+    main(
+        [
+            "-vv",
+            "constrain",
+            str(midi_path("wide-span-chord")),
+            "-o",
+            str(tmp_path / "out.mid"),
+        ]
+    )
+    out = capsys.readouterr().out
+    assert any(word in out for word in ("reassign", "octave-shift", "truncate", "drop"))
+
+
+@pytest.mark.feature("F-47")
+def test_stages_chain_through_intermediate_files(
+    midi_path: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """constrain then render, each run on its own, which is the documented way
+    to hand-fix an intermediate and pick up from there."""
+    from psv.constraints import has_hands
+
+    constrained = tmp_path / "step1.mid"
+    video = tmp_path / "step2.mp4"
+
+    assert (
+        main(["constrain", str(midi_path("orchestral")), "-o", str(constrained)]) == 0
+    )
+    assert has_hands(read_midi_file(constrained)), "hands must survive the hand-off"
+
+    assert (
+        main(
+            [
+                "render",
+                str(constrained),
+                "-o",
+                str(video),
+                "--seconds",
+                "1",
+                "--width",
+                "160",
+                "--height",
+                "120",
+                "--fps",
+                "10",
+            ]
+        )
+        == 0
+    )
+    assert video.exists()

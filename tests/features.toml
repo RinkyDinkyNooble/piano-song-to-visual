@@ -140,7 +140,7 @@ uses = ["song:invention"]
 id = "F-15"
 name = "Detect every instant where one hand exceeds the span limit"
 milestone = "M3"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = ["fixture:wide-span-chord", "fixture:span-edge-cases"]
 
@@ -148,7 +148,7 @@ uses = ["fixture:wide-span-chord", "fixture:span-edge-cases"]
 id = "F-16"
 name = "Repair a violation by reassigning a note to the other hand"
 milestone = "M3"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = ["fixture:wide-span-chord"]
 
@@ -156,7 +156,7 @@ uses = ["fixture:wide-span-chord"]
 id = "F-17"
 name = "Repair a violation by octave-shifting the outlier"
 milestone = "M3"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = ["fixture:wide-span-chord"]
 
@@ -164,7 +164,7 @@ uses = ["fixture:wide-span-chord"]
 id = "F-18"
 name = "Prefer truncating a note while the sustain pedal is held"
 milestone = "M3"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = ["fixture:sustain-pedal"]
 
@@ -172,7 +172,7 @@ uses = ["fixture:sustain-pedal"]
 id = "F-19"
 name = "Drop the least salient note when nothing else applies"
 milestone = "M3"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = ["fixture:span-edge-cases"]
 
@@ -180,7 +180,7 @@ uses = ["fixture:span-edge-cases"]
 id = "F-20"
 name = "Output never exceeds the configured span, for any input"
 milestone = "M3"
-status = "planned"
+status = "done"
 verify = "property"
 uses = ["song:toccata", "song:quartet"]
 
@@ -196,7 +196,7 @@ uses = ["fixture:tiny-overlap"]
 id = "F-22"
 name = "Repairs stay inside the 88-key range at the extremes"
 milestone = "M3"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = ["fixture:span-edge-cases"]
 
@@ -204,7 +204,7 @@ uses = ["fixture:span-edge-cases"]
 id = "F-23"
 name = "A conforming score passes through unchanged"
 milestone = "M3"
-status = "planned"
+status = "done"
 verify = "property"
 uses = ["song:moonlight"]
 
@@ -212,7 +212,7 @@ uses = ["song:moonlight"]
 id = "F-24"
 name = "Constraining twice equals constraining once"
 milestone = "M3"
-status = "planned"
+status = "done"
 verify = "property"
 uses = ["song:toccata"]
 
@@ -220,7 +220,7 @@ uses = ["song:toccata"]
 id = "F-25"
 name = "Difficulty changes density without changing span"
 milestone = "M3"
-status = "planned"
+status = "done"
 verify = "property"
 uses = ["song:toccata"]
 
@@ -399,8 +399,8 @@ uses = ["song:quartet"]
 [[feature]]
 id = "F-47"
 name = "Each stage runs alone on an intermediate file"
-milestone = "M5"
-status = "planned"
+milestone = "M3"
+status = "done"
 verify = "e2e"
 uses = ["song:invention"]
 

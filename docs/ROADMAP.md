@@ -112,7 +112,7 @@ not the size that was asked for.
 
 ---
 
-## M3 - Constraint and difficulty engine
+## M3 - Constraint and difficulty engine (done)
 
 The custom part. No existing tool does this, and it is the part worth understanding in
 detail rather than receiving as a black box.
@@ -174,7 +174,16 @@ provenance flags let you check afterwards.
 
 **Exit criteria:** the property test passes over thousands of generated cases, and a
 real orchestral MIDI forced through a 12-semitone limit produces a video you can watch
-and confirm is playable.
+and confirm is playable. *(Met. BWV 565 goes from a 27-semitone left-hand reach to 12,
+keeping 99.4% of its notes, and the before-and-after was checked by eye as a rendered
+frame - which is what M2 existed for.)*
+
+Two things worth recording. A bug in the sweep was found while writing the tests: it
+judged each instant as soon as any note started, so a chord got evaluated half-built and
+the reported extremes were wrong. It now settles the whole instant first. And the MIDI
+reader learned to recover hands from track names, without which stages could not be
+chained through intermediate files at all - that is F-47, which landed here rather than
+in M5.
 
 ---
 

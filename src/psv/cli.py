@@ -4,8 +4,8 @@ A thin shell over the core library. Every command here parses arguments, calls
 one function, and prints the result; nothing in `psv` below this module knows
 the CLI exists.
 
-`inspect`, `export`, and `render` work. The arrange and constrain stages, and
-the `run` command that chains everything, do not exist yet.
+`inspect`, `export`, `constrain`, and `render` work. The arrange stage and the
+`run` command that chains everything do not exist yet.
 """
 
 from __future__ import annotations
@@ -19,6 +19,8 @@ from pathlib import Path
 
 from psv import __version__
 from psv.config import Config, ConfigError, VisualConfig
+from psv.constraints import ConstraintError
+from psv.constraints import constrain as constrain_score
 from psv.inspect import format_report, inspect_score
 from psv.midi import read_midi_file, write_midi_file
 from psv.midi.read import MidiReadError
@@ -36,7 +38,7 @@ PIPELINE_COMMANDS: dict[str, str] = {
     "run": "run the full pipeline end to end",
 }
 
-IMPLEMENTED = frozenset({"inspect", "export", "render"})
+IMPLEMENTED = frozenset({"inspect", "export", "constrain", "render"})
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -162,9 +164,25 @@ def _cmd_render(args: argparse.Namespace, config: Config) -> int:
     return 0
 
 
+def _cmd_constrain(args: argparse.Namespace, config: Config) -> int:
+    score = read_midi_file(args.input)
+    result = constrain_score(score, config)
+
+    print(result.summary())
+    if args.verbose > 1:
+        for repair in result.repairs:
+            print(f"  {repair}")
+    print(f"  notes            {len(score.notes)} -> {len(result.score.notes)}")
+
+    path = write_midi_file(result.score, args.output)
+    print(f"wrote {path}")
+    return 0
+
+
 HANDLERS: dict[str, Callable[[argparse.Namespace, Config], int]] = {
     "inspect": _cmd_inspect,
     "export": _cmd_export,
+    "constrain": _cmd_constrain,
     "render": _cmd_render,
 }
 
@@ -185,7 +203,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         # Loaded first, so a bad config fails before any work is done.
         config = Config.load(args.config)
         return HANDLERS[args.command](args, config)
-    except (ConfigError, MidiReadError, VideoWriteError) as exc:
+    except (ConfigError, MidiReadError, VideoWriteError, ConstraintError) as exc:
         print(f"psv: {exc}", file=sys.stderr)
         return 1
     except OSError as exc:

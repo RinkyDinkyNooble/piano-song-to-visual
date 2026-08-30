@@ -277,3 +277,29 @@ def test_real_songs_survive_a_round_trip(
     reloaded = read_midi_file(write_midi_file(original, tmp_path / "out.mid"))
     assert len(reloaded.notes) == len(original.notes)
     assert reloaded.pitch_range == original.pitch_range
+
+
+@pytest.mark.feature("F-09")
+def test_hand_assignment_survives_a_round_trip(tmp_path: Path) -> None:
+    """Stages are chained through intermediate MIDI files, so an assignment
+    made by one stage has to still be there for the next.
+    """
+    from psv.model import Hand
+
+    original = read_midi(FIXTURES["two-hands"]())
+    reloaded = read_midi_file(write_midi_file(original, tmp_path / "hands.mid"))
+
+    assert {part.hand for part in reloaded.parts} == {Hand.LEFT, Hand.RIGHT}
+    assert all(note.hand is not Hand.UNASSIGNED for note in reloaded.notes)
+
+
+@pytest.mark.feature("F-09")
+def test_an_unrecognised_track_name_leaves_the_hand_unassigned() -> None:
+    """Parsing never guesses at hands. That is the arrange stage's job."""
+    from psv.midi.read import hand_from_track_name
+    from psv.model import Hand
+
+    assert hand_from_track_name("left") is Hand.LEFT
+    assert hand_from_track_name(" RIGHT ") is Hand.RIGHT
+    assert hand_from_track_name("Piano") is Hand.UNASSIGNED
+    assert hand_from_track_name("") is Hand.UNASSIGNED
