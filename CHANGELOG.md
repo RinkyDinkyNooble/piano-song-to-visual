@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **M4: the full visual specification.** Everything the M2 renderer left out.
+  - `psv.render.color` - hue for the hand, brightness for the velocity. Saturation is
+    left alone on purpose so hand identity survives at pianissimo. Black-key bars are
+    darkened on top of the dynamics colour, so the two channels compose.
+  - Pedal lanes to the right of the keyboard, in the order the pedals sit under your
+    feet. Presses fall exactly as notes do, and depth is drawn as brightness, so
+    half-pedalling is visible rather than rounded to on/off.
+  - The alignment grid: vertical rules at pitch landmarks, horizontal rules on the
+    beat. Beat rules come from the tempo map, so they stay on the beat through a
+    tempo change.
 - **M3: the constraint and difficulty engine.** The part of this project that does
   not exist anywhere else. See `docs/CONSTRAINT-ENGINE.md`.
   - `psv.constraints.span` - sweep-line detection of every instant a hand is asked to
@@ -55,7 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `psv inspect` and `psv export` commands.
 - Hand assignment now survives a MIDI round trip, recovered from track names, so
   pipeline stages can be chained through intermediate files.
-- 371 tests, 96% coverage, 30 of 50 features marked done. Includes a
+- 458 tests, 39 of 50 features marked done. Includes a
   `Score -> MIDI -> Score` round trip over all 19 fixtures and both committed songs,
   and hypothesis property tests for render determinism and for the span guarantee.
 
@@ -88,3 +98,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Minimum Python raised to 3.12; CI covers 3.12 through 3.14.
 - `visual.width` and `visual.height` must be even. imageio otherwise pads the frame to
   a multiple of 16 and returns a video that is not the size that was requested.
+- **Grid config keys renamed** to `visual.grid.pitch_lines` and
+  `visual.grid.beat_lines`, from `horizontal_every` and `vertical_every`. The old names
+  described orientation and had it crossed: in a falling-notes view a vertical line
+  spans all time, so it cannot be the one that aids timing. The new names say what each
+  line marks and cannot be got backwards.
+- `visual.background` must now be grayscale, as the spec asks. The rest of the non-note
+  palette was made exactly neutral too; the strike line had been faintly blue.
+- `Note` ordering is now total. Two notes alike in pitch and timing but played by
+  different hands used to sort arbitrarily, so regrouping a score by hand could reorder
+  them and `Score.notes` was not deterministic. Found by a property test.

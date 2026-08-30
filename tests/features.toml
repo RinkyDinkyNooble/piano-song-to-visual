@@ -237,7 +237,7 @@ uses = ["fixture:wide-span-chord"]
 id = "F-27"
 name = "Hue distinguishes left hand from right"
 milestone = "M4"
-status = "planned"
+status = "done"
 verify = "visual"
 uses = ["fixture:two-hands"]
 
@@ -245,7 +245,7 @@ uses = ["fixture:two-hands"]
 id = "F-28"
 name = "Brightness tracks velocity, monotonically and without clipping"
 milestone = "M4"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = ["fixture:velocity-ramp", "fixture:dynamic-levels"]
 
@@ -261,7 +261,7 @@ uses = ["fixture:full-keyboard"]
 id = "F-30"
 name = "Black-key bars are darkened on top of their dynamics colour"
 milestone = "M4"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = ["fixture:full-keyboard"]
 
@@ -269,7 +269,7 @@ uses = ["fixture:full-keyboard"]
 id = "F-31"
 name = "Pedal presses fall down lanes beside the keyboard"
 milestone = "M4"
-status = "planned"
+status = "done"
 verify = "visual"
 uses = ["fixture:sustain-pedal", "fixture:three-pedals"]
 
@@ -277,23 +277,23 @@ uses = ["fixture:sustain-pedal", "fixture:three-pedals"]
 id = "F-32"
 name = "Pedal lane count is configurable up to three"
 milestone = "M4"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = ["fixture:three-pedals"]
 
 [[feature]]
 id = "F-33"
-name = "Horizontal grid lines at a configurable pitch interval"
+name = "Pitch grid lines at a configurable interval, for finding a key"
 milestone = "M4"
-status = "planned"
+status = "done"
 verify = "visual"
 uses = ["fixture:full-keyboard"]
 
 [[feature]]
 id = "F-34"
-name = "Vertical grid lines stay on the beat through tempo changes"
+name = "Beat grid lines stay on the beat through tempo changes"
 milestone = "M4"
-status = "planned"
+status = "done"
 verify = "visual"
 uses = ["fixture:tempo-changes", "fixture:time-signatures"]
 
@@ -301,7 +301,7 @@ uses = ["fixture:tempo-changes", "fixture:time-signatures"]
 id = "F-35"
 name = "Background stays grayscale"
 milestone = "M4"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = ["fixture:dynamic-levels"]
 
@@ -309,7 +309,7 @@ uses = ["fixture:dynamic-levels"]
 id = "F-36"
 name = "Colours, grid, and span are all driven by config, not hardcoded"
 milestone = "M4"
-status = "planned"
+status = "done"
 verify = "e2e"
 uses = ["fixture:dynamic-levels"]
 

@@ -187,7 +187,7 @@ in M5.
 
 ---
 
-## M4 - Full visual specification
+## M4 - Full visual specification (done)
 
 Everything the M2 renderer deliberately skipped.
 
@@ -209,6 +209,25 @@ under many configurations and checks none of them crash or produce blank output.
 
 **Exit criteria:** a rendered video where you can read dynamics, spot pedal presses, and
 align two notes an octave and a half apart - the three things this project exists for.
+*(Met, and checked by eye against the Moonlight Sonata as well as by six reference
+frames.)*
+
+Three notes on how it turned out.
+
+The grid config keys were renamed to `pitch_lines` and `beat_lines`. The spec described
+them by orientation, and had them crossed: it asked for horizontal lines to align
+simultaneous notes, which is right, and then for vertical lines "for timing alignment",
+which cannot be, since a vertical line spans all time. Naming each key after what it
+marks removes the ambiguity rather than picking a side of it.
+
+Saturation is deliberately not used. Washing quiet notes toward grey looks better and
+costs the more important signal: at pianissimo you could no longer tell which hand is
+playing. Hue stays at full strength all the way down, and brightness alone carries
+loudness.
+
+`visual.background` is now required to be grayscale, as the spec asks. Any hue back
+there competes with the hues that carry hand identity. The rest of the non-note palette
+was made exactly neutral for the same reason; the strike line had been faintly blue.
 
 ---
 

@@ -67,12 +67,17 @@ class ColorConfig:
     #: Hue says which hand; brightness says how loud.
     left_hand: str = "#4a90d9"
     right_hand: str = "#5fb87a"
+    #: For a score that has not been through hand assignment. Neutral on
+    #: purpose, so an unassigned note is visibly not claimed by either hand.
+    unassigned: str = "#9aa0ac"
+    #: Pedal lanes, dimmed by depth the way notes are dimmed by velocity.
+    pedal: str = "#c8a44a"
     #: Brightness multipliers at the quietest and loudest velocities.
     quiet: float = 0.35
     loud: float = 1.0
 
     def validate(self) -> None:
-        for name in ("left_hand", "right_hand"):
+        for name in ("left_hand", "right_hand", "unassigned", "pedal"):
             value = getattr(self, name)
             if not _is_hex_colour(value):
                 raise ConfigError(
@@ -88,20 +93,34 @@ class ColorConfig:
 
 @dataclass(frozen=True, slots=True)
 class GridConfig:
-    horizontal_every: str = "octave"
-    vertical_every: str = "beat"
+    """The alignment aids.
+
+    Named after what each line *marks*, not which way it runs. In a
+    falling-notes view the horizontal axis is pitch and the vertical axis is
+    time, so "the horizontal lines" and "the vertical lines" are easy to get
+    backwards; "pitch lines" and "beat lines" are not.
+
+    ``pitch_lines`` draw vertically at keyboard landmarks, for finding a key.
+    ``beat_lines`` draw horizontally across the falling area, so notes an octave
+    and a half apart can be seen to be simultaneous.
+    """
+
+    #: Vertical rules at pitch landmarks: every C, every fifth, or off.
+    pitch_lines: str = "octave"
+    #: Horizontal rules at time landmarks: every beat, every bar, or off.
+    beat_lines: str = "beat"
     opacity: float = 0.15
 
     def validate(self) -> None:
-        if self.horizontal_every not in ("octave", "fifth", "none"):
+        if self.pitch_lines not in ("octave", "fifth", "none"):
             raise ConfigError(
-                "visual.grid.horizontal_every must be octave, fifth, or none, "
-                f"got {self.horizontal_every!r}"
+                "visual.grid.pitch_lines must be octave, fifth, or none, "
+                f"got {self.pitch_lines!r}"
             )
-        if self.vertical_every not in ("beat", "bar", "none"):
+        if self.beat_lines not in ("beat", "bar", "none"):
             raise ConfigError(
-                "visual.grid.vertical_every must be beat, bar, or none, "
-                f"got {self.vertical_every!r}"
+                "visual.grid.beat_lines must be beat, bar, or none, "
+                f"got {self.beat_lines!r}"
             )
         if not 0.0 <= self.opacity <= 1.0:
             raise ConfigError(
@@ -150,6 +169,14 @@ class VisualConfig:
         if not _is_hex_colour(self.background):
             raise ConfigError(
                 f"visual.background must be a hex colour, got {self.background!r}"
+            )
+        # The spec asks for a grayscale background, and it is right to: any hue
+        # back there competes with the hues that carry which-hand information.
+        red, green, blue = _hex_to_rgb(self.background)
+        if not red == green == blue:
+            raise ConfigError(
+                "visual.background must be grayscale so it cannot compete with "
+                f"the note colours, got {self.background!r}"
             )
         self.colors.validate()
         self.grid.validate()
@@ -229,6 +256,13 @@ class Config:
     def from_dict(cls, raw: dict[str, Any]) -> Self:
         built: Self = _build(cls, raw, prefix="")
         return built
+
+
+def _hex_to_rgb(value: str) -> tuple[int, int, int]:
+    digits = value.lstrip("#")
+    if len(digits) == 3:
+        digits = "".join(c * 2 for c in digits)
+    return (int(digits[0:2], 16), int(digits[2:4], 16), int(digits[4:6], 16))
 
 
 def _is_hex_colour(value: str) -> bool:

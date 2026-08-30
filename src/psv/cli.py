@@ -156,6 +156,7 @@ def _cmd_render(args: argparse.Namespace, config: Config) -> int:
         args.output,
         start=args.start,
         duration=args.seconds,
+        pedal_lanes=config.pedals.lanes,
         on_frame=on_frame,
     )
     if show_progress:

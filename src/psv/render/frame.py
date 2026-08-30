@@ -5,9 +5,15 @@ pixels, every run and every platform. That is what makes the renderer testable
 against committed reference images, and it is why nothing here reads a clock, a
 random seed, or the filesystem.
 
-Scope for now is deliberately narrow: falling bars, the keyboard, and pressed
-keys. Dynamics colour, pedal lanes, and the alignment grid come later; this
-exists so the constraint engine's output can be watched rather than trusted.
+The layout, left to right and bottom to top:
+
+* a keyboard along the bottom, with the keys currently sounding lit up
+* pedal lanes to the right of it, when any are configured
+* the falling area above both, carrying note bars and the alignment grid
+
+Everything that carries meaning is on its own visual channel. Hue says which
+hand, brightness says how loud, bar width says black key or white, and the grid
+is faint enough to read past. See ``color.py`` for why saturation is left alone.
 """
 
 from __future__ import annotations
@@ -17,42 +23,69 @@ from dataclasses import dataclass
 import numpy as np
 
 from psv.config import VisualConfig
-from psv.model import Note, Score
+from psv.model import Note, Pedal, PedalEvent, Score
+from psv.render.color import (
+    RGB,
+    blend,
+    note_color,
+    parse_hex,
+    pedal_color,
+)
 from psv.render.geometry import KeyboardGeometry
 
 #: RGB, uint8. A frame is (height, width, 3).
 Frame = np.ndarray
 
+#: How much of the frame the keyboard takes up along the bottom.
+KEYBOARD_HEIGHT_FRACTION = 0.16
+
+#: Width of one pedal lane, as a fraction of the whole frame.
+PEDAL_LANE_FRACTION = 0.028
+
+#: Gap between the keyboard and the pedal lanes, as a fraction of the frame.
+PEDAL_GUTTER_FRACTION = 0.008
+
+#: Pedals in the order they sit under your feet, left to right. Fewer lanes
+#: means dropping from the left, so a single lane is the sustain pedal: the one
+#: that is both reliably present in MIDI and the one most players actually use.
+PEDAL_ORDER: tuple[Pedal, ...] = (Pedal.SOFT, Pedal.SOSTENUTO, Pedal.SUSTAIN)
+
 
 @dataclass(frozen=True, slots=True)
 class Palette:
-    """Provisional greys. M4 replaces the bar colours with hand and velocity."""
+    """The parts of the picture that are not note colours.
 
-    background: tuple[int, int, int] = (16, 16, 16)
-    white_bar: tuple[int, int, int] = (215, 219, 226)
-    black_bar: tuple[int, int, int] = (150, 156, 168)
-    white_key: tuple[int, int, int] = (238, 238, 238)
-    black_key: tuple[int, int, int] = (28, 28, 30)
-    key_edge: tuple[int, int, int] = (70, 70, 74)
-    pressed: tuple[int, int, int] = (120, 170, 220)
-    strike_line: tuple[int, int, int] = (90, 92, 100)
+    Deliberately grey. Anything with a hue back here would compete with the
+    hues that say which hand is playing.
+    """
+
+    background: RGB = (16, 16, 16)
+    white_key: RGB = (238, 238, 238)
+    black_key: RGB = (28, 28, 28)
+    key_edge: RGB = (70, 70, 70)
+    strike_line: RGB = (94, 94, 94)
+    grid: RGB = (152, 152, 152)
+    lane: RGB = (26, 26, 26)
+    lane_edge: RGB = (56, 56, 56)
 
 
-def parse_hex(colour: str) -> tuple[int, int, int]:
-    digits = colour.lstrip("#")
-    if len(digits) == 3:
-        digits = "".join(c * 2 for c in digits)
-    return (int(digits[0:2], 16), int(digits[2:4], 16), int(digits[4:6], 16))
+def lanes_for(count: int) -> tuple[Pedal, ...]:
+    """Which pedals get a lane, given how many lanes are configured."""
+    if count <= 0:
+        return ()
+    return PEDAL_ORDER[-count:]
 
 
 @dataclass(frozen=True, slots=True)
 class Layout:
-    """Where the keyboard sits and how fast notes fall."""
+    """Where everything sits, and how fast notes fall."""
 
     width: int
     height: int
     keyboard_top: int
+    keyboard_width: int
     lookahead_s: float
+    pedals: tuple[Pedal, ...] = ()
 
     @property
     def fall_height(self) -> int:
@@ -62,19 +95,55 @@ class Layout:
     def pixels_per_second(self) -> float:
         return self.fall_height / self.lookahead_s
 
+    @property
+    def pedal_area_left(self) -> int:
+        return self.width - self.pedal_area_width
+
+    @property
+    def pedal_area_width(self) -> int:
+        return self.width - self.keyboard_width
+
+    @property
+    def gutter(self) -> int:
+        """Blank space separating the keyboard from the pedal lanes."""
+        return round(self.width * PEDAL_GUTTER_FRACTION) if self.pedals else 0
+
+    @property
+    def lane_width(self) -> float:
+        if not self.pedals:
+            return 0.0
+        return (self.pedal_area_width - self.gutter) / len(self.pedals)
+
+    def lane_span(self, pedal: Pedal) -> tuple[float, float]:
+        """Left and right edge of one pedal's lane."""
+        index = self.pedals.index(pedal)
+        start = self.pedal_area_left + self.gutter + index * self.lane_width
+        return start, start + self.lane_width
+
+    def time_to_y(self, time: float, now: float) -> float:
+        """Where a moment in the music sits on screen at wall-clock ``now``."""
+        return self.keyboard_top - (time - now) * self.pixels_per_second
+
     @classmethod
-    def from_config(cls, config: VisualConfig) -> Layout:
+    def from_config(cls, config: VisualConfig, pedal_lanes: int = 0) -> Layout:
         keyboard_height = max(1, round(config.height * KEYBOARD_HEIGHT_FRACTION))
+        pedals = lanes_for(pedal_lanes)
+        area = (
+            round(
+                config.width
+                * (PEDAL_LANE_FRACTION * len(pedals) + PEDAL_GUTTER_FRACTION)
+            )
+            if pedals
+            else 0
+        )
         return cls(
             width=config.width,
             height=config.height,
             keyboard_top=config.height - keyboard_height,
+            keyboard_width=config.width - area,
             lookahead_s=config.lookahead_s,
+            pedals=pedals,
         )
-
-
-#: How much of the frame the keyboard takes up along the bottom.
-KEYBOARD_HEIGHT_FRACTION = 0.16
 
 
 def render_frame(
@@ -83,12 +152,13 @@ def render_frame(
     time: float,
     *,
     palette: Palette | None = None,
+    pedal_lanes: int = 1,
 ) -> Frame:
     """Render the piece as it looks at ``time``, in seconds."""
     palette = palette or Palette(background=parse_hex(config.background))
-    layout = Layout.from_config(config)
+    layout = Layout.from_config(config, pedal_lanes)
     geometry = KeyboardGeometry(
-        width=layout.width,
+        width=layout.keyboard_width,
         height=layout.height - layout.keyboard_top,
         black_bar_ratio=config.black_key_bar_width,
     )
@@ -96,8 +166,13 @@ def render_frame(
     frame = np.empty((layout.height, layout.width, 3), dtype=np.uint8)
     frame[:, :] = palette.background
 
-    sounding = _draw_falling_notes(frame, score, layout, geometry, palette, time)
-    _draw_keyboard(frame, layout, geometry, palette, sounding)
+    _draw_grid(frame, score, config, layout, geometry, palette, time)
+    sounding = _draw_falling_notes(
+        frame, score, config, layout, geometry, palette, time
+    )
+    active_pedals = _draw_pedal_lanes(frame, score, config, layout, palette, time)
+    _draw_keyboard(frame, layout, geometry, palette, sounding, config)
+    _draw_pedal_indicators(frame, layout, palette, active_pedals, config)
     return frame
 
 
@@ -107,7 +182,7 @@ def _fill(
     top: float,
     right: float,
     bottom: float,
-    colour: tuple[int, int, int],
+    colour: RGB,
 ) -> None:
     """Fill a rectangle, clipped to the frame.
 
@@ -124,50 +199,173 @@ def _fill(
     frame[y0:y1, x0:x1] = colour
 
 
-def _draw_falling_notes(
+# -- the alignment grid --------------------------------------------------
+
+
+def _draw_grid(
     frame: Frame,
     score: Score,
+    config: VisualConfig,
     layout: Layout,
     geometry: KeyboardGeometry,
     palette: Palette,
     time: float,
-) -> set[int]:
-    """Draw every bar in the visible window; return the pitches sounding now.
+) -> None:
+    """Faint rules for reading the picture, drawn under everything else.
+
+    Beat lines run horizontally, one per beat, so two notes an octave and a half
+    apart can be seen to land together. Pitch lines run vertically at keyboard
+    landmarks, so you can find which key a bar is heading for without counting.
+    """
+    grid = config.grid
+    if grid.opacity <= 0:
+        return
+    colour = blend(palette.background, palette.grid, grid.opacity)
+
+    if grid.pitch_lines != "none":
+        step = 12 if grid.pitch_lines == "octave" else 7
+        for pitch in range(24, 109, step):
+            if not geometry.contains(pitch):
+                continue
+            left, _ = geometry.key_span(pitch)
+            _fill(frame, left, 0, left + 1, layout.keyboard_top, colour)
+
+    if grid.beat_lines != "none":
+        beats_per_line = _beat_step(score, grid.beat_lines)
+        for beat_time in score.tempo_map.beat_times(
+            time + layout.lookahead_s, step=beats_per_line
+        ):
+            if beat_time < time:
+                continue
+            y = layout.time_to_y(beat_time, time)
+            _fill(frame, 0, y, layout.width, y + 1, colour)
+
+
+def _beat_step(score: Score, mode: str) -> float:
+    """How many beats between horizontal rules."""
+    if mode != "bar":
+        return 1.0
+    if score.time_signatures:
+        return score.time_signatures[0].beats_per_bar
+    return 4.0
+
+
+# -- notes ---------------------------------------------------------------
+
+
+def _draw_falling_notes(
+    frame: Frame,
+    score: Score,
+    config: VisualConfig,
+    layout: Layout,
+    geometry: KeyboardGeometry,
+    palette: Palette,
+    time: float,
+) -> dict[int, RGB]:
+    """Draw the visible bars; return the pitches sounding now and their colours.
 
     A note reaches the keyboard exactly at its start time, so its bar bottom is
     at the keyboard's top edge when ``time`` equals ``note.start``.
     """
+    del palette
     window_end = time + layout.lookahead_s
-    pixels_per_second = layout.pixels_per_second
-    sounding: set[int] = set()
+    sounding: dict[int, RGB] = {}
 
     for note in score.notes_between(time, window_end):
         if not geometry.contains(note.pitch):
             # Off the 88 keys entirely. `psv inspect` reports these; drawing
             # them would put a bar somewhere it does not belong.
             continue
-        if note.start <= time < note.end:
-            sounding.add(note.pitch)
 
-        bottom = layout.keyboard_top - (note.start - time) * pixels_per_second
-        top = layout.keyboard_top - (note.end - time) * pixels_per_second
+        colour = note_color(note, config.colors, config.black_key_darkening)
+        if note.start <= time < note.end:
+            sounding[note.pitch] = colour
+
+        bottom = layout.time_to_y(note.start, time)
+        top = layout.time_to_y(note.end, time)
         if bottom <= 0 or top >= layout.keyboard_top:
             continue
 
         left, right = geometry.bar_span(note.pitch)
-        colour = palette.black_bar if note.is_black_key else palette.white_bar
-        # Clamp the bottom so a sounding note stops at the keyboard rather than
-        # drawing over it, and keep a bar at least one pixel tall.
+        _fill(frame, left, top, right, min(bottom, layout.keyboard_top), colour)
+
+    return sounding
+
+
+# -- pedals --------------------------------------------------------------
+
+
+def _draw_pedal_lanes(
+    frame: Frame,
+    score: Score,
+    config: VisualConfig,
+    layout: Layout,
+    palette: Palette,
+    time: float,
+) -> dict[Pedal, RGB]:
+    """Pedal presses fall down their own lanes, exactly as notes do.
+
+    Depth is shown as brightness, the same channel loudness uses, so a
+    half-pedal reads as a dimmer bar rather than looking identical to a full
+    one.
+    """
+    if not layout.pedals:
+        return {}
+
+    for pedal in layout.pedals:
+        left, right = layout.lane_span(pedal)
+        _fill(frame, left, 0, right, layout.height, palette.lane)
+        _fill(frame, left, 0, left + 1, layout.height, palette.lane_edge)
+
+    window_end = time + layout.lookahead_s
+    active: dict[Pedal, RGB] = {}
+
+    for event in score.pedals:
+        if event.pedal not in layout.pedals:
+            continue
+        if event.start >= window_end or event.end <= time:
+            continue
+
+        colour = pedal_color(event.depth, config.colors)
+        if event.active_at(time):
+            active[event.pedal] = colour
+
+        bottom = layout.time_to_y(event.start, time)
+        top = layout.time_to_y(event.end, time)
+        left, right = layout.lane_span(event.pedal)
+        inset = (right - left) * 0.18
         _fill(
             frame,
-            left,
+            left + inset,
             top,
-            right,
+            right - inset,
             min(bottom, layout.keyboard_top),
             colour,
         )
 
-    return sounding
+    return active
+
+
+def _draw_pedal_indicators(
+    frame: Frame,
+    layout: Layout,
+    palette: Palette,
+    active: dict[Pedal, RGB],
+    config: VisualConfig,
+) -> None:
+    """The lane footers, which light while their pedal is held."""
+    del config
+    if not layout.pedals:
+        return
+    top = layout.keyboard_top + 1
+    for pedal in layout.pedals:
+        left, right = layout.lane_span(pedal)
+        colour = active.get(pedal, palette.lane_edge)
+        inset = (right - left) * 0.18
+        _fill(frame, left + inset, top, right - inset, layout.height, colour)
+
+
+# -- keyboard ------------------------------------------------------------
 
 
 def _draw_keyboard(
@@ -175,26 +373,38 @@ def _draw_keyboard(
     layout: Layout,
     geometry: KeyboardGeometry,
     palette: Palette,
-    sounding: set[int],
+    sounding: dict[int, RGB],
+    config: VisualConfig,
 ) -> None:
-    """Draw the keyboard, whites first so blacks sit on top of them."""
+    """Draw the keyboard, whites first so blacks sit on top of them.
+
+    A sounding key is lit in the same colour as its falling bar, so the eye can
+    follow one note from the top of the screen down onto the key.
+    """
+    del config
     top = layout.keyboard_top
     bottom = layout.height
 
-    _fill(frame, 0, top, layout.width, top + 1, palette.strike_line)
+    _fill(frame, 0, top, layout.keyboard_width, top + 1, palette.strike_line)
 
     key_top = top + 1
     for pitch in geometry.white_pitches():
         left, right = geometry.key_span(pitch)
-        colour = palette.pressed if pitch in sounding else palette.white_key
+        colour = sounding.get(pitch, palette.white_key)
         _fill(frame, left, key_top, right, bottom, colour)
         _fill(frame, right - 1, key_top, right, bottom, palette.key_edge)
 
     black_bottom = key_top + geometry.black_height
     for pitch in geometry.black_pitches():
         left, right = geometry.key_span(pitch)
-        colour = palette.pressed if pitch in sounding else palette.black_key
-        _fill(frame, left, key_top, right, black_bottom, colour)
+        _fill(
+            frame,
+            left,
+            key_top,
+            right,
+            black_bottom,
+            sounding.get(pitch, palette.black_key),
+        )
 
 
 def visible_notes(score: Score, config: VisualConfig, time: float) -> tuple[Note, ...]:
@@ -205,3 +415,18 @@ def visible_notes(score: Score, config: VisualConfig, time: float) -> tuple[Note
     """
     layout = Layout.from_config(config)
     return score.notes_between(time, time + layout.lookahead_s)
+
+
+def visible_pedals(
+    score: Score, config: VisualConfig, time: float, pedal_lanes: int = 1
+) -> tuple[PedalEvent, ...]:
+    """The pedal events a frame at ``time`` would draw."""
+    layout = Layout.from_config(config, pedal_lanes)
+    window_end = time + layout.lookahead_s
+    return tuple(
+        event
+        for event in score.pedals
+        if event.pedal in layout.pedals
+        and event.start < window_end
+        and event.end > time
+    )

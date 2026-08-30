@@ -4,10 +4,10 @@ Turn a MIDI file into a Synthesia-style falling-notes practice video — no hand
 notes flowing onto a keyboard — arranged so a human can actually play it.
 
 > **Status: pre-alpha.** `psv inspect`, `psv export`, `psv constrain`, and
-> `psv render` work today. You can take a MIDI, force it inside your hand span, and
-> watch the result as a falling-notes video. Still missing: reducing a multi-instrument
-> score to two hands (the arrange stage), and the dynamics colour, pedal lanes, and
-> alignment grid. See [the roadmap](docs/ROADMAP.md).
+> `psv render` work today, and the video has everything the spec asks for: hand
+> colours, dynamics, pedal lanes, and the alignment grid. Still missing: reducing a
+> multi-instrument score to two hands (the arrange stage), and any audio at all.
+> See [the roadmap](docs/ROADMAP.md).
 
 ## Why this exists
 
@@ -145,6 +145,10 @@ psv run song.mid -o practice.mp4 -c my-hands.toml
 Everything meaningful is configurable via a TOML file rather than flags you have to
 remember. The sketch:
 
+The grid keys are named after what each line *marks*, not which way it runs. In a
+falling-notes view the horizontal axis is pitch and the vertical axis is time, so
+"horizontal lines" and "vertical lines" are easy to get backwards.
+
 ```toml
 [hands]
 max_span_semitones = 12   # hard limit on simultaneously held notes; 18 = 1.5 octaves
@@ -161,12 +165,15 @@ black_key_darkening = 0.2 # applied on top of the note's colour
 [visual.colors]           # hue = which hand, brightness = how loud
 left_hand  = "#4a90d9"
 right_hand = "#5fb87a"
+unassigned = "#9aa0ac"    # before hand assignment has run
+pedal      = "#c8a44a"
 quiet = 0.35              # brightness at pp
 loud  = 1.0               # brightness at ff
 
 [visual.grid]
-horizontal_every = "octave"
-vertical_every = "beat"
+pitch_lines = "octave"    # vertical rules at every C, for finding a key
+beat_lines  = "beat"      # horizontal rules on the beat, for spotting simultaneity
+opacity     = 0.15        # faint: an aid, not decoration
 
 [pedals]
 lanes = 1                 # up to 3; sustain is the one MIDI reliably carries

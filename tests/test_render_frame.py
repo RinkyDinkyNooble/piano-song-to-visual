@@ -18,7 +18,8 @@ from hypothesis import strategies as st
 from psv.config import Config, VisualConfig
 from psv.midi import read_midi
 from psv.model import Note, Part, Score
-from psv.render.frame import Layout, Palette, parse_hex, render_frame, visible_notes
+from psv.render.color import parse_hex
+from psv.render.frame import Layout, Palette, render_frame, visible_notes
 from psv.render.geometry import KeyboardGeometry
 from tests.fixtures.midi_builder import FIXTURES
 
@@ -39,6 +40,33 @@ def one_note_score(pitch: int = 60, start: float = 1.0, end: float = 2.0) -> Sco
     return Score(parts=(Part(notes=(Note(pitch=pitch, start=start, end=end),)),))
 
 
+#: Geometry tests render without lanes so the keyboard spans the full frame and
+#: the arithmetic stays easy to follow. Lane behaviour has its own tests.
+NO_LANES = 0
+
+#: The grid is drawn under everything, so "is the falling area empty?" has to
+#: mean "empty apart from the grid". Turning it off is clearer than thresholding.
+PLAIN = replace(SMALL, grid=replace(SMALL.grid, opacity=0.0))
+
+
+def geometry_for(config: VisualConfig, lanes: int = NO_LANES) -> KeyboardGeometry:
+    layout = Layout.from_config(config, lanes)
+    return KeyboardGeometry(layout.keyboard_width, config.height - layout.keyboard_top)
+
+
+def painted(frame: np.ndarray, background: tuple[int, int, int]) -> np.ndarray:
+    """Mask of pixels that are not the background.
+
+    Better than a brightness threshold now that colour carries meaning: a quiet
+    black-key note is legitimately dark, and any fixed cutoff would either miss
+    it or catch the grid.
+    """
+    return np.any(frame != np.array(background, dtype=np.uint8), axis=-1)
+
+
+PLAIN_BG = parse_hex(PLAIN.background)
+
+
 # -- shape and colour ----------------------------------------------------
 
 
@@ -51,9 +79,9 @@ def test_a_frame_has_the_configured_shape_and_type() -> None:
 
 @pytest.mark.feature("F-12")
 def test_an_empty_score_still_draws_the_keyboard() -> None:
-    frame = render_frame(Score(), SMALL, 0.0)
-    layout = Layout.from_config(SMALL)
-    assert frame[: layout.keyboard_top].max() <= 20, "falling area should be empty"
+    frame = render_frame(Score(), PLAIN, 0.0, pedal_lanes=NO_LANES)
+    layout = Layout.from_config(SMALL, NO_LANES)
+    assert not painted(frame[: layout.keyboard_top], PLAIN_BG).any()
     assert frame[layout.keyboard_top :].max() > 200, "keyboard should be drawn"
 
 
@@ -71,9 +99,9 @@ def test_short_hex_colours_expand() -> None:
 
 @pytest.mark.feature("F-12")
 def test_the_background_comes_from_config() -> None:
-    config = small_config(background="#204060")
+    config = replace(small_config(background="#404040"), grid=PLAIN.grid)
     frame = render_frame(Score(), config, 0.0)
-    assert tuple(frame[0, 0]) == (32, 64, 96)
+    assert tuple(frame[0, 0]) == (64, 64, 64)
 
 
 # -- timing --------------------------------------------------------------
@@ -83,12 +111,14 @@ def test_the_background_comes_from_config() -> None:
 def test_a_note_reaches_the_keyboard_exactly_at_its_start_time() -> None:
     """The whole point of the visual: the bar touches the keys when you play."""
     score = one_note_score(start=1.0, end=2.0)
-    layout = Layout.from_config(SMALL)
-    geometry = KeyboardGeometry(SMALL.width, SMALL.height - layout.keyboard_top)
+    layout = Layout.from_config(SMALL, NO_LANES)
+    geometry = geometry_for(SMALL)
     column = round(geometry.key_centre(60))
 
-    strip = render_frame(score, SMALL, 1.0)[: layout.keyboard_top, column]
-    lit = np.flatnonzero(strip.max(axis=1) > 100)
+    strip = render_frame(score, PLAIN, 1.0, pedal_lanes=NO_LANES)[
+        : layout.keyboard_top, column
+    ]
+    lit = np.flatnonzero(painted(strip, PLAIN_BG))
     assert lit.size, "the note should be on screen at its start time"
     assert lit.max() == layout.keyboard_top - 1, "its bottom should touch the keyboard"
 
@@ -97,30 +127,32 @@ def test_a_note_reaches_the_keyboard_exactly_at_its_start_time() -> None:
 def test_a_note_is_off_screen_before_it_enters_the_window() -> None:
     """Lookahead is 3s, so a note starting at 10s must not show at t=0."""
     score = one_note_score(start=10.0, end=11.0)
-    frame = render_frame(score, SMALL, 0.0)
-    layout = Layout.from_config(SMALL)
-    assert frame[: layout.keyboard_top].max() <= 20
+    frame = render_frame(score, PLAIN, 0.0, pedal_lanes=NO_LANES)
+    layout = Layout.from_config(SMALL, NO_LANES)
+    assert not painted(frame[: layout.keyboard_top], PLAIN_BG).any()
 
 
 @pytest.mark.feature("F-12")
 def test_a_note_has_passed_once_it_is_over() -> None:
     score = one_note_score(start=1.0, end=2.0)
-    frame = render_frame(score, SMALL, 5.0)
-    layout = Layout.from_config(SMALL)
-    assert frame[: layout.keyboard_top].max() <= 20
+    frame = render_frame(score, PLAIN, 5.0, pedal_lanes=NO_LANES)
+    layout = Layout.from_config(SMALL, NO_LANES)
+    assert not painted(frame[: layout.keyboard_top], PLAIN_BG).any()
 
 
 @pytest.mark.feature("F-12")
 def test_a_bar_descends_as_time_advances() -> None:
     score = one_note_score(start=2.5, end=3.0)
-    layout = Layout.from_config(SMALL)
-    geometry = KeyboardGeometry(SMALL.width, SMALL.height - layout.keyboard_top)
+    layout = Layout.from_config(SMALL, NO_LANES)
+    geometry = geometry_for(SMALL)
     column = round(geometry.key_centre(60))
 
     positions = []
     for time in (0.0, 0.5, 1.0, 1.5, 2.0):
-        strip = render_frame(score, SMALL, time)[: layout.keyboard_top, column]
-        lit = np.flatnonzero(strip.max(axis=1) > 100)
+        strip = render_frame(score, PLAIN, time, pedal_lanes=NO_LANES)[
+            : layout.keyboard_top, column
+        ]
+        lit = np.flatnonzero(painted(strip, PLAIN_BG))
         positions.append(lit.max() if lit.size else -1)
 
     assert positions == sorted(positions), f"bar did not descend: {positions}"
@@ -129,27 +161,31 @@ def test_a_bar_descends_as_time_advances() -> None:
 
 @pytest.mark.feature("F-12")
 def test_a_longer_note_draws_a_taller_bar() -> None:
-    layout = Layout.from_config(SMALL)
-    geometry = KeyboardGeometry(SMALL.width, SMALL.height - layout.keyboard_top)
+    layout = Layout.from_config(SMALL, NO_LANES)
+    geometry = geometry_for(SMALL)
     column = round(geometry.key_centre(60))
 
     def bar_height(end: float) -> int:
         score = one_note_score(start=1.0, end=end)
-        strip = render_frame(score, SMALL, 0.5)[: layout.keyboard_top, column]
-        return int((strip.max(axis=1) > 100).sum())
+        strip = render_frame(score, PLAIN, 0.5, pedal_lanes=NO_LANES)[
+            : layout.keyboard_top, column
+        ]
+        return int(painted(strip, PLAIN_BG).sum())
 
     assert bar_height(2.0) > bar_height(1.2)
 
 
 @pytest.mark.feature("F-12")
 def test_notes_land_on_their_own_key_and_not_a_neighbour() -> None:
-    layout = Layout.from_config(SMALL)
-    geometry = KeyboardGeometry(SMALL.width, SMALL.height - layout.keyboard_top)
+    layout = Layout.from_config(SMALL, NO_LANES)
+    geometry = geometry_for(SMALL)
     row = layout.keyboard_top - 2
 
     for pitch in (21, 36, 60, 61, 88, 108):
-        frame = render_frame(one_note_score(pitch, 1.0, 2.0), SMALL, 1.0)
-        lit = np.flatnonzero(frame[row].max(axis=1) > 100)
+        frame = render_frame(
+            one_note_score(pitch, 1.0, 2.0), PLAIN, 1.0, pedal_lanes=NO_LANES
+        )
+        lit = np.flatnonzero(painted(frame[row], PLAIN_BG))
         assert lit.size, f"pitch {pitch} drew nothing"
         centre = (lit.min() + lit.max()) / 2
         assert centre == pytest.approx(geometry.key_centre(pitch), abs=1.5)
@@ -158,19 +194,21 @@ def test_notes_land_on_their_own_key_and_not_a_neighbour() -> None:
 @pytest.mark.feature("F-12")
 def test_a_note_off_the_88_keys_is_not_drawn() -> None:
     """`psv inspect` reports these. Drawing one would put a bar nowhere valid."""
-    frame = render_frame(one_note_score(pitch=12, start=1.0, end=2.0), SMALL, 1.0)
-    layout = Layout.from_config(SMALL)
-    assert frame[: layout.keyboard_top].max() <= 20
+    frame = render_frame(
+        one_note_score(pitch=12, start=1.0, end=2.0), PLAIN, 1.0, pedal_lanes=NO_LANES
+    )
+    layout = Layout.from_config(SMALL, NO_LANES)
+    assert not painted(frame[: layout.keyboard_top], PLAIN_BG).any()
 
 
 @pytest.mark.feature("F-12")
 def test_a_sounding_note_highlights_its_key() -> None:
     score = one_note_score(start=1.0, end=2.0)
-    layout = Layout.from_config(SMALL)
+    layout = Layout.from_config(SMALL, NO_LANES)
     keyboard_row = layout.keyboard_top + 4
 
-    before = render_frame(score, SMALL, 0.5)[keyboard_row]
-    during = render_frame(score, SMALL, 1.5)[keyboard_row]
+    before = render_frame(score, PLAIN, 0.5, pedal_lanes=NO_LANES)[keyboard_row]
+    during = render_frame(score, PLAIN, 1.5, pedal_lanes=NO_LANES)[keyboard_row]
     assert not np.array_equal(before, during), "the key should light up"
 
 
@@ -231,17 +269,23 @@ def test_rendering_does_not_mutate_the_score() -> None:
 @pytest.mark.feature("F-13")
 def test_a_custom_palette_is_honoured() -> None:
     palette = Palette(background=(1, 2, 3))
-    frame = render_frame(Score(), SMALL, 0.0, palette=palette)
+    frame = render_frame(Score(), PLAIN, 0.0, palette=palette, pedal_lanes=NO_LANES)
     assert tuple(frame[0, 0]) == (1, 2, 3)
 
 
 # -- reference images ----------------------------------------------------
+
+#: References render with all three lanes so the pedal area is pinned too.
+REFERENCE_LANES = 3
 
 REFERENCE_CASES = [
     ("full-keyboard", 2.0),
     ("two-hands", 1.0),
     ("dynamic-levels", 2.0),
     ("wide-span-chord", 0.5),
+    # Every M4 channel at once: three pedal lanes, both hand hues, the grid.
+    ("three-pedals", 2.0),
+    ("half-pedal", 3.0),
 ]
 
 
@@ -258,7 +302,7 @@ def test_frames_match_their_committed_reference(fixture: str, time: float) -> No
     assert path.exists(), f"missing reference {path.name}; run make_references.py"
 
     score = read_midi(FIXTURES[fixture]())
-    rendered = render_frame(score, SMALL, time)
+    rendered = render_frame(score, SMALL, time, pedal_lanes=REFERENCE_LANES)
     expected = np.array(Image.open(path).convert("RGB"))
 
     assert rendered.shape == expected.shape

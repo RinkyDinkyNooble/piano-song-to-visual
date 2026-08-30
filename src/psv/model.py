@@ -77,9 +77,27 @@ class Note:
     source_track: int = 0
     channel: int = 0
 
+    @property
+    def sort_key(self) -> tuple[float, int, float, int, str, int]:
+        """A *total* order, so a set of notes has one canonical sequence.
+
+        Playing order first: by start time, then low pitch to high. The
+        remaining fields only break ties, but they have to be there. Two notes
+        alike in pitch and timing but played by different hands would otherwise
+        sort arbitrarily, and regrouping the score by hand could reorder them,
+        which makes `Score.notes` non-deterministic for no good reason.
+        """
+        return (
+            self.start,
+            self.pitch,
+            self.end,
+            self.velocity,
+            self.hand.value,
+            self.channel,
+        )
+
     def __lt__(self, other: Note) -> bool:
-        """Sort into playing order, simultaneous notes low pitch first."""
-        return (self.start, self.pitch) < (other.start, other.pitch)
+        return self.sort_key < other.sort_key
 
     def __post_init__(self) -> None:
         if self.end < self.start:

@@ -21,7 +21,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from tests.fixtures.midi_builder import FIXTURES  # noqa: E402
-from tests.test_render_frame import REFERENCE_CASES, SMALL  # noqa: E402
+from tests.test_render_frame import (  # noqa: E402
+    REFERENCE_CASES,
+    REFERENCE_LANES,
+    SMALL,
+)
 
 from psv.midi import read_midi  # noqa: E402
 from psv.render.frame import render_frame  # noqa: E402
@@ -43,7 +47,9 @@ def main(argv: list[str] | None = None) -> int:
 
     for fixture, time in REFERENCE_CASES:
         path = OUT_DIR / f"{fixture}-{time:g}s.png"
-        rendered = render_frame(read_midi(FIXTURES[fixture]()), SMALL, time)
+        rendered = render_frame(
+            read_midi(FIXTURES[fixture]()), SMALL, time, pedal_lanes=REFERENCE_LANES
+        )
 
         if path.exists():
             expected = np.array(Image.open(path).convert("RGB"))

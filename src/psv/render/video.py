@@ -51,12 +51,15 @@ def iter_frames(
     start: float = 0.0,
     duration: float | None = None,
     palette: Palette | None = None,
+    pedal_lanes: int = 1,
 ) -> Iterator[Frame]:
     """Render every frame of the requested span, lazily."""
     if duration is None:
         duration = max(0.0, score.duration - start) + TAIL_S
     for time in frame_times(duration, config.fps, start=start):
-        yield render_frame(score, config, time, palette=palette)
+        yield render_frame(
+            score, config, time, palette=palette, pedal_lanes=pedal_lanes
+        )
 
 
 def render_video(
@@ -67,6 +70,7 @@ def render_video(
     start: float = 0.0,
     duration: float | None = None,
     palette: Palette | None = None,
+    pedal_lanes: int = 1,
     on_frame: Callable[[int, int], None] | None = None,
 ) -> Path:
     """Render ``score`` to a video file and return its path.
@@ -112,7 +116,14 @@ def render_video(
     writer.send(None)
     try:
         for index, frame in enumerate(
-            iter_frames(score, config, start=start, duration=duration, palette=palette),
+            iter_frames(
+                score,
+                config,
+                start=start,
+                duration=duration,
+                palette=palette,
+                pedal_lanes=pedal_lanes,
+            ),
             start=1,
         ):
             writer.send(np.ascontiguousarray(frame))

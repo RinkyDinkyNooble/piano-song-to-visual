@@ -37,14 +37,14 @@ def test_a_partial_file_overrides_only_what_it_names(tmp_path: Path) -> None:
         max_span_semitones = 15
 
         [visual.grid]
-        vertical_every = "bar"
+        beat_lines = "bar"
         """,
     )
     config = Config.load(path)
     assert config.hands.max_span_semitones == 15
-    assert config.visual.grid.vertical_every == "bar"
+    assert config.visual.grid.beat_lines == "bar"
     # Untouched keys keep their defaults.
-    assert config.visual.grid.horizontal_every == "octave"
+    assert config.visual.grid.pitch_lines == "octave"
     assert config.visual.fps == 60
 
 
@@ -100,8 +100,8 @@ def test_the_documented_readme_example_is_valid(tmp_path: Path) -> None:
         loud = 1.0
 
         [visual.grid]
-        horizontal_every = "octave"
-        vertical_every = "beat"
+        pitch_lines = "octave"
+        beat_lines = "beat"
 
         [pedals]
         lanes = 1
@@ -119,8 +119,12 @@ def test_the_documented_readme_example_is_valid(tmp_path: Path) -> None:
         ("[difficulty]\nlevel = 'impossible'\n", "difficulty.level"),
         ("[visual.colors]\nleft_hand = 'blue'\n", "hex colour"),
         ("[visual.colors]\nquiet = 0.9\nloud = 0.2\n", "quiet <= loud"),
-        ("[visual.grid]\nvertical_every = 'sometimes'\n", "vertical_every"),
+        ("[visual.grid]\nbeat_lines = 'sometimes'\n", "beat_lines must be"),
+        ("[visual.grid]\npitch_lines = 'thirds'\n", "pitch_lines must be"),
         ("[visual.grid]\nopacity = 2.0\n", "opacity"),
+        ("[visual]\nbackground = '#204060'\n", "grayscale"),
+        ("[visual.colors]\npedal = 'gold'\n", "hex colour"),
+        ("[visual.colors]\nunassigned = 'grey'\n", "hex colour"),
         ("[visual]\nfps = 0\n", "visual.fps"),
         ("[visual]\nblack_key_bar_width = 1.5\n", "black_key_bar_width"),
         ("[pedals]\nlanes = 4\n", "pedals.lanes"),
