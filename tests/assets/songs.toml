@@ -1,0 +1,102 @@
+# Real-song test assets.
+#
+# Every entry is engraved sheet music exported to MIDI by the Mutopia Project.
+# That has a consequence worth knowing before you write a test against one:
+# LilyPond-generated MIDI carries no performance data. Every note has the same
+# velocity and there is no CC64 sustain pedal. These files exercise structure,
+# timing, register, polyphony, and hand separation. They cannot exercise
+# dynamics or pedal. Use the synthetic fixtures in tests/fixtures/ for those.
+#
+# `committed = true`  -> lives in tests/assets/public-domain/, tracked by git.
+# `committed = false` -> lives in tests/assets/fetched/, gitignored, retrieved
+#                        with `python scripts/fetch_test_songs.py`.
+#
+# The split is licensing, not size. This repo is 0BSD, which imposes no
+# conditions on downstream users. Public-domain files inherit no conditions
+# either, so they can be committed. CC BY-SA files carry attribution and
+# share-alike obligations that would contradict the repo's own licence, so they
+# stay out of git and are fetched on demand.
+
+source = "Mutopia Project"
+base_url = "https://www.mutopiaproject.org/ftp"
+
+[[song]]
+id = "toccata"
+title = "Toccata and Fugue in D minor, BWV 565"
+composer = "J. S. Bach"
+path = "BachJS/BWV565/ToccataFugue/ToccataFugue.mid"
+filename = "bach-bwv565-toccata-and-fugue.mid"
+licence = "Public Domain"
+maintainer = "Anonymous"
+committed = true
+sha256 = "1aabd00967aded08d6633482c211af46f679d97f01cfeaca43c83a59dfeeeb6b"
+tracks = 4
+notes = 3651
+duration_s = 572.0
+pitch_range = [36, 84]
+# Why this one: written for organ, so it has a pedalboard staff sitting far below
+# the manuals. Reducing three staves to two hands produces genuine, unavoidable
+# span violations. This is the hardest honest test of the constraint engine, and
+# the reason it is the default fixture for constrain tests.
+covers = ["multi-staff", "wide-span", "counterpoint", "long-form"]
+
+[[song]]
+id = "quartet"
+title = "String Quartet No. 4 in C minor, Op. 18 No. 4, I. Allegro ma non tanto"
+composer = "L. v. Beethoven"
+path = "BeethovenLv/O18/QuartetOpus18_No4_1/QuartetOpus18_No4_1.mid"
+filename = "beethoven-op18-no4-i-quartet.mid"
+licence = "Public Domain"
+maintainer = "Stelios Samelis"
+committed = true
+sha256 = "26923fa9eb4985b5f18c42d2cccde667149b73eed380777fc107dd77667fc4d2"
+tracks = 5
+notes = 6151
+duration_s = 514.8
+pitch_range = [36, 96]
+programs = [40, 41, 42]
+# Why this one: four independent instrument parts on distinct MIDI programs.
+# This is the arrange stage's real problem, four voices that must become two
+# hands, with no piano writing to fall back on.
+covers = ["multi-instrument", "program-changes", "voice-reduction"]
+
+[[song]]
+id = "moonlight"
+title = "Piano Sonata No. 14, Op. 27 No. 2, I. Adagio sostenuto"
+composer = "L. v. Beethoven"
+path = "BeethovenLv/O27/moonlight/moonlight-mids.zip"
+archive_member = "moonlight1.mid"
+filename = "beethoven-op27-no2-i-moonlight.mid"
+licence = "Creative Commons Attribution-ShareAlike 2.5"
+maintainer = "Stewart Holmes"
+committed = false
+sha256 = "a34e969c4957f0e9e98fc9ff0278cc1284931bdae6d463469797faa2b73a9c5c"
+tracks = 3
+notes = 1142
+duration_s = 276.0
+pitch_range = [29, 87]
+# Why this one: already solo piano with the hands separated, so it is the
+# control case. The arrange stage should decline to touch it. Continuous
+# right-hand triplet arpeggios over sustained left-hand octaves also make it the
+# clearest piece to eyeball a finished render against.
+covers = ["solo-piano", "pre-separated-hands", "arpeggios", "eyeball-reference"]
+
+[[song]]
+id = "invention"
+title = "Invention No. 1 in C major, BWV 772"
+composer = "J. S. Bach"
+path = "BachJS/BWV772/bach-invention-01/bach-invention-01.mid"
+filename = "bach-bwv772-invention-1.mid"
+licence = "Creative Commons Attribution-ShareAlike 3.0"
+maintainer = "jeff covey"
+committed = false
+sha256 = "9b9a6213941932d5171d9102d85912c3c1c61f8176ce02005cd2198881823c2d"
+tracks = 3
+notes = 458
+duration_s = 66.0
+pitch_range = [36, 84]
+# Why this one: two strict voices, one per hand, crossing each other repeatedly.
+# Hand assignment cannot fall back on "low notes are the left hand" here, so it
+# catches register-only heuristics. Also the shortest real song, which makes it
+# the default for tests that need a full render.
+covers = ["two-voice", "voice-crossing", "short-render"]

@@ -1,0 +1,81 @@
+# Private research / design notes (not published)
+/research
+
+# AI agent working area: skills, settings, and scratch notes. Local-only by
+# design, so agent config never lands in the published repo.
+/.claude/
+/CLAUDE.md
+/.scratch/
+
+# CC BY-SA test songs. Fetched by scripts/fetch_test_songs.py, never committed:
+# their attribution and share-alike terms would clash with this repo's 0BSD.
+# Public-domain songs under tests/assets/public-domain/ ARE committed, and so is
+# the songs.toml manifest that describes both sets.
+/tests/assets/fetched/
+
+# Synthetic fixtures written for eyeballing. Reproduce with scripts/make_fixtures.py;
+# the builder in tests/fixtures/ is the committed source of truth, not these blobs.
+/tests/assets/generated/
+
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+dist/
+sdist/
+wheels/
+*.egg-info/
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Testing / coverage / type checking
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Project runtime output & large assets
+/out/
+/output/
+/renders/
+/cache/
+*.mp4
+*.mkv
+*.webm
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.sf2
+*.sf3
+
+# Local, non-shared config
+.env
+.env.*
+!.env.example
+config.local.toml

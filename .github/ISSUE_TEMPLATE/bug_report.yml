@@ -1,0 +1,53 @@
+name: Bug report
+description: Something behaves incorrectly
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The exact `psv` command, plus the config file if you used one.
+      render: shell
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Which pipeline stage
+      options:
+        - inspect (reading the MIDI)
+        - arrange (reduction to two hands)
+        - constrain (hand span / difficulty)
+        - render (video)
+        - audio (synth / mux)
+        - not sure
+    validations:
+      required: true
+  - type: input
+    id: input-kind
+    attributes:
+      label: Input
+      description: Rough character of the MIDI (e.g. "12-track orchestral game OST", "solo piano, 2 tracks").
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Output of `psv --version`, your OS, and your Python version.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Output of the failing command run with `-vv`.
+      render: shell

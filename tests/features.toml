@@ -1,0 +1,429 @@
+# Feature registry.
+#
+# One entry per user-visible feature, which means something the tool promises in
+# the README, the spec, or docs/ARCHITECTURE.md. Not internal functions: those
+# are covered by ordinary unit tests and do not belong here.
+#
+# tests/test_feature_coverage.py enforces two rules against this file:
+#
+#   1. Every feature with status = "done" has at least one test marked
+#      @pytest.mark.feature("F-xx"). A feature cannot be called finished until
+#      something proves it end to end.
+#   2. Every feature id used in a test marker exists here. Catches typos and
+#      stops coverage from silently pointing at nothing.
+#
+# Flip status from "planned" to "done" in the same change that lands the tests.
+# The suite fails if you flip it early, which is the point.
+#
+# `verify` says how the feature is proven:
+#   e2e      - drives the CLI or full pipeline on a real file
+#   property - hypothesis generates inputs and asserts an invariant
+#   unit     - exercised through one module's public interface
+#   visual   - compared against a committed reference image
+
+# --------------------------------------------------------------- M1: ingest
+[[feature]]
+id = "F-01"
+name = "Parse multi-track MIDI into a Score"
+milestone = "M1"
+status = "planned"
+verify = "e2e"
+uses = ["song:toccata", "song:quartet", "fixture:single-note", "fixture:empty"]
+
+[[feature]]
+id = "F-02"
+name = "Treat note_on with velocity 0 as a note-off"
+milestone = "M1"
+status = "planned"
+verify = "unit"
+uses = ["fixture:zero-velocity-note-off"]
+
+[[feature]]
+id = "F-03"
+name = "Handle a pitch retriggered before its note-off"
+milestone = "M1"
+status = "planned"
+verify = "unit"
+uses = ["fixture:retriggered-pitch"]
+
+[[feature]]
+id = "F-04"
+name = "Exclude the percussion channel from pitched output"
+milestone = "M1"
+status = "planned"
+verify = "unit"
+uses = ["fixture:drum-channel"]
+
+[[feature]]
+id = "F-05"
+name = "Resolve tempo changes to absolute seconds"
+milestone = "M1"
+status = "planned"
+verify = "unit"
+uses = ["fixture:tempo-changes"]
+
+[[feature]]
+id = "F-06"
+name = "Track time signature changes for bar lines"
+milestone = "M1"
+status = "planned"
+verify = "unit"
+uses = ["fixture:time-signatures"]
+
+[[feature]]
+id = "F-07"
+name = "Extract pedal events including partial depths"
+milestone = "M1"
+status = "planned"
+verify = "unit"
+uses = ["fixture:sustain-pedal", "fixture:half-pedal", "fixture:three-pedals"]
+
+[[feature]]
+id = "F-08"
+name = "psv inspect reports a file's real contents"
+milestone = "M1"
+status = "planned"
+verify = "e2e"
+uses = ["song:toccata", "song:quartet"]
+
+[[feature]]
+id = "F-09"
+name = "Export a Score back to MIDI for hand editing"
+milestone = "M1"
+status = "planned"
+verify = "e2e"
+uses = ["song:toccata"]
+
+[[feature]]
+id = "F-10"
+name = "Load and validate a TOML config, rejecting bad keys"
+milestone = "M1"
+status = "planned"
+verify = "unit"
+uses = []
+
+# ------------------------------------------------------------- M2: renderer
+[[feature]]
+id = "F-11"
+name = "Map all 88 keys to correct keyboard positions"
+milestone = "M2"
+status = "planned"
+verify = "unit"
+uses = ["fixture:full-keyboard"]
+
+[[feature]]
+id = "F-12"
+name = "Falling notes land on their key at the right time"
+milestone = "M2"
+status = "planned"
+verify = "visual"
+uses = ["fixture:full-keyboard", "song:invention"]
+
+[[feature]]
+id = "F-13"
+name = "render_frame is deterministic for the same inputs"
+milestone = "M2"
+status = "planned"
+verify = "property"
+uses = ["fixture:dynamic-levels"]
+
+[[feature]]
+id = "F-14"
+name = "Encode a video file through ffmpeg"
+milestone = "M2"
+status = "planned"
+verify = "e2e"
+uses = ["song:invention"]
+
+# ---------------------------------------------------- M3: constraint engine
+[[feature]]
+id = "F-15"
+name = "Detect every instant where one hand exceeds the span limit"
+milestone = "M3"
+status = "planned"
+verify = "unit"
+uses = ["fixture:wide-span-chord", "fixture:span-edge-cases"]
+
+[[feature]]
+id = "F-16"
+name = "Repair a violation by reassigning a note to the other hand"
+milestone = "M3"
+status = "planned"
+verify = "unit"
+uses = ["fixture:wide-span-chord"]
+
+[[feature]]
+id = "F-17"
+name = "Repair a violation by octave-shifting the outlier"
+milestone = "M3"
+status = "planned"
+verify = "unit"
+uses = ["fixture:wide-span-chord"]
+
+[[feature]]
+id = "F-18"
+name = "Prefer truncating a note while the sustain pedal is held"
+milestone = "M3"
+status = "planned"
+verify = "unit"
+uses = ["fixture:sustain-pedal"]
+
+[[feature]]
+id = "F-19"
+name = "Drop the least salient note when nothing else applies"
+milestone = "M3"
+status = "planned"
+verify = "unit"
+uses = ["fixture:span-edge-cases"]
+
+[[feature]]
+id = "F-20"
+name = "Output never exceeds the configured span, for any input"
+milestone = "M3"
+status = "planned"
+verify = "property"
+uses = ["song:toccata", "song:quartet"]
+
+[[feature]]
+id = "F-21"
+name = "Overlaps under the tolerance do not count as simultaneous"
+milestone = "M3"
+status = "planned"
+verify = "unit"
+uses = ["fixture:tiny-overlap"]
+
+[[feature]]
+id = "F-22"
+name = "Repairs stay inside the 88-key range at the extremes"
+milestone = "M3"
+status = "planned"
+verify = "unit"
+uses = ["fixture:span-edge-cases"]
+
+[[feature]]
+id = "F-23"
+name = "A conforming score passes through unchanged"
+milestone = "M3"
+status = "planned"
+verify = "property"
+uses = ["song:moonlight"]
+
+[[feature]]
+id = "F-24"
+name = "Constraining twice equals constraining once"
+milestone = "M3"
+status = "planned"
+verify = "property"
+uses = ["song:toccata"]
+
+[[feature]]
+id = "F-25"
+name = "Difficulty changes density without changing span"
+milestone = "M3"
+status = "planned"
+verify = "property"
+uses = ["song:toccata"]
+
+[[feature]]
+id = "F-26"
+name = "Every edited note records what was done to it"
+milestone = "M3"
+status = "planned"
+verify = "unit"
+uses = ["fixture:wide-span-chord"]
+
+# ------------------------------------------------------------- M4: visuals
+[[feature]]
+id = "F-27"
+name = "Hue distinguishes left hand from right"
+milestone = "M4"
+status = "planned"
+verify = "visual"
+uses = ["fixture:two-hands"]
+
+[[feature]]
+id = "F-28"
+name = "Brightness tracks velocity, monotonically and without clipping"
+milestone = "M4"
+status = "planned"
+verify = "unit"
+uses = ["fixture:velocity-ramp", "fixture:dynamic-levels"]
+
+[[feature]]
+id = "F-29"
+name = "Black-key bars are drawn thinner than white-key bars"
+milestone = "M4"
+status = "planned"
+verify = "visual"
+uses = ["fixture:full-keyboard"]
+
+[[feature]]
+id = "F-30"
+name = "Black-key bars are darkened on top of their dynamics colour"
+milestone = "M4"
+status = "planned"
+verify = "unit"
+uses = ["fixture:full-keyboard"]
+
+[[feature]]
+id = "F-31"
+name = "Pedal presses fall down lanes beside the keyboard"
+milestone = "M4"
+status = "planned"
+verify = "visual"
+uses = ["fixture:sustain-pedal", "fixture:three-pedals"]
+
+[[feature]]
+id = "F-32"
+name = "Pedal lane count is configurable up to three"
+milestone = "M4"
+status = "planned"
+verify = "unit"
+uses = ["fixture:three-pedals"]
+
+[[feature]]
+id = "F-33"
+name = "Horizontal grid lines at a configurable pitch interval"
+milestone = "M4"
+status = "planned"
+verify = "visual"
+uses = ["fixture:full-keyboard"]
+
+[[feature]]
+id = "F-34"
+name = "Vertical grid lines stay on the beat through tempo changes"
+milestone = "M4"
+status = "planned"
+verify = "visual"
+uses = ["fixture:tempo-changes", "fixture:time-signatures"]
+
+[[feature]]
+id = "F-35"
+name = "Background stays grayscale"
+milestone = "M4"
+status = "planned"
+verify = "unit"
+uses = ["fixture:dynamic-levels"]
+
+[[feature]]
+id = "F-36"
+name = "Colours, grid, and span are all driven by config, not hardcoded"
+milestone = "M4"
+status = "planned"
+verify = "e2e"
+uses = ["fixture:dynamic-levels"]
+
+# --------------------------------------------------------------- M5: audio
+[[feature]]
+id = "F-37"
+name = "Audio backend: silent"
+milestone = "M5"
+status = "planned"
+verify = "e2e"
+uses = ["fixture:dynamic-levels"]
+
+[[feature]]
+id = "F-38"
+name = "Audio backend: built-in synth honouring velocity and sustain"
+milestone = "M5"
+status = "planned"
+verify = "e2e"
+uses = ["fixture:sustain-pedal", "fixture:velocity-ramp"]
+
+[[feature]]
+id = "F-39"
+name = "Audio backend: FluidSynth with a SoundFont"
+milestone = "M5"
+status = "planned"
+verify = "e2e"
+uses = ["song:invention"]
+
+[[feature]]
+id = "F-40"
+name = "Audio backend: mux a supplied file at a configurable offset"
+milestone = "M5"
+status = "planned"
+verify = "e2e"
+uses = ["song:invention"]
+
+[[feature]]
+id = "F-41"
+name = "An unavailable backend falls back with a clear message"
+milestone = "M5"
+status = "planned"
+verify = "unit"
+uses = []
+
+[[feature]]
+id = "F-42"
+name = "Audio and video stay in sync for the whole render"
+milestone = "M5"
+status = "planned"
+verify = "e2e"
+uses = ["song:invention"]
+
+# ----------------------------------------------------------- M6: arrangement
+[[feature]]
+id = "F-43"
+name = "Already-separated hands are left alone"
+milestone = "M6"
+status = "planned"
+verify = "e2e"
+uses = ["fixture:two-hands", "song:moonlight"]
+
+[[feature]]
+id = "F-44"
+name = "Multiple instruments reduce to two playable hands"
+milestone = "M6"
+status = "planned"
+verify = "e2e"
+uses = ["fixture:orchestral", "song:quartet"]
+
+[[feature]]
+id = "F-45"
+name = "Hand assignment survives voices crossing register"
+milestone = "M6"
+status = "planned"
+verify = "unit"
+uses = ["fixture:voice-crossing", "song:invention"]
+
+[[feature]]
+id = "F-46"
+name = "Reduction drops the least salient notes first"
+milestone = "M6"
+status = "planned"
+verify = "unit"
+uses = ["song:quartet"]
+
+# ----------------------------------------------------------------- CLI-wide
+[[feature]]
+id = "F-47"
+name = "Each stage runs alone on an intermediate file"
+milestone = "M5"
+status = "planned"
+verify = "e2e"
+uses = ["song:invention"]
+
+[[feature]]
+id = "F-48"
+name = "psv run drives the whole pipeline in one command"
+milestone = "M5"
+status = "planned"
+verify = "e2e"
+uses = ["song:invention", "song:quartet"]
+
+[[feature]]
+id = "F-49"
+name = "Verbosity flags control stage and per-note logging"
+milestone = "M1"
+status = "planned"
+verify = "e2e"
+uses = ["fixture:single-note"]
+
+[[feature]]
+id = "F-50"
+name = "Empty or degenerate input is handled without crashing"
+milestone = "M1"
+status = "planned"
+verify = "e2e"
+uses = ["fixture:empty", "fixture:single-note"]

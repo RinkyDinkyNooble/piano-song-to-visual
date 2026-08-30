@@ -1,0 +1,10 @@
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.mid binary
+*.midi binary
+*.mp3 binary
+*.mp4 binary
+*.sf2 binary
+*.wav binary

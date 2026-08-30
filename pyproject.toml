@@ -1,0 +1,123 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "piano-song-to-visual"
+dynamic = ["version"]
+description = "Turn a MIDI file into a Synthesia-style falling-notes practice video, arranged to be playable by human hands."
+readme = "README.md"
+license = "0BSD"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+authors = [{ name = "RinkyDinkyNooble" }]
+keywords = [
+  "piano", "midi", "synthesia", "falling-notes", "music",
+  "arrangement", "practice", "video", "sheet-music-alternative",
+]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Environment :: Console",
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: BSD License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Multimedia :: Sound/Audio :: MIDI",
+  "Topic :: Multimedia :: Video",
+  "Typing :: Typed",
+]
+dependencies = [
+  "mido>=1.3",
+]
+
+[project.optional-dependencies]
+# Offline frame rendering + video muxing.
+render = [
+  "numpy>=1.26",
+  "pillow>=10.3",
+  "imageio-ffmpeg>=0.5",
+]
+# High-quality MIDI -> audio via FluidSynth. Also needs the native FluidSynth
+# library installed on the system (see the README); the built-in synth and
+# silent backends have no such requirement.
+synth = [
+  "numpy>=1.26",
+  "pyfluidsynth>=1.3",
+]
+all = [
+  "piano-song-to-visual[render,synth]",
+]
+dev = [
+  "mypy>=1.10",
+  "pre-commit>=3.7",
+  "pytest>=8.2",
+  "pytest-cov>=5.0",
+  "ruff>=0.5",
+  "types-setuptools",
+]
+
+[project.urls]
+Homepage = "https://github.com/RinkyDinkyNooble/piano-song-to-visual"
+Repository = "https://github.com/RinkyDinkyNooble/piano-song-to-visual"
+Issues = "https://github.com/RinkyDinkyNooble/piano-song-to-visual/issues"
+Changelog = "https://github.com/RinkyDinkyNooble/piano-song-to-visual/blob/main/CHANGELOG.md"
+
+[project.scripts]
+psv = "psv.cli:main"
+
+[tool.hatch.version]
+path = "src/psv/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/psv"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+branch = true
+source = ["psv"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "E", "F", "W",   # pycodestyle / pyflakes
+  "I",             # isort
+  "UP",            # pyupgrade
+  "B",             # bugbear
+  "C4",            # comprehensions
+  "SIM",           # simplify
+  "RUF",           # ruff-specific
+  "S",             # bandit (security)
+  "PTH",           # use pathlib
+  "ARG",           # unused arguments
+  "TID",           # tidy imports
+]
+ignore = ["S101"]  # assert is fine in this codebase
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "ARG"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src", "tests", "scripts"]
+strict = true
+warn_unreachable = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = ["fluidsynth.*", "imageio_ffmpeg.*", "mido.*"]
+ignore_missing_imports = true
