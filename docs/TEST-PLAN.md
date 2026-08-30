@@ -102,7 +102,7 @@ fail, so a fresh clone has a green suite.
 ## What each milestone must prove before it counts as done
 
 - **M1** parses both committed songs and every parser-edge fixture, and `psv inspect`
-  reports contents that match the numbers recorded in `songs.toml`.
+  reports contents that match the numbers recorded in `songs.toml`. *(Done.)*
 - **M2** renders a real song to a playable video, with reference-image tests pinning
   frame output.
 - **M3** passes the span property test over thousands of generated scores, and turns

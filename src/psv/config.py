@@ -1,0 +1,279 @@
+"""Configuration, loaded from TOML and validated before anything uses it.
+
+Two rules shape this module.
+
+The hand-span limit is a hard invariant, so it is validated here and cannot be
+set to something the constraint engine would silently ignore.
+
+Config values reach ffmpeg and the filesystem, so unknown keys are an error
+rather than being quietly dropped. A typo in a colour key should say so, not
+leave you wondering why the render looks wrong.
+"""
+
+from __future__ import annotations
+
+import tomllib
+from dataclasses import dataclass, field, fields, is_dataclass
+from pathlib import Path
+from typing import Any, Self, get_type_hints
+
+from psv.model import DEFAULT_OVERLAP_TOLERANCE_S
+
+#: The widest simultaneous reach the engine will ever allow, about 1.5 octaves.
+MAX_ALLOWED_SPAN = 18
+
+DIFFICULTY_LEVELS = ("beginner", "easy", "medium", "hard", "original")
+AUDIO_BACKENDS = ("fluidsynth", "mux", "builtin", "none")
+
+
+class ConfigError(ValueError):
+    """A config file is malformed, or a value is out of range."""
+
+
+@dataclass(frozen=True, slots=True)
+class HandsConfig:
+    #: Notes held together by one hand may span at most this many semitones.
+    max_span_semitones: int = 12
+    #: Overlaps shorter than this do not count as simultaneous.
+    overlap_tolerance_s: float = DEFAULT_OVERLAP_TOLERANCE_S
+
+    def validate(self) -> None:
+        if not 1 <= self.max_span_semitones <= MAX_ALLOWED_SPAN:
+            raise ConfigError(
+                f"hands.max_span_semitones must be between 1 and "
+                f"{MAX_ALLOWED_SPAN}, got {self.max_span_semitones}"
+            )
+        if self.overlap_tolerance_s < 0:
+            raise ConfigError(
+                f"hands.overlap_tolerance_s cannot be negative, "
+                f"got {self.overlap_tolerance_s}"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class DifficultyConfig:
+    level: str = "medium"
+
+    def validate(self) -> None:
+        if self.level not in DIFFICULTY_LEVELS:
+            raise ConfigError(
+                f"difficulty.level must be one of {DIFFICULTY_LEVELS}, "
+                f"got {self.level!r}"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class ColorConfig:
+    #: Hue says which hand; brightness says how loud.
+    left_hand: str = "#4a90d9"
+    right_hand: str = "#5fb87a"
+    #: Brightness multipliers at the quietest and loudest velocities.
+    quiet: float = 0.35
+    loud: float = 1.0
+
+    def validate(self) -> None:
+        for name in ("left_hand", "right_hand"):
+            value = getattr(self, name)
+            if not _is_hex_colour(value):
+                raise ConfigError(
+                    f"visual.colors.{name} must be a hex colour like '#4a90d9', "
+                    f"got {value!r}"
+                )
+        if not 0.0 <= self.quiet <= self.loud <= 1.0:
+            raise ConfigError(
+                "visual.colors requires 0 <= quiet <= loud <= 1, got "
+                f"quiet={self.quiet}, loud={self.loud}"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class GridConfig:
+    horizontal_every: str = "octave"
+    vertical_every: str = "beat"
+    opacity: float = 0.15
+
+    def validate(self) -> None:
+        if self.horizontal_every not in ("octave", "fifth", "none"):
+            raise ConfigError(
+                "visual.grid.horizontal_every must be octave, fifth, or none, "
+                f"got {self.horizontal_every!r}"
+            )
+        if self.vertical_every not in ("beat", "bar", "none"):
+            raise ConfigError(
+                "visual.grid.vertical_every must be beat, bar, or none, "
+                f"got {self.vertical_every!r}"
+            )
+        if not 0.0 <= self.opacity <= 1.0:
+            raise ConfigError(
+                f"visual.grid.opacity must be between 0 and 1, got {self.opacity}"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class VisualConfig:
+    width: int = 1920
+    height: int = 1080
+    fps: int = 60
+    #: Seconds of music visible above the keyboard at once.
+    lookahead_s: float = 3.0
+    #: Black-key bar width, as a fraction of a white-key bar.
+    black_key_bar_width: float = 0.6
+    #: How much darker a black-key bar is drawn, on top of its colour.
+    black_key_darkening: float = 0.2
+    background: str = "#101010"
+    colors: ColorConfig = field(default_factory=ColorConfig)
+    grid: GridConfig = field(default_factory=GridConfig)
+
+    def validate(self) -> None:
+        for name in ("width", "height", "fps"):
+            if getattr(self, name) <= 0:
+                raise ConfigError(f"visual.{name} must be positive")
+        if self.lookahead_s <= 0:
+            raise ConfigError("visual.lookahead_s must be positive")
+        if not 0.0 < self.black_key_bar_width <= 1.0:
+            raise ConfigError(
+                "visual.black_key_bar_width must be greater than 0 and at most 1, "
+                f"got {self.black_key_bar_width}"
+            )
+        if not 0.0 <= self.black_key_darkening <= 1.0:
+            raise ConfigError(
+                "visual.black_key_darkening must be between 0 and 1, "
+                f"got {self.black_key_darkening}"
+            )
+        if not _is_hex_colour(self.background):
+            raise ConfigError(
+                f"visual.background must be a hex colour, got {self.background!r}"
+            )
+        self.colors.validate()
+        self.grid.validate()
+
+
+@dataclass(frozen=True, slots=True)
+class PedalsConfig:
+    lanes: int = 1
+    #: Controller value at or above which a pedal counts as engaged. The default
+    #: shows half-pedalling; set it to 64 for the MIDI on/off convention.
+    threshold: int = 1
+
+    def validate(self) -> None:
+        if not 0 <= self.lanes <= 3:
+            raise ConfigError(f"pedals.lanes must be 0 to 3, got {self.lanes}")
+        if not 1 <= self.threshold <= 127:
+            raise ConfigError(
+                f"pedals.threshold must be 1 to 127, got {self.threshold}"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class AudioConfig:
+    backend: str = "builtin"
+    soundfont: str = ""
+    audio_file: str = ""
+    offset_s: float = 0.0
+
+    def validate(self) -> None:
+        if self.backend not in AUDIO_BACKENDS:
+            raise ConfigError(
+                f"audio.backend must be one of {AUDIO_BACKENDS}, got {self.backend!r}"
+            )
+        if self.backend == "fluidsynth" and not self.soundfont:
+            raise ConfigError("audio.backend 'fluidsynth' requires audio.soundfont")
+        if self.backend == "mux" and not self.audio_file:
+            raise ConfigError("audio.backend 'mux' requires audio.audio_file")
+
+
+@dataclass(frozen=True, slots=True)
+class Config:
+    hands: HandsConfig = field(default_factory=HandsConfig)
+    difficulty: DifficultyConfig = field(default_factory=DifficultyConfig)
+    visual: VisualConfig = field(default_factory=VisualConfig)
+    pedals: PedalsConfig = field(default_factory=PedalsConfig)
+    audio: AudioConfig = field(default_factory=AudioConfig)
+
+    def validate(self) -> None:
+        self.hands.validate()
+        self.difficulty.validate()
+        self.visual.validate()
+        self.pedals.validate()
+        self.audio.validate()
+
+    @classmethod
+    def load(cls, path: Path | str | None) -> Self:
+        """Load and validate a config file, or return defaults when given None."""
+        if path is None:
+            config = cls()
+            config.validate()
+            return config
+
+        path = Path(path)
+        try:
+            with path.open("rb") as fh:
+                raw = tomllib.load(fh)
+        except OSError as exc:
+            raise ConfigError(f"could not read config {path}: {exc}") from exc
+        except tomllib.TOMLDecodeError as exc:
+            raise ConfigError(f"{path} is not valid TOML: {exc}") from exc
+
+        config = cls.from_dict(raw)
+        config.validate()
+        return config
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> Self:
+        built: Self = _build(cls, raw, prefix="")
+        return built
+
+
+def _is_hex_colour(value: str) -> bool:
+    if not isinstance(value, str) or not value.startswith("#"):
+        return False
+    digits = value[1:]
+    return len(digits) in {3, 6} and all(c in "0123456789abcdefABCDEF" for c in digits)
+
+
+def _build(target: type[Any], raw: dict[str, Any], prefix: str) -> Any:
+    """Recursively build a config dataclass, rejecting unknown keys.
+
+    Silently dropping a misspelled key is the failure mode this exists to
+    prevent: the render comes out wrong and nothing says why.
+    """
+    known = {f.name for f in fields(target)}
+    unknown = set(raw) - known
+    if unknown:
+        location = prefix.rstrip(".") or "the config file"
+        raise ConfigError(
+            f"unknown key(s) in {location}: {', '.join(sorted(unknown))}. "
+            f"Valid keys here: {', '.join(sorted(known))}"
+        )
+
+    # `from __future__ import annotations` leaves field.type as a string, so
+    # resolve the real types rather than comparing against annotation text.
+    hints = get_type_hints(target)
+
+    values: dict[str, Any] = {}
+    for name in known:
+        if name not in raw:
+            continue
+        value = raw[name]
+        hint = hints[name]
+        if isinstance(hint, type) and is_dataclass(hint):
+            if not isinstance(value, dict):
+                raise ConfigError(
+                    f"{prefix}{name} must be a table, got {type(value).__name__}"
+                )
+            values[name] = _build(hint, value, prefix=f"{prefix}{name}.")
+        else:
+            values[name] = _coerce(value, hint, f"{prefix}{name}")
+    return target(**values)
+
+
+def _coerce(value: Any, expected: Any, location: str) -> Any:
+    """Accept an int where a float is wanted; reject anything else mistyped."""
+    if expected is float and isinstance(value, int) and not isinstance(value, bool):
+        return float(value)
+    if expected in (int, float, str) and not isinstance(value, expected):
+        raise ConfigError(
+            f"{location} must be {expected.__name__}, got "
+            f"{type(value).__name__} ({value!r})"
+        )
+    return value

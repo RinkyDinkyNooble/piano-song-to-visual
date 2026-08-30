@@ -3,8 +3,9 @@
 Turn a MIDI file into a Synthesia-style falling-notes practice video — no hands, just
 notes flowing onto a keyboard — arranged so a human can actually play it.
 
-> **Status: pre-alpha.** The architecture is settled and the scaffolding is in place;
-> the pipeline stages are not implemented yet. See [the roadmap](docs/ROADMAP.md).
+> **Status: pre-alpha.** MIDI ingest works: `psv inspect` and `psv export` are real
+> commands you can run today. The arrange, constrain, and render stages are not built
+> yet. See [the roadmap](docs/ROADMAP.md).
 
 ## Why this exists
 
@@ -70,15 +71,37 @@ SoundFont; the `builtin`, `mux`, and `none` backends do not.
 
 ## Usage
 
+Working today:
+
 ```bash
-psv --help
+psv inspect song.mid
 ```
 
-Intended shape once the stages land:
+```
+beethoven-op18-no4-i-quartet
+  duration       514.8s
+  notes          6151 in 4 part(s)
+  range          C2 to C7
+  polyphony      peak 11, mean 3.7
+  widest span    51 semitones at 503.5s
+  tempo          138 BPM, constant
+  meter          4/4
+  dynamics       none (every note the same velocity)
+  pedal          none
+  hands          not separated; needs the arrange stage
+```
+
+That last pair of lines is the point: it tells you whether a file carries the dynamics
+and pedal data the visuals depend on, and whether it needs the arrange stage at all.
+Add `-v` for a per-track breakdown.
+
+`psv export song.mid -o copy.mid` parses a file and writes it back out, which is how you
+check that ingest understood it.
+
+Once the remaining stages land:
 
 ```bash
-psv inspect song.mid                              # what's actually in this file?
-psv run song.mid -o practice.mp4 -c my-hands.toml # the whole pipeline
+psv run song.mid -o practice.mp4 -c my-hands.toml
 ```
 
 ## Configuration

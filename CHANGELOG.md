@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **M1: score model and MIDI ingest.**
+  - `psv.model` - `Score`, `Part`, `Note`, `PedalEvent`, and the `Hand`, `Provenance`,
+    and `Pedal` enums. Immutable throughout, so stages are `Score -> Score` functions.
+    Every note records what the pipeline has done to it.
+  - `psv.tempo` - `TempoMap`, the only place that converts between ticks, beats, and
+    seconds. `beat_times()` walks beats rather than seconds so the renderer's grid
+    stays on the beat through a tempo change.
+  - `psv.midi` - reader and writer. Handles note-on-with-velocity-zero as note-off, a
+    pitch retriggered before its note-off, percussion on channel 9, tempo and meter
+    events on any track, notes left hanging at end of track, and pedals as continuous
+    controllers rather than switches.
+  - `psv.config` - TOML loading into validated dataclasses. Unknown keys are an error
+    naming the valid alternatives, and the hand-span limit cannot be set beyond human
+    reach.
+  - `psv.inspect` - the report behind `psv inspect`: polyphony, pitch range, widest
+    simultaneous span, whether dynamics and pedal data exist, and whether the hands
+    already look separated.
+  - `psv inspect` and `psv export` commands.
+- 189 tests covering M1, including a `Score -> MIDI -> Score` round trip over all 19
+  fixtures and both committed songs. 14 features marked done; 96% coverage.
+
+### Added (scaffolding)
+
 - Project scaffolding: packaging, linting, type checking, tests, and CI.
 - Architecture decision record covering the interface choice, the pipeline stages,
   and the component selection for each — see `docs/ARCHITECTURE.md`.

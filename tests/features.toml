@@ -26,7 +26,7 @@
 id = "F-01"
 name = "Parse multi-track MIDI into a Score"
 milestone = "M1"
-status = "planned"
+status = "done"
 verify = "e2e"
 uses = ["song:toccata", "song:quartet", "fixture:single-note", "fixture:empty"]
 
@@ -34,7 +34,7 @@ uses = ["song:toccata", "song:quartet", "fixture:single-note", "fixture:empty"]
 id = "F-02"
 name = "Treat note_on with velocity 0 as a note-off"
 milestone = "M1"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = ["fixture:zero-velocity-note-off"]
 
@@ -42,7 +42,7 @@ uses = ["fixture:zero-velocity-note-off"]
 id = "F-03"
 name = "Handle a pitch retriggered before its note-off"
 milestone = "M1"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = ["fixture:retriggered-pitch"]
 
@@ -50,7 +50,7 @@ uses = ["fixture:retriggered-pitch"]
 id = "F-04"
 name = "Exclude the percussion channel from pitched output"
 milestone = "M1"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = ["fixture:drum-channel"]
 
@@ -58,7 +58,7 @@ uses = ["fixture:drum-channel"]
 id = "F-05"
 name = "Resolve tempo changes to absolute seconds"
 milestone = "M1"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = ["fixture:tempo-changes"]
 
@@ -66,7 +66,7 @@ uses = ["fixture:tempo-changes"]
 id = "F-06"
 name = "Track time signature changes for bar lines"
 milestone = "M1"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = ["fixture:time-signatures"]
 
@@ -74,7 +74,7 @@ uses = ["fixture:time-signatures"]
 id = "F-07"
 name = "Extract pedal events including partial depths"
 milestone = "M1"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = ["fixture:sustain-pedal", "fixture:half-pedal", "fixture:three-pedals"]
 
@@ -82,7 +82,7 @@ uses = ["fixture:sustain-pedal", "fixture:half-pedal", "fixture:three-pedals"]
 id = "F-08"
 name = "psv inspect reports a file's real contents"
 milestone = "M1"
-status = "planned"
+status = "done"
 verify = "e2e"
 uses = ["song:toccata", "song:quartet"]
 
@@ -90,7 +90,7 @@ uses = ["song:toccata", "song:quartet"]
 id = "F-09"
 name = "Export a Score back to MIDI for hand editing"
 milestone = "M1"
-status = "planned"
+status = "done"
 verify = "e2e"
 uses = ["song:toccata"]
 
@@ -98,7 +98,7 @@ uses = ["song:toccata"]
 id = "F-10"
 name = "Load and validate a TOML config, rejecting bad keys"
 milestone = "M1"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = []
 
@@ -188,7 +188,7 @@ uses = ["song:toccata", "song:quartet"]
 id = "F-21"
 name = "Overlaps under the tolerance do not count as simultaneous"
 milestone = "M3"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = ["fixture:tiny-overlap"]
 
@@ -228,7 +228,7 @@ uses = ["song:toccata"]
 id = "F-26"
 name = "Every edited note records what was done to it"
 milestone = "M3"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = ["fixture:wide-span-chord"]
 
@@ -416,7 +416,7 @@ uses = ["song:invention", "song:quartet"]
 id = "F-49"
 name = "Verbosity flags control stage and per-note logging"
 milestone = "M1"
-status = "planned"
+status = "done"
 verify = "e2e"
 uses = ["fixture:single-note"]
 
@@ -424,6 +424,6 @@ uses = ["fixture:single-note"]
 id = "F-50"
 name = "Empty or degenerate input is handled without crashing"
 milestone = "M1"
-status = "planned"
+status = "done"
 verify = "e2e"
 uses = ["fixture:empty", "fixture:single-note"]

@@ -27,7 +27,7 @@ versions, CodeQL, Dependabot, issue/PR templates, 0BSD licence, architecture doc
 
 ---
 
-## M1 - Score model and MIDI ingest
+## M1 - Score model and MIDI ingest (done)
 
 The foundation everything else reads and writes. Nothing downstream should ever touch
 `mido` or think about ticks.
@@ -64,7 +64,14 @@ The foundation everything else reads and writes. Nothing downstream should ever 
 parsing edge case; tempo-map arithmetic against hand-computed values.
 
 **Exit criteria:** `psv inspect` gives an accurate report on a real multi-track game
-OST MIDI and on a solo piano MIDI.
+OST MIDI and on a solo piano MIDI. *(Met: the report is checked against the recorded
+contents of both committed songs, and every fixture round-trips through
+`Score -> MIDI -> Score` unchanged. 14 features marked done, 203 tests, 96% coverage.)*
+
+Shipped slightly beyond the original list: `psv export` was added so the round trip is
+reachable from the command line, and the pedal threshold defaults to 1 rather than the
+conventional 64, because half-pedalling is exactly the sort of thing this tool exists to
+make visible. Set `pedals.threshold = 64` for the on/off reading.
 
 ---
 

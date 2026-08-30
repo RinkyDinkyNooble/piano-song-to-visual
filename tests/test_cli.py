@@ -1,11 +1,31 @@
-"""Smoke tests for the CLI surface."""
+"""The CLI surface, driven the way a user drives it."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
+import mido
 import pytest
 
 from psv import __version__
-from psv.cli import PIPELINE_COMMANDS, build_parser, main
+from psv.cli import IMPLEMENTED, PIPELINE_COMMANDS, build_parser, main
+from psv.midi import read_midi_file
+from tests.fixtures.midi_builder import FIXTURES
+
+
+@pytest.fixture
+def midi_path(tmp_path: Path) -> Callable[[str], Path]:
+    def _write(name: str) -> Path:
+        path = tmp_path / f"{name}.mid"
+        FIXTURES[name]().save(path)
+        return path
+
+    return _write
+
+
+# -- the parser ----------------------------------------------------------
 
 
 def test_version_is_set() -> None:
@@ -15,13 +35,16 @@ def test_version_is_set() -> None:
 def test_parser_exposes_every_pipeline_command() -> None:
     parser = build_parser()
     for command in PIPELINE_COMMANDS:
-        # Parsing succeeds only if the subcommand is registered.
-        assert parser.parse_args([command]).command == command
+        argv = [command, "song.mid"]
+        if command in IMPLEMENTED and command != "inspect":
+            argv += ["-o", "out.mid"]
+        assert parser.parse_args(argv).command == command
 
 
 def test_pipeline_commands_cover_every_stage() -> None:
     assert set(PIPELINE_COMMANDS) == {
         "inspect",
+        "export",
         "arrange",
         "constrain",
         "render",
@@ -41,7 +64,122 @@ def test_version_flag_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
     assert __version__ in capsys.readouterr().out
 
 
-def test_unimplemented_command_errors() -> None:
+@pytest.mark.parametrize("command", sorted(set(PIPELINE_COMMANDS) - set(IMPLEMENTED)))
+def test_unimplemented_commands_say_so(command: str) -> None:
     with pytest.raises(SystemExit) as exc:
-        main(["render"])
+        main([command, "song.mid", "-o", "out.mid"])
     assert exc.value.code == 2
+
+
+# -- inspect -------------------------------------------------------------
+
+
+@pytest.mark.feature("F-08")
+def test_inspect_prints_a_report(
+    midi_path: Callable[[str], Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["inspect", str(midi_path("sustain-pedal"))]) == 0
+    out = capsys.readouterr().out
+    assert "duration" in out
+    assert "polyphony" in out
+    assert "sustain" in out
+
+
+@pytest.mark.feature("F-08")
+def test_inspect_of_a_real_song_reports_its_shape(
+    songs: dict[str, dict[str, Any]],
+    load_song: Callable[[str], mido.MidiFile],
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    load_song("toccata")  # skips when absent
+    path = Path(songs["toccata"]["filename"])
+    source = Path("tests/assets/public-domain") / path
+    assert main(["inspect", str(source)]) == 0
+    out = capsys.readouterr().out
+    assert "3651" in out
+    assert "needs the arrange stage" in out
+
+
+@pytest.mark.feature("F-49")
+def test_verbose_adds_the_per_track_breakdown(
+    midi_path: Callable[[str], Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = midi_path("orchestral")
+    assert main(["inspect", str(path)]) == 0
+    plain = capsys.readouterr().out
+
+    assert main(["-v", "inspect", str(path)]) == 0
+    verbose = capsys.readouterr().out
+
+    assert len(verbose) > len(plain)
+    assert "track 0" in verbose
+    assert "track 0" not in plain
+
+
+@pytest.mark.feature("F-50")
+def test_an_empty_file_is_reported_not_crashed(
+    midi_path: Callable[[str], Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["inspect", str(midi_path("empty"))]) == 0
+    assert "0 in 0 part(s)" in capsys.readouterr().out
+
+
+@pytest.mark.feature("F-50")
+def test_a_single_note_file_is_reported(
+    midi_path: Callable[[str], Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["inspect", str(midi_path("single-note"))]) == 0
+    assert "1 in 1 part(s)" in capsys.readouterr().out
+
+
+# -- export --------------------------------------------------------------
+
+
+@pytest.mark.feature("F-09")
+def test_export_writes_a_readable_midi(
+    midi_path: Callable[[str], Path], tmp_path: Path
+) -> None:
+    source = midi_path("two-hands")
+    destination = tmp_path / "out" / "exported.mid"
+    assert main(["export", str(source), "-o", str(destination)]) == 0
+    assert destination.exists()
+
+    original = read_midi_file(source)
+    exported = read_midi_file(destination)
+    assert len(exported.notes) == len(original.notes)
+
+
+@pytest.mark.feature("F-09")
+def test_export_requires_an_output_path(midi_path: Callable[[str], Path]) -> None:
+    with pytest.raises(SystemExit) as exc:
+        main(["export", str(midi_path("single-note"))])
+    assert exc.value.code == 2
+
+
+# -- errors --------------------------------------------------------------
+
+
+def test_a_missing_input_file_reports_an_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["inspect", str(tmp_path / "nope.mid")]) == 1
+    assert "psv:" in capsys.readouterr().err
+
+
+def test_a_bad_config_is_reported_before_any_work(
+    tmp_path: Path, midi_path: Callable[[str], Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = tmp_path / "bad.toml"
+    config.write_text("[hands]\nmax_span_semitones = 99\n", encoding="utf-8")
+    code = main(["-c", str(config), "inspect", str(midi_path("single-note"))])
+    assert code == 1
+    assert "max_span_semitones" in capsys.readouterr().err
+
+
+def test_a_valid_config_is_accepted(
+    tmp_path: Path, midi_path: Callable[[str], Path]
+) -> None:
+    config = tmp_path / "ok.toml"
+    config.write_text("[hands]\nmax_span_semitones = 15\n", encoding="utf-8")
+    assert main(["-c", str(config), "inspect", str(midi_path("single-note"))]) == 0
