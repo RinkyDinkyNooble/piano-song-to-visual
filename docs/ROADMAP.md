@@ -1,6 +1,6 @@
 # Build plan
 
-Eight milestones. Each one ends with something you can actually run, and each one's
+Eight milestones, then a list of optional touches. Each one ends with something you can actually run, and each one's
 exit criteria are checkable rather than vibes. Ordering is chosen so that the fuzziest,
 least-certain work happens last, on top of foundations that are already proven.
 
@@ -231,59 +231,154 @@ was made exactly neutral for the same reason; the strike line had been faintly b
 
 ---
 
-## M5 - Audio
+## M5 - Audio (done, except FluidSynth)
 
-Four backends behind one protocol, chosen by config, each degrading gracefully when its
-requirements are absent.
+Three backends behind one call, chosen by config, each falling back to the next
+when what it needs is missing.
 
-- `none` - silent. Zero dependencies. The fallback when nothing else is available.
-- `builtin` - additive synthesis with an ADSR envelope in numpy, honouring velocity and
-  CC64 sustain. Roughly a hundred lines, no external dependencies, sounds cheap but
-  always works.
-- `fluidsynth` - `pyfluidsynth` plus the native FluidSynth library plus your SoundFont.
-  Best quality; velocity and pedal are actually audible. *(Note: the native library is
-  not currently installed on this machine - the backend must detect that and fall back
-  with a clear message rather than crashing.)*
-- `mux` - mux a user-supplied audio file with a configurable offset, for when you have
-  the recording the MIDI came from.
+- `none` - silence, zero dependencies.
+- `builtin` - additive synthesis with an ADSR envelope in numpy. Honours velocity,
+  and honours the sustain pedal: a note keeps ringing past its key release while
+  CC64 is down, which is the same fact the constraint engine uses to decide that
+  truncating under the pedal is free. If the audio ignored it, the two halves of
+  the tool would disagree with each other.
+- `mux` - use an audio file you already have.
+- `fluidsynth` - **not implemented.** Deferred to M8. The native library is not
+  present on the development machine, so it could not be tested, and shipping an
+  untested audio path is worse than shipping an honest fallback. Selecting it
+  produces built-in audio and says exactly why.
 
-**Tests:** backend selection and fallback logic; output duration matches score duration;
-a smoke test that the muxed video has an audio stream.
+The chain matters more than any one backend. A silent video with no explanation,
+because a library was missing, is much worse than a cheap-sounding one that says
+what happened.
 
-**Exit criteria:** `psv run song.mid -o out.mp4` produces a video with synchronised
-audio under each available backend.
+**Exit criteria:** `psv run` produces a video with synchronised audio under each
+available backend, and a clear message under the one that is not. *(Met.)*
 
 ---
 
-## M6 - Arrangement
+## M6 - Arrangement (done)
 
-Left for last on purpose. It is the only genuinely fuzzy stage, and everything above is
-useful without it - a solo piano MIDI goes straight from parse to constrain to render.
+Multi-instrument score to two hands, in two steps.
 
-- `psv/arrange/salience.py` - score each note by melodic role, bass function, harmonic
-  necessity, velocity, register, and onset density.
-- `psv/arrange/reduce.py` - drop low-salience notes until the texture fits two hands.
-- `psv/arrange/hands.py` - partition by register and continuity, minimising crossings
-  and jumps. Trusts existing track/channel splits when the source already separates
-  hands, and skips entirely when the input is already solo piano.
+**Reduce.** Cap how many notes sound at once, dropping the least salient first,
+so the texture could fit two hands at all. Outer voices score highly, so the
+melody and bass survive and the inner harmony gives way.
 
-**Honest expectation:** this is heuristic and always will be. It should produce a
-*learnable* arrangement, not a publishable one. Hand-fixing the intermediate MIDI and
-re-running from `constrain` is a supported workflow, not a failure.
+**Assign hands.** Walk the piece choosing, at each instant, a pitch to split at.
+The split is scored on whether each hand then fits inside the span limit, how
+evenly the notes divide, and how far it has moved since the last instant. That
+last term is what makes it work: the split follows the music, so crossing voices
+do not confuse it, and moving is penalised, so a chord does not fling the hands
+across the keyboard. Notes already sounding keep the hand they were given.
+
+A file that already has two hands is left completely alone.
 
 **Exit criteria:** a multi-track orchestral MIDI reduces to two hands that, after
-constraining, render into something recognisably the piece.
+constraining, render into something recognisably the piece. *(Met. The Beethoven
+quartet keeps 98.6% of its notes, and arranging first leaves the constraint
+engine 403 violations to fix instead of the 812 the placeholder register split
+produced.)*
 
 ---
 
-## M7 - Polish and extensions
+## M7 - The whole pipeline in one command (done)
 
-Ordered by usefulness, not committed to:
+`psv run song.mid -o practice.mp4` does everything: parse, arrange, constrain,
+render, synthesise, mux. Each stage still runs alone on an intermediate file, so
+hand-fixing a MIDI half way through and picking up from there is unaffected.
 
-- Duet and multi-part mode (the data model already allows it).
-- Opt-in visual effects, off by default, never at the cost of readability.
-- A TUI over the same core, if the CLI ever feels limiting.
-- Preset config profiles (`--preset small-hands`, `--preset beginner`).
+The video is rendered silent to a temporary file and the soundtrack muxed on
+afterwards rather than interleaved. That keeps the renderer a pure function of
+the score, and it means a failure in either half says which half. If the mux
+fails, the picture is still written and the reason reported: losing a whole
+render over a soundtrack would be the wrong trade for a practice tool.
+
+**Exit criteria:** one command turns a MIDI into a video you can play along to.
+*(Met.)*
+
+---
+
+## M8 - Optional touches
+
+Everything deliberately left out of the MVP. **Nothing here is needed to use the
+tool.** Each item makes it nicer, and each is independent of the others, so they
+can be picked off in any order. Roughly ordered by value.
+
+### Worth doing first
+
+**Practice tempo** (`--tempo 0.75`). Render slower than written while keeping the
+pitches. Learning a hard passage at three-quarter speed and working up is how a
+piece actually gets learned, and this is the single most useful thing missing.
+Scale the tempo map on the way into the renderer and the synth; the score itself
+stays untouched.
+
+**Section practice** (`--bars 20-40`). `--start` and `--seconds` already exist but
+are in seconds, which means counting. Bars are what you actually think in. Needs a
+bar index built from the tempo map and time signatures, both of which exist.
+
+**Count-in and a metronome click.** Two bars of clicks before the music starts,
+and optionally a click through it. Straightforward inside the built-in synth.
+
+**One hand at a time.** `--hands left` renders and sounds only one hand, with the
+other still drawn faintly for reference. Hands are already assigned and audio is
+already synthesised note by note, so this is a filter rather than new machinery.
+
+### Sound
+
+**F-39: the FluidSynth backend.** The one feature from M5 that is not done. Needs
+the native FluidSynth library and a SoundFont on the machine, and needs testing
+against both. Everything around it is already built: config, availability
+detection, the fallback, and the mux step. What is missing is the handful of lines
+that drive the synth, plus a way to test them.
+
+**Better built-in tone.** The current synth is additive sine harmonics with an
+ADSR envelope. It is clearly synthetic. One short recorded piano sample per
+octave, pitch shifted, would sound far better for very little code.
+
+**Stereo, with pan following register.** Low notes to the left, high notes to the
+right, as at the instrument.
+
+### Visuals
+
+**Config presets.** `--preset small-hands`, `--preset beginner`. Named bundles of
+settings that go together, so getting a sensible result does not require
+assembling a TOML file first.
+
+**Note name labels.** Optional letters on the bars, useful when learning and
+clutter when not, so strictly opt-in.
+
+**Bar numbers down the side.** Makes it possible to say "the bit at bar 31".
+
+**Opt-in visual effects.** Key-strike flashes, glow, particles. Off by default and
+never at the cost of readability; the spec is explicit that effects usually hurt.
+
+### Bigger things
+
+**Duet and multi-part mode.** The data model already stores parts as a list rather
+than a left/right pair specifically so this does not need a rewrite. What it needs
+is a way to say how many players there are and which part is whose, and a renderer
+that can show more than two hand colours.
+
+**Better salience for arranging.** The current function is velocity, duration, and
+an outer-voice bonus. Real salience needs harmonic analysis: which notes are chord
+tones, which are passing, which carry the line. This is the largest single lever on
+arrangement quality, and it is one function with two call sites.
+
+**Fingering suggestions.** Genuinely hard, genuinely useful, and a project in its
+own right.
+
+**A live player instead of a video file.** A window that scrolls in real time, with
+pause, rewind, and loop-a-section. Better for practice than a video. `render_frame`
+is already a pure function of time, so the drawing code needs no changes: what is
+missing is a window and an event loop.
+
+**Parallel frame rendering.** A 1080p60 render of a long piece takes minutes.
+Frames are independent and `render_frame` is pure, so this parallelises trivially.
+
+### Explicitly not planned
+
+YouTube upload, or any distribution automation. This is a local tool.
 
 ---
 

@@ -3,11 +3,10 @@
 Turn a MIDI file into a Synthesia-style falling-notes practice video — no hands, just
 notes flowing onto a keyboard — arranged so a human can actually play it.
 
-> **Status: pre-alpha.** `psv inspect`, `psv export`, `psv constrain`, and
-> `psv render` work today, and the video has everything the spec asks for: hand
-> colours, dynamics, pedal lanes, and the alignment grid. Still missing: reducing a
-> multi-instrument score to two hands (the arrange stage), and any audio at all.
-> See [the roadmap](docs/ROADMAP.md).
+> **Status: working MVP.** One command turns a MIDI into a practice video with
+> sound, arranged to fit your hands. Rough edges and the things deliberately left
+> out are listed as [M8 in the roadmap](docs/ROADMAP.md) — practice tempo and
+> section looping are the two you will miss first.
 
 ## Why this exists
 
@@ -60,21 +59,42 @@ cd piano-song-to-visual
 pip install -e ".[all]"
 ```
 
-The base install is tiny. Video rendering and MIDI-to-audio synthesis are optional
-extras:
+`[all]` is what you want: `psv run` needs the renderer. A lighter install is
+possible if you only care about the MIDI stages:
 
 ```bash
-pip install -e .            # parse, arrange, constrain
-pip install -e ".[render]"  # + video output
-pip install -e ".[all]"     # + FluidSynth audio
+pip install -e .            # inspect, export, arrange, constrain
+pip install -e ".[render]"  # + video and audio, which is everything below
 ```
 
-The `fluidsynth` audio backend additionally needs the native FluidSynth library and a
-SoundFont; the `builtin`, `mux`, and `none` backends do not.
+Sound works with no further setup: the built-in synth needs nothing but numpy.
+The `fluidsynth` backend would sound better but is not implemented yet, and
+selecting it falls back to the built-in one with an explanation.
 
 ## Usage
 
-Working today:
+One command does everything:
+
+```bash
+psv run song.mid -o practice.mp4
+```
+
+```
+  arrange          reduced to two hands, 12 note(s) dropped
+  constrain        403 span violation(s) found, resolved in 3 pass(es)
+    drop           50
+    octave-shift   278
+    reassign       12
+    truncate       35
+  audio            builtin
+  notes            6066
+wrote practice.mp4
+```
+
+That is a Beethoven string quartet becoming a piano piece you can reach every
+chord of, with sound, in about four seconds.
+
+Before committing to a file, it is worth asking what is actually in it:
 
 ```bash
 psv inspect song.mid
@@ -88,57 +108,39 @@ beethoven-op18-no4-i-quartet
   polyphony      peak 11, mean 3.7
   widest span    51 semitones at 503.5s
   tempo          138 BPM, constant
-  meter          4/4
   dynamics       none (every note the same velocity)
   pedal          none
   hands          not separated; needs the arrange stage
 ```
 
-That last pair of lines is the point: it tells you whether a file carries the dynamics
-and pedal data the visuals depend on, and whether it needs the arrange stage at all.
-Add `-v` for a per-track breakdown.
+The last three lines are the useful ones: they tell you whether the file carries
+the dynamics and pedal data the visuals depend on, and whether it needs arranging
+at all.
 
-`psv export song.mid -o copy.mid` parses a file and writes it back out, which is how you
-check that ingest understood it.
+### Iterating quickly
 
-Making a piece fit your hands:
-
-```bash
-psv constrain song.mid -o playable.mid
-```
-
-```
-131 span violation(s) found, resolved in 3 pass(es)
-  drop             7
-  octave-shift     55
-  reassign         64
-  truncate         6
-  notes            3651 -> 3629
-```
-
-That is Bach's Toccata and Fugue, written for organ, forced into a 12-semitone reach.
-99.4% of the notes survive. Add `-vv` to see every individual decision. How it works,
-and why the repairs are ranked the way they are, is in
-[docs/CONSTRAINT-ENGINE.md](docs/CONSTRAINT-ENGINE.md).
-
-Rendering a video:
+A full 1080p60 render of a long piece takes minutes. While you are trying
+settings, keep it small and short:
 
 ```bash
-psv render song.mid -o practice.mp4
+psv run song.mid -o preview.mp4 --start 30 --seconds 10 --width 640 --height 360 --fps 30
 ```
 
-Iterating on a render is fast if you keep it small and short. A full 1080p60 pass costs
-minutes; this costs about a second:
+That costs about a second.
+
+### Running one stage at a time
+
+Each stage reads and writes MIDI, so you can stop after any of them, fix the file
+by hand in any MIDI editor, and carry on:
 
 ```bash
-psv render song.mid -o preview.mp4 --start 30 --seconds 5 --width 640 --height 360 --fps 30
+psv arrange   song.mid      -o two-hands.mid
+psv constrain two-hands.mid -o playable.mid    # add -vv to see every decision
+psv render    playable.mid  -o practice.mp4
 ```
 
-Once the remaining stages land:
-
-```bash
-psv run song.mid -o practice.mp4 -c my-hands.toml
-```
+`psv export song.mid -o copy.mid` parses and writes straight back out, which is
+how you check that ingest understood a file.
 
 ## Configuration
 
@@ -179,8 +181,9 @@ opacity     = 0.15        # faint: an aid, not decoration
 lanes = 1                 # up to 3; sustain is the one MIDI reliably carries
 
 [audio]
-backend = "fluidsynth"    # fluidsynth | mux | builtin | none
-soundfont = "~/soundfonts/piano.sf2"
+backend = "builtin"       # builtin | mux | none  (fluidsynth is not implemented)
+audio_file = ""           # for backend = "mux": your own recording
+offset_s = 0.0            # nudge that recording into sync
 ```
 
 ## Tests

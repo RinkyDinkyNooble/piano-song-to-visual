@@ -4,8 +4,7 @@ A thin shell over the core library. Every command here parses arguments, calls
 one function, and prints the result; nothing in `psv` below this module knows
 the CLI exists.
 
-`inspect`, `export`, `constrain`, and `render` work. The arrange stage and the
-`run` command that chains everything do not exist yet.
+Every stage works, and `run` chains them into a finished video with sound.
 """
 
 from __future__ import annotations
@@ -18,12 +17,15 @@ from dataclasses import replace
 from pathlib import Path
 
 from psv import __version__
+from psv.arrange import arrange as arrange_score
+from psv.audio.backends import AudioError
 from psv.config import Config, ConfigError, VisualConfig
 from psv.constraints import ConstraintError
 from psv.constraints import constrain as constrain_score
 from psv.inspect import format_report, inspect_score
 from psv.midi import read_midi_file, write_midi_file
 from psv.midi.read import MidiReadError
+from psv.pipeline import run as run_pipeline
 from psv.render.video import VideoWriteError, render_video
 
 log = logging.getLogger("psv")
@@ -38,7 +40,7 @@ PIPELINE_COMMANDS: dict[str, str] = {
     "run": "run the full pipeline end to end",
 }
 
-IMPLEMENTED = frozenset({"inspect", "export", "constrain", "render"})
+IMPLEMENTED = frozenset({"inspect", "export", "arrange", "constrain", "render", "run"})
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -180,11 +182,54 @@ def _cmd_constrain(args: argparse.Namespace, config: Config) -> int:
     return 0
 
 
+def _cmd_arrange(args: argparse.Namespace, config: Config) -> int:
+    score = read_midi_file(args.input)
+    result = arrange_score(
+        score,
+        max_span=config.hands.max_span_semitones,
+        tolerance=config.hands.overlap_tolerance_s,
+    )
+    print(result.summary())
+    print(f"  notes            {len(score.notes)} -> {len(result.score.notes)}")
+    print(f"wrote {write_midi_file(result.score, args.output)}")
+    return 0
+
+
+def _progress(args: argparse.Namespace) -> Callable[[int, int], None]:
+    """A one-line frame counter, only when asked for and only to a terminal."""
+    show = args.verbose > 0 and sys.stderr.isatty()
+
+    def on_frame(done: int, total: int) -> None:
+        if show and (done % 30 == 0 or done == total):
+            print("\r  frame", f"{done}/{total}", end="", file=sys.stderr)
+
+    return on_frame
+
+
+def _cmd_run(args: argparse.Namespace, config: Config) -> int:
+    visual = _visual_with_overrides(config.visual, args)
+    result = run_pipeline(
+        args.input,
+        args.output,
+        replace(config, visual=visual),
+        start=args.start,
+        duration=args.seconds,
+        on_frame=_progress(args),
+    )
+    if args.verbose > 0 and sys.stderr.isatty():
+        print(file=sys.stderr)
+    print(result.summary())
+    print(f"wrote {result.output}")
+    return 0
+
+
 HANDLERS: dict[str, Callable[[argparse.Namespace, Config], int]] = {
     "inspect": _cmd_inspect,
     "export": _cmd_export,
+    "arrange": _cmd_arrange,
     "constrain": _cmd_constrain,
     "render": _cmd_render,
+    "run": _cmd_run,
 }
 
 
@@ -204,7 +249,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         # Loaded first, so a bad config fails before any work is done.
         config = Config.load(args.config)
         return HANDLERS[args.command](args, config)
-    except (ConfigError, MidiReadError, VideoWriteError, ConstraintError) as exc:
+    except (
+        ConfigError,
+        MidiReadError,
+        VideoWriteError,
+        ConstraintError,
+        AudioError,
+    ) as exc:
         print(f"psv: {exc}", file=sys.stderr)
         return 1
     except OSError as exc:

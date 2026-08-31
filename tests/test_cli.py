@@ -64,13 +64,6 @@ def test_version_flag_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
     assert __version__ in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("command", sorted(set(PIPELINE_COMMANDS) - set(IMPLEMENTED)))
-def test_unimplemented_commands_say_so(command: str) -> None:
-    with pytest.raises(SystemExit) as exc:
-        main([command, "song.mid", "-o", "out.mid"])
-    assert exc.value.code == 2
-
-
 # -- inspect -------------------------------------------------------------
 
 

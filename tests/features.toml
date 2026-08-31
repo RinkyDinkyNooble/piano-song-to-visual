@@ -318,7 +318,7 @@ uses = ["fixture:dynamic-levels"]
 id = "F-37"
 name = "Audio backend: silent"
 milestone = "M5"
-status = "planned"
+status = "done"
 verify = "e2e"
 uses = ["fixture:dynamic-levels"]
 
@@ -326,14 +326,14 @@ uses = ["fixture:dynamic-levels"]
 id = "F-38"
 name = "Audio backend: built-in synth honouring velocity and sustain"
 milestone = "M5"
-status = "planned"
+status = "done"
 verify = "e2e"
 uses = ["fixture:sustain-pedal", "fixture:velocity-ramp"]
 
 [[feature]]
 id = "F-39"
 name = "Audio backend: FluidSynth with a SoundFont"
-milestone = "M5"
+milestone = "M8"
 status = "planned"
 verify = "e2e"
 uses = ["song:invention"]
@@ -342,7 +342,7 @@ uses = ["song:invention"]
 id = "F-40"
 name = "Audio backend: mux a supplied file at a configurable offset"
 milestone = "M5"
-status = "planned"
+status = "done"
 verify = "e2e"
 uses = ["song:invention"]
 
@@ -350,7 +350,7 @@ uses = ["song:invention"]
 id = "F-41"
 name = "An unavailable backend falls back with a clear message"
 milestone = "M5"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = []
 
@@ -358,7 +358,7 @@ uses = []
 id = "F-42"
 name = "Audio and video stay in sync for the whole render"
 milestone = "M5"
-status = "planned"
+status = "done"
 verify = "e2e"
 uses = ["song:invention"]
 
@@ -367,7 +367,7 @@ uses = ["song:invention"]
 id = "F-43"
 name = "Already-separated hands are left alone"
 milestone = "M6"
-status = "planned"
+status = "done"
 verify = "e2e"
 uses = ["fixture:two-hands", "song:moonlight"]
 
@@ -375,7 +375,7 @@ uses = ["fixture:two-hands", "song:moonlight"]
 id = "F-44"
 name = "Multiple instruments reduce to two playable hands"
 milestone = "M6"
-status = "planned"
+status = "done"
 verify = "e2e"
 uses = ["fixture:orchestral", "song:quartet"]
 
@@ -383,7 +383,7 @@ uses = ["fixture:orchestral", "song:quartet"]
 id = "F-45"
 name = "Hand assignment survives voices crossing register"
 milestone = "M6"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = ["fixture:voice-crossing", "song:invention"]
 
@@ -391,7 +391,7 @@ uses = ["fixture:voice-crossing", "song:invention"]
 id = "F-46"
 name = "Reduction drops the least salient notes first"
 milestone = "M6"
-status = "planned"
+status = "done"
 verify = "unit"
 uses = ["song:quartet"]
 
@@ -408,7 +408,7 @@ uses = ["song:invention"]
 id = "F-48"
 name = "psv run drives the whole pipeline in one command"
 milestone = "M5"
-status = "planned"
+status = "done"
 verify = "e2e"
 uses = ["song:invention", "song:quartet"]
 
