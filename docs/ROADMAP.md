@@ -349,6 +349,24 @@ right, as at the instrument.
 settings that go together, so getting a sensible result does not require
 assembling a TOML file first.
 
+**Borders on the note bars, with a configurable size.** Repeated notes on the
+same key currently draw as one continuous bar. There is already a horizontal gap
+between adjacent *pitches*, so a chord reads as separate notes, but nothing
+separates consecutive notes in the same column: play the same key four times
+quickly and you see one long block and have to count it by ear. That defeats the
+point of the video.
+
+Two ways to fix it, and they are not exclusive. Trim a small amount off the
+bottom of every bar, the vertical twin of `BAR_GAP_RATIO`, so consecutive notes
+never touch. Or outline each bar in a darker shade of its own colour, which
+separates them and keeps the hand hue readable. The outline is probably the
+better default, since a gap eats into short notes that are already only a few
+pixels tall at speed.
+
+Either way the size wants to be configurable: the right amount depends on
+resolution and on how fast the piece is, and at 320 pixels wide a border that
+looks right at 1080p would swallow the bar entirely.
+
 **Note name labels.** Optional letters on the bars, useful when learning and
 clutter when not, so strictly opt-in.
 
