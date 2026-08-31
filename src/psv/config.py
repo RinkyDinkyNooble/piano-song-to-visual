@@ -202,10 +202,22 @@ class PedalsConfig:
 class AudioConfig:
     backend: str = "builtin"
     soundfont: str = ""
+    #: Folder holding the native FluidSynth library. Given here rather than
+    #: expected on PATH: pyfluidsynth finds the DLL through find_library, which
+    #: searches PATH only, and editing a user's PATH to satisfy one optional
+    #: backend is a poor trade.
+    fluidsynth_bin: str = ""
+    #: General MIDI program to play everything with. 0 is Acoustic Grand Piano;
+    #: 4 and 5 are the electric pianos.
+    program: int = 0
     audio_file: str = ""
     offset_s: float = 0.0
 
     def validate(self) -> None:
+        if not 0 <= self.program <= 127:
+            raise ConfigError(
+                f"audio.program must be a GM program 0-127, got {self.program}"
+            )
         if self.backend not in AUDIO_BACKENDS:
             raise ConfigError(
                 f"audio.backend must be one of {AUDIO_BACKENDS}, got {self.backend!r}"

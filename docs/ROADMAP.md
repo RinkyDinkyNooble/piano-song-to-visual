@@ -231,7 +231,7 @@ was made exactly neutral for the same reason; the strike line had been faintly b
 
 ---
 
-## M5 - Audio (done, except FluidSynth)
+## M5 - Audio (done)
 
 Three backends behind one call, chosen by config, each falling back to the next
 when what it needs is missing.
@@ -243,17 +243,21 @@ when what it needs is missing.
   truncating under the pedal is free. If the audio ignored it, the two halves of
   the tool would disagree with each other.
 - `mux` - use an audio file you already have.
-- `fluidsynth` - **not implemented.** Deferred to M8. The native library is not
-  present on the development machine, so it could not be tested, and shipping an
-  untested audio path is worse than shipping an honest fallback. Selecting it
-  produces built-in audio and says exactly why.
+- `fluidsynth` - a sampled instrument from a SoundFont, and the only one that
+  sounds like a piano. The synth is stepped forward between events rather than
+  fed a MIDI file, so its timing comes from the Score and matches the video
+  exactly, and CC64 is sent at its real depth so half-pedalling reaches the
+  sound as well as the picture. The DLL folder is named in config rather than
+  expected on `PATH`, because pyfluidsynth finds it through `find_library`,
+  which searches `PATH` only, and editing a user's environment for one optional
+  backend is a poor trade.
 
 The chain matters more than any one backend. A silent video with no explanation,
 because a library was missing, is much worse than a cheap-sounding one that says
 what happened.
 
 **Exit criteria:** `psv run` produces a video with synchronised audio under each
-available backend, and a clear message under the one that is not. *(Met.)*
+backend, and a clear message where one cannot run. *(Met, all four.)*
 
 ---
 
@@ -325,12 +329,6 @@ other still drawn faintly for reference. Hands are already assigned and audio is
 already synthesised note by note, so this is a filter rather than new machinery.
 
 ### Sound
-
-**F-39: the FluidSynth backend.** The one feature from M5 that is not done. Needs
-the native FluidSynth library and a SoundFont on the machine, and needs testing
-against both. Everything around it is already built: config, availability
-detection, the fallback, and the mux step. What is missing is the handful of lines
-that drive the synth, plus a way to test them.
 
 **Better built-in tone.** The current synth is additive sine harmonics with an
 ADSR envelope. It is clearly synthetic. One short recorded piano sample per

@@ -16,23 +16,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     split that moves with the music, so crossing voices survive and chords do
     not fling the hands across the keyboard. A file that already has two hands
     is left alone.
-  - `psv.audio` - `builtin` (numpy synth, honours velocity and the sustain
-    pedal), `mux` (your own recording), and `none`. Each falls back to the next
-    when what it needs is missing, and says why.
+  - `psv.audio` - `fluidsynth` (a sampled instrument from a SoundFont),
+    `builtin` (numpy synth, honours velocity and the sustain pedal), `mux`
+    (your own recording), and `none`. Each falls back to the next when what it
+    needs is missing, and says why.
   - `psv.pipeline` - parse, arrange, constrain, render, synthesise, mux. The
     video is rendered silent and the soundtrack muxed on afterwards, so the
     renderer stays a pure function of the score and a failure says which half
     it was in.
   - `psv run` and `psv arrange` commands. Every pipeline command is now real.
-- 504 tests, 49 of 50 features done.
+- 508 tests, all 50 features done.
 
 ### Deferred
 
-- **The FluidSynth audio backend (F-39) is not implemented.** The native library
-  is not available on the development machine, so it could not be tested, and an
-  untested audio path is worse than an honest fallback. Selecting it produces
-  built-in audio and explains itself. Moved to M8.
-- Everything else deliberately left out of the MVP is written up as **M8** in
+- Everything deliberately left out of the MVP is written up as **M8** in
   `docs/ROADMAP.md`: practice tempo, section looping, count-in, one-hand
   practice, better tone, presets, duet mode, a live player, and more.
 - **M4: the full visual specification.** Everything the M2 renderer left out.

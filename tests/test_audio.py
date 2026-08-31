@@ -207,14 +207,73 @@ def test_fluidsynth_reports_exactly_why_it_cannot_run() -> None:
 
 
 @pytest.mark.feature("F-41")
-def test_choosing_fluidsynth_still_produces_audio(tmp_path: Path) -> None:
-    """It is not implemented and the native library is usually absent. Either
-    way the render must come back with sound and an explanation, not silence."""
+def test_a_missing_soundfont_falls_back_with_sound_and_a_reason(
+    tmp_path: Path,
+) -> None:
+    """The machine may have no SoundFont, or no native library. Either way the
+    render must come back with audio and an explanation, not silence."""
     config = AudioConfig(backend="fluidsynth", soundfont=str(tmp_path / "none.sf2"))
     result = render_audio(one_note(), config, tmp_path)
     assert result.backend == "builtin"
     assert result.note
     assert result.path is not None
+
+
+@pytest.mark.feature("F-41")
+def test_a_bad_fluidsynth_bin_folder_is_reported(tmp_path: Path) -> None:
+    font = tmp_path / "fake.sf2"
+    font.write_bytes(b"not really a soundfont")
+    available, why = fluidsynth_available(str(font), str(tmp_path / "nope"))
+    assert not available
+    assert "fluidsynth_bin" in why
+
+
+# FluidSynth is optional: skip rather than fail where it is not installed.
+_SOUNDFONT = Path.home() / ".local" / "fluidsynth" / "GeneralUser-GS.sf2"
+_BIN = Path.home() / ".local" / "fluidsynth" / "bin"
+needs_fluidsynth = pytest.mark.skipif(
+    not fluidsynth_available(str(_SOUNDFONT), str(_BIN))[0],
+    reason="FluidSynth library or SoundFont not installed",
+)
+
+
+@pytest.mark.feature("F-39")
+@needs_fluidsynth
+def test_fluidsynth_renders_stereo_audio_of_the_right_length(tmp_path: Path) -> None:
+    from psv.audio.backends import synthesise_fluidsynth
+
+    samples = synthesise_fluidsynth(
+        read_midi(FIXTURES["dynamic-levels"]()), str(_SOUNDFONT), duration=3.0
+    )
+    # Interleaved stereo, so two samples per frame.
+    assert samples.size == int(3.0 * SAMPLE_RATE) * 2
+    assert np.abs(samples).max() > 0.1, "should be audible"
+    assert np.abs(samples).max() <= 1.0, "and must not clip"
+
+
+@pytest.mark.feature("F-39")
+@needs_fluidsynth
+def test_the_fluidsynth_backend_is_selected_when_it_can_run(tmp_path: Path) -> None:
+    config = AudioConfig(
+        backend="fluidsynth", soundfont=str(_SOUNDFONT), fluidsynth_bin=str(_BIN)
+    )
+    result = render_audio(one_note(), config, tmp_path, duration=2.0)
+    assert result.backend == "fluidsynth"
+    assert result.note == ""
+    assert result.path is not None and result.path.stat().st_size > 10_000
+
+
+@pytest.mark.feature("F-39")
+@needs_fluidsynth
+def test_choosing_a_different_instrument_changes_the_sound(tmp_path: Path) -> None:
+    """audio.program picks the General MIDI instrument, so an electric piano
+    and a grand do not come out identical."""
+    from psv.audio.backends import synthesise_fluidsynth
+
+    score = read_midi(FIXTURES["dynamic-levels"]())
+    grand = synthesise_fluidsynth(score, str(_SOUNDFONT), program=0, duration=2.0)
+    rhodes = synthesise_fluidsynth(score, str(_SOUNDFONT), program=4, duration=2.0)
+    assert not np.allclose(grand, rhodes)
 
 
 # -- muxing --------------------------------------------------------------

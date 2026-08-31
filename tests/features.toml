@@ -333,8 +333,8 @@ uses = ["fixture:sustain-pedal", "fixture:velocity-ramp"]
 [[feature]]
 id = "F-39"
 name = "Audio backend: FluidSynth with a SoundFont"
-milestone = "M8"
-status = "planned"
+milestone = "M5"
+status = "done"
 verify = "e2e"
 uses = ["song:invention"]
 

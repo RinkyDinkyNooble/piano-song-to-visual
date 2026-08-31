@@ -68,8 +68,7 @@ pip install -e ".[render]"  # + video and audio, which is everything below
 ```
 
 Sound works with no further setup: the built-in synth needs nothing but numpy.
-The `fluidsynth` backend would sound better but is not implemented yet, and
-selecting it falls back to the built-in one with an explanation.
+For a real sampled piano see [A real piano sound](#a-real-piano-sound) below.
 
 ## Usage
 
@@ -181,10 +180,30 @@ opacity     = 0.15        # faint: an aid, not decoration
 lanes = 1                 # up to 3; sustain is the one MIDI reliably carries
 
 [audio]
-backend = "builtin"       # builtin | mux | none  (fluidsynth is not implemented)
+backend = "builtin"       # builtin | fluidsynth | mux | none
 audio_file = ""           # for backend = "mux": your own recording
 offset_s = 0.0            # nudge that recording into sync
 ```
+
+### A real piano sound
+
+The built-in synth is sine harmonics with an envelope: fine for keeping your
+place, obviously synthetic. For a sampled instrument, point at a SoundFont:
+
+```toml
+[audio]
+backend = "fluidsynth"
+soundfont = "C:/path/to/GeneralUser-GS.sf2"
+fluidsynth_bin = "C:/path/to/fluidsynth/bin"   # folder holding the DLL
+program = 0    # 0 grand, 1 bright, 4 Rhodes, 5 FM electric, 6 harpsichord
+```
+
+You need the [FluidSynth](https://github.com/FluidSynth/fluidsynth/releases)
+binaries matching your Python's architecture, and any `.sf2` SoundFont
+([GeneralUser GS](https://www.schristiancollins.com/generaluser.php) is a good
+30 MB starting point). `fluidsynth_bin` exists so you do not have to put the
+library on your `PATH`. If anything is missing, the render falls back to the
+built-in synth and says which piece it could not find.
 
 ## Tests
 

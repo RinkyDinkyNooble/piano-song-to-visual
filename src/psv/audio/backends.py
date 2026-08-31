@@ -15,6 +15,7 @@ much worse than being handed a cheap-sounding one that says why.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 import wave
@@ -162,13 +163,13 @@ def synthesise(
     return buffer
 
 
-def write_wav(samples: np.ndarray, path: Path) -> Path:
-    """Write mono 16-bit PCM. Uses the standard library, so no extra dependency."""
+def write_wav(samples: np.ndarray, path: Path, channels: int = 1) -> Path:
+    """Write 16-bit PCM. Uses the standard library, so no extra dependency."""
     path.parent.mkdir(parents=True, exist_ok=True)
     clipped = np.clip(samples, -1.0, 1.0)
     pcm = (clipped * 32767.0).astype("<i2")
     with wave.open(str(path), "wb") as handle:
-        handle.setnchannels(1)
+        handle.setnchannels(channels)
         handle.setsampwidth(2)
         handle.setframerate(SAMPLE_RATE)
         handle.writeframes(pcm.tobytes())
@@ -178,17 +179,108 @@ def write_wav(samples: np.ndarray, path: Path) -> Path:
 # -- backend availability ------------------------------------------------
 
 
-def fluidsynth_available(soundfont: str) -> tuple[bool, str]:
+def _add_to_path(folder: str) -> None:
+    """Put a folder where `ctypes.util.find_library` will look.
+
+    pyfluidsynth locates the DLL with `find_library`, which on Windows searches
+    `PATH` and nothing else; `os.add_dll_directory` does not help it. Prepending
+    here means the user names the folder in config instead of editing the
+    environment for one optional backend.
+    """
+    resolved = str(Path(folder).expanduser())
+    current = os.environ.get("PATH", "")
+    if resolved not in current.split(os.pathsep):
+        os.environ["PATH"] = resolved + os.pathsep + current
+
+
+def fluidsynth_available(soundfont: str, bin_dir: str = "") -> tuple[bool, str]:
     """Whether the FluidSynth backend can run, and why not when it cannot."""
     if not soundfont:
         return False, "audio.soundfont is not set"
     if not Path(soundfont).expanduser().is_file():
         return False, f"soundfont not found: {soundfont}"
+    if bin_dir:
+        if not Path(bin_dir).expanduser().is_dir():
+            return False, f"audio.fluidsynth_bin is not a folder: {bin_dir}"
+        _add_to_path(bin_dir)
     try:
         import fluidsynth  # noqa: F401
     except ImportError as exc:
         return False, f"the native FluidSynth library is unavailable ({exc})"
     return True, ""
+
+
+def synthesise_fluidsynth(
+    score: Score,
+    soundfont: str,
+    *,
+    program: int = 0,
+    start: float = 0.0,
+    duration: float | None = None,
+) -> np.ndarray:
+    """Render through FluidSynth, returning interleaved stereo float32.
+
+    Driven by stepping the synth forward between events rather than by feeding
+    it a MIDI file, so the timing comes from the Score and matches the video
+    exactly. The sustain pedal is sent as CC64 with its real depth, so
+    half-pedalling reaches the sound as well as the picture.
+    """
+    import fluidsynth
+
+    if duration is None:
+        duration = max(0.0, score.duration - start) + TAIL_S
+
+    synth = fluidsynth.Synth(samplerate=float(SAMPLE_RATE))
+    try:
+        preset = synth.sfload(str(Path(soundfont).expanduser()))
+        if preset == -1:
+            raise AudioError(f"FluidSynth could not load {soundfont}")
+        synth.program_select(0, preset, 0, program)
+
+        events: list[tuple[float, int, int, int]] = []
+        for note in score.notes:
+            events.append((note.start, 0, note.pitch, note.velocity))
+            events.append((note.end, 1, note.pitch, 0))
+        for pedal in score.pedals:
+            events.append((pedal.start, 2, int(pedal.pedal), pedal.depth))
+            events.append((pedal.end, 2, int(pedal.pedal), 0))
+        events.sort()
+
+        blocks: list[np.ndarray] = []
+        rendered = 0
+        total = int(duration * SAMPLE_RATE)
+
+        for when, kind, number, value in events:
+            frame = int((when - start) * SAMPLE_RATE)
+            if frame > total:
+                break
+            if frame > rendered:
+                blocks.append(synth.get_samples(frame - rendered))
+                rendered = frame
+            if frame < 0:
+                continue
+            if kind == 0:
+                synth.noteon(0, number, value)
+            elif kind == 1:
+                synth.noteoff(0, number)
+            else:
+                synth.cc(0, number, value)
+
+        if total > rendered:
+            blocks.append(synth.get_samples(total - rendered))
+    finally:
+        synth.delete()
+
+    if not blocks:
+        return np.zeros(0, dtype=np.float32)
+    samples = np.concatenate(blocks).astype(np.float32) / 32768.0
+    peak = float(np.max(np.abs(samples))) if samples.size else 0.0
+    if peak > 0:
+        # SoundFonts vary hugely in level, and FluidSynth's default gain is low.
+        # Normalising means swapping the .sf2 does not change how loud the video
+        # is, which matters more here than preserving absolute level.
+        samples *= 0.89 / peak
+    return samples
 
 
 def ffmpeg_exe() -> str:
@@ -253,15 +345,23 @@ def render_audio(
         return AudioResult(path=source, backend="mux")
 
     if backend == "fluidsynth":
-        available, why = fluidsynth_available(config.soundfont)
+        available, why = fluidsynth_available(config.soundfont, config.fluidsynth_bin)
         if not available:
             log.warning("fluidsynth unavailable: %s; using the built-in synth", why)
             return _builtin(score, out_dir, start, duration, note=why)
-        # Not implemented yet: see the M8 plan in docs/ROADMAP.md. Reaching here
-        # means the machine could run it, so say so rather than pretending.
-        why = "the fluidsynth backend is not implemented yet"
-        log.warning("%s; using the built-in synth", why)
-        return _builtin(score, out_dir, start, duration, note=why)
+        try:
+            samples = synthesise_fluidsynth(
+                score,
+                config.soundfont,
+                program=config.program,
+                start=start,
+                duration=duration,
+            )
+        except (AudioError, OSError, RuntimeError) as exc:
+            log.warning("fluidsynth failed: %s; using the built-in synth", exc)
+            return _builtin(score, out_dir, start, duration, note=str(exc))
+        path = write_wav(samples, out_dir / "psv-audio.wav", channels=2)
+        return AudioResult(path=path, backend="fluidsynth")
 
     return _builtin(score, out_dir, start, duration, note="")
 

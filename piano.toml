@@ -1,0 +1,11 @@
+# Real piano sound via FluidSynth.
+#   psv run song.mid -o out.mp4 -c piano.toml
+# audio.program picks the General MIDI instrument:
+#   0 acoustic grand   1 bright grand   2 electric grand
+#   4 electric piano 1 (Rhodes)         5 electric piano 2 (FM/DX)
+#   6 harpsichord      19 church organ
+[audio]
+backend = "fluidsynth"
+soundfont = "C:/Users/harka/.local/fluidsynth/GeneralUser-GS.sf2"
+fluidsynth_bin = "C:/Users/harka/.local/fluidsynth/bin"
+program = 0
