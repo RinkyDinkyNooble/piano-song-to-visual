@@ -324,6 +324,12 @@ bar index built from the tempo map and time signatures, both of which exist.
 **Count-in and a metronome click.** Two bars of clicks before the music starts,
 and optionally a click through it. Straightforward inside the built-in synth.
 
+**Accept global flags in either position.** `-c` and `-v` are defined on the top
+level parser, so they only work *before* the subcommand: `psv -c x.toml run ...`
+is accepted and `psv run ... -c x.toml` is a usage error. Nothing about the flags
+suggests that, and it has caught a user twice. Give each subparser the same
+options, or attach them through `parents=`, so either order works.
+
 **One hand at a time.** `--hands left` renders and sounds only one hand, with the
 other still drawn faintly for reference. Hands are already assigned and audio is
 already synthesised note by note, so this is a filter rather than new machinery.
@@ -371,8 +377,25 @@ pause, rewind, and loop-a-section. Better for practice than a video. `render_fra
 is already a pure function of time, so the drawing code needs no changes: what is
 missing is a window and an event loop.
 
-**Parallel frame rendering.** A 1080p60 render of a long piece takes minutes.
-Frames are independent and `render_frame` is pure, so this parallelises trivially.
+**Speed, generally.** A 1080p60 render of a long piece takes minutes, and that is
+the single biggest thing standing between a change and seeing it. Worth a proper
+look rather than piecemeal tuning:
+
+- **Parallel frame rendering.** Frames are independent and `render_frame` is
+  pure, so this parallelises about as cleanly as anything ever does. Likely the
+  largest single win, and the obvious place to start.
+- **Profile before optimising anything else.** The per-frame cost is currently
+  assumed, not measured. Measure first, then decide.
+- **Draw only what changed.** The keyboard, lanes, and grid are identical across
+  most frames; only the falling bars move. Rendering the static parts once and
+  compositing could cut a lot of work.
+- **Consider the encoder settings.** Frames are handed to ffmpeg one at a time
+  and re-encoded at default quality; a faster preset may matter more than the
+  drawing does.
+
+Whatever it turns out to be, keep `render_frame` a pure function of the score and
+the time. The reference-image tests and the determinism guarantee both rest on
+it, and a speed-up that costs that is not worth having.
 
 ### Explicitly not planned
 
