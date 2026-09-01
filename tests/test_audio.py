@@ -27,6 +27,7 @@ from psv.config import AudioConfig
 from psv.midi import read_midi
 from psv.model import Hand, Note, Part, Pedal, PedalEvent, Score
 from tests.fixtures.midi_builder import FIXTURES
+from tests.probe import video_meta
 
 
 def one_note(pitch: int = 60, velocity: int = 100, end: float = 1.0) -> Score:
@@ -293,11 +294,7 @@ def test_video_and_audio_are_combined_with_matching_durations(
     audio = write_wav(synthesise(score, duration=2.0), tmp_path / "audio.wav")
     combined = mux_into_video(silent, audio, tmp_path / "out.mp4")
 
-    import imageio_ffmpeg
-
-    reader = imageio_ffmpeg.read_frames(str(combined))
-    meta = next(reader)
-    reader.close()
+    meta = video_meta(combined)
     assert meta["size"] == (160, 120)
     assert meta["duration"] == pytest.approx(2.0, abs=0.15)
     assert combined.stat().st_size > silent.stat().st_size

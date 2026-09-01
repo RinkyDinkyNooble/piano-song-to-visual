@@ -27,6 +27,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `psv run` and `psv arrange` commands. Every pipeline command is now real.
 - 508 tests, all 50 features done.
 
+### Fixed
+
+- **CI was red on every push.** Two defects in this repo's own test setup, both
+  invisible locally:
+  - `FORCE_COLOR: 1` in the workflow made Python 3.14 colour argparse help, so
+    the CLI help assertion matched against ANSI escapes. Failed on 3.14 only.
+    The workflow now sets `NO_COLOR`, and the assertion strips ANSI so a
+    developer with `FORCE_COLOR` set does not hit it either.
+  - `imageio_ffmpeg.read_frames` only closes its subprocess pipes while ffmpeg
+    is still running, so fully consuming the generator, as frame counting must,
+    left them to the garbage collector. pytest promotes the resulting
+    `ResourceWarning` to a failure, blaming whichever test was running when the
+    collector caught up. Video probing moved to `tests/probe.py`, which reads
+    metadata without exhausting the generator and counts frames through
+    `subprocess.run` instead. Reproduced only on Linux and macOS, so fixed by
+    construction and confirmed by CI rather than locally.
+
 ### Deferred
 
 - Everything deliberately left out of the MVP is written up as **M8** in

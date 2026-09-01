@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,16 @@ from psv import __version__
 from psv.cli import IMPLEMENTED, PIPELINE_COMMANDS, build_parser, main
 from psv.midi import read_midi_file
 from tests.fixtures.midi_builder import FIXTURES
+from tests.probe import video_meta
+
+#: Python 3.14 colours argparse output, and honours FORCE_COLOR even when
+#: stdout is not a terminal. Tests care what the help *says*, not how it is
+#: painted, so strip the escapes rather than depend on the environment.
+_ANSI = re.compile(r"\[[0-9;]*m")
+
+
+def plain(text: str) -> str:
+    return _ANSI.sub("", text)
 
 
 @pytest.fixture
@@ -54,14 +65,14 @@ def test_pipeline_commands_cover_every_stage() -> None:
 
 def test_bare_invocation_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
     assert main([]) == 0
-    assert "usage: psv" in capsys.readouterr().out
+    assert "usage: psv" in plain(capsys.readouterr().out)
 
 
 def test_version_flag_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc:
         main(["--version"])
     assert exc.value.code == 0
-    assert __version__ in capsys.readouterr().out
+    assert __version__ in plain(capsys.readouterr().out)
 
 
 # -- inspect -------------------------------------------------------------
@@ -213,8 +224,6 @@ def test_render_honours_the_size_overrides(
 ) -> None:
     """The overrides exist so the debug loop is seconds, not minutes. If they
     were ignored, every render would cost full 1080p time."""
-    import imageio_ffmpeg
-
     output = tmp_path / "out.mp4"
     main(
         [
@@ -232,9 +241,7 @@ def test_render_honours_the_size_overrides(
             "20",
         ]
     )
-    reader = imageio_ffmpeg.read_frames(str(output))
-    meta = next(reader)
-    reader.close()
+    meta = video_meta(output)
     assert meta["size"] == (240, 160)
 
 

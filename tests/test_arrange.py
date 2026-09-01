@@ -21,6 +21,7 @@ from psv.midi import read_midi
 from psv.model import Hand, Note, Score
 from psv.pipeline import run
 from tests.fixtures.midi_builder import FIXTURES
+from tests.probe import video_meta
 
 
 def notes_of(*specs: tuple[int, float, float]) -> list[Note]:
@@ -225,8 +226,6 @@ def test_arranging_first_leaves_the_constraint_engine_less_to_do(
 
 @pytest.mark.feature("F-48")
 def test_run_produces_a_video_with_sound(tmp_path: Path) -> None:
-    import imageio_ffmpeg
-
     config = Config()
     config = type(config)(
         hands=config.hands,
@@ -247,9 +246,7 @@ def test_run_produces_a_video_with_sound(tmp_path: Path) -> None:
     assert verify_span(result.score, config.hands.max_span_semitones) == []
     assert not result.audio.is_silent
 
-    reader = imageio_ffmpeg.read_frames(str(output))
-    meta = next(reader)
-    reader.close()
+    meta = video_meta(output)
     assert meta["size"] == (160, 120)
     assert meta["duration"] == pytest.approx(2.0, abs=0.15)
 

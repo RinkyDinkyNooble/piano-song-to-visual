@@ -15,7 +15,11 @@ concurrency:
 
 env:
   PYTHONUNBUFFERED: "1"
-  FORCE_COLOR: "1"
+  # Deliberately no FORCE_COLOR. It buys prettier logs and costs correctness:
+  # Python 3.14 colours argparse help, so forcing colour on a non-terminal makes
+  # the CLI emit ANSI escapes that tests then have to see past. NO_COLOR keeps
+  # every tool honest about not writing to a terminal.
+  NO_COLOR: "1"
 
 jobs:
   lint:

@@ -15,6 +15,7 @@ from psv.cli import IMPLEMENTED, main
 from psv.constraints import has_hands
 from psv.midi import read_midi_file
 from tests.fixtures.midi_builder import FIXTURES
+from tests.probe import video_meta
 
 #: Small and short: these run on every push.
 TINY = ["--seconds", "1", "--width", "160", "--height", "120", "--fps", "10"]
@@ -51,8 +52,6 @@ def test_arrange_writes_two_hands(
 def test_run_turns_a_midi_into_a_video_with_sound(
     midi_path: Callable[[str], Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    import imageio_ffmpeg
-
     output = tmp_path / "practice.mp4"
     code = main(["run", str(midi_path("orchestral")), "-o", str(output), *TINY])
     assert code == 0
@@ -64,9 +63,7 @@ def test_run_turns_a_midi_into_a_video_with_sound(
     assert "audio" in out
     assert "wrote" in out
 
-    reader = imageio_ffmpeg.read_frames(str(output))
-    meta = next(reader)
-    reader.close()
+    meta = video_meta(output)
     assert meta["size"] == (160, 120)
 
 

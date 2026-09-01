@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import pytest
@@ -25,25 +24,9 @@ from psv.render.video import (
     render_video,
 )
 from tests.fixtures.midi_builder import FIXTURES
+from tests.probe import frame_count, video_meta
 
 TINY = VisualConfig(width=160, height=120, fps=10, lookahead_s=2.0)
-
-
-def read_meta(path: Path) -> dict[str, Any]:
-    import imageio_ffmpeg
-
-    reader = imageio_ffmpeg.read_frames(str(path))
-    meta: dict[str, Any] = next(reader)
-    reader.close()
-    return meta
-
-
-def count_frames(path: Path) -> int:
-    import imageio_ffmpeg
-
-    reader = imageio_ffmpeg.read_frames(str(path))
-    next(reader)
-    return sum(1 for _ in reader)
 
 
 # -- frame timing --------------------------------------------------------
@@ -105,10 +88,10 @@ def test_a_video_is_written_at_the_requested_size_and_length(tmp_path: Path) -> 
     assert path.exists()
     assert path.stat().st_size > 0
 
-    meta = read_meta(path)
+    meta = video_meta(path)
     assert meta["size"] == (160, 120)
     assert meta["fps"] == pytest.approx(10.0)
-    assert count_frames(path) == 20
+    assert frame_count(path) == 20
 
 
 @pytest.mark.feature("F-14")
@@ -132,7 +115,7 @@ def test_the_output_directory_is_created(tmp_path: Path) -> None:
 def test_rendering_from_a_start_offset_shortens_nothing(tmp_path: Path) -> None:
     score = read_midi(FIXTURES["tempo-changes"]())
     path = render_video(score, TINY, tmp_path / "out.mp4", start=4.0, duration=1.0)
-    assert count_frames(path) == 10
+    assert frame_count(path) == 10
 
 
 @pytest.mark.feature("F-14")
@@ -153,7 +136,7 @@ def test_progress_is_reported_for_every_frame(tmp_path: Path) -> None:
 @pytest.mark.feature("F-14")
 def test_an_empty_score_still_encodes(tmp_path: Path) -> None:
     path = render_video(Score(), TINY, tmp_path / "out.mp4", duration=0.5)
-    assert count_frames(path) == 5
+    assert frame_count(path) == 5
 
 
 @pytest.mark.feature("F-14")
@@ -180,5 +163,5 @@ def test_a_real_song_renders_end_to_end(tmp_path: Path) -> None:
     )
     score = read_midi_file(source)
     path = render_video(score, TINY, tmp_path / "bach.mp4", start=30.0, duration=2.0)
-    assert count_frames(path) == 20
+    assert frame_count(path) == 20
     assert path.stat().st_size > 1000

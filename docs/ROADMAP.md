@@ -1,6 +1,6 @@
 # Build plan
 
-Eight milestones, all done. Then the CI failures to clear, a list of optional
+Eight milestones, all done. Then the CI failures, a list of optional
 touches, and the one big thing still ahead. Each one ends with something you can actually run, and each one's
 exit criteria are checkable rather than vibes. Ordering is chosen so that the fuzziest,
 least-certain work happens last, on top of foundations that are already proven.
@@ -304,76 +304,85 @@ render over a soundtrack would be the wrong trade for a practice tool.
 
 ---
 
-## CI is red: fix before anything else
+## CI: two of three fixed
 
-Eight workflow logs were captured from GitHub Actions. Every failure traces back
-to one of three causes, and none of them is a fault in `psv` itself: two are
-defects in this repo's own test setup, and one is a repository setting.
+Eight workflow logs were captured from GitHub Actions. Every failure traced back
+to one of three causes, none of them a fault in `psv` itself. Two were defects in
+this repo's own test setup and are fixed; the third is a repository setting only
+the owner can change.
 
-### 1. `FORCE_COLOR: 1` breaks the CLI help assertion on Python 3.14
+### 1. Fixed: `FORCE_COLOR: 1` broke the CLI help assertion on Python 3.14
 
+Python 3.14 colours argparse help, and `FORCE_COLOR` told it to do so even
+though CI's stdout is not a terminal, so the test saw ANSI escapes between the
+words it was matching. It failed on 3.14 only and passed on 3.12 and 3.13, which
+is exactly why local runs never caught it.
+
+The workflow now sets `NO_COLOR` instead. `FORCE_COLOR` bought prettier logs and
+cost correctness: telling a program its output is a terminal when it is not is
+a lie that something will eventually act on.
+
+The assertion also strips ANSI now, so anyone who sets `FORCE_COLOR` in their own
+shell does not hit the same thing.
+
+### 2. Fixed: ffmpeg pipes were left for the garbage collector
+
+`imageio_ffmpeg.read_frames` only closes its subprocess pipes when ffmpeg is
+*still running* as the generator finishes:
+
+```python
+if process.poll() is None:
+    process.stdout.close()
+    process.stdin.close()
 ```
-assert 'usage: psv' in '\x1b[1;34musage: \x1b[0m\x1b[1;35mpsv\x1b[0m ...'
-```
 
-Python 3.14 colours argparse help output. `.github/workflows/ci.yml` sets
-`FORCE_COLOR: 1`, which tells it to do so even when stdout is not a terminal, so
-`test_bare_invocation_prints_help` sees ANSI escapes between the words it is
-looking for. It fails on 3.14 only and passes on 3.12 and 3.13, which is exactly
-why it was not caught locally.
+Consume the generator to the end, as frame counting must, and ffmpeg has already
+exited on its own, so that branch is skipped and the pipes fall to the garbage
+collector. It raises `ResourceWarning` from a destructor at some unrelated later
+moment; pytest promotes unraisable exceptions to failures, and this project
+treats warnings as errors, so the suite failed and blamed whichever test was
+running when the collector caught up. That is why the reported failures included
+tests that never open a video.
 
-Three ways out, in order of preference:
+Closing the generator does not help, because an exhausted generator's `close()`
+is a no-op.
 
-- Drop `FORCE_COLOR` from the workflow. It buys coloured pytest output and costs
-  this; not a good trade.
-- Set `NO_COLOR=1` or `PYTHON_COLORS=0` for the test step specifically.
-- Strip ANSI from captured output in the test. This is the least good option: it
-  makes the test pass while leaving the environment lying to the program.
+`tests/probe.py` now takes two different routes on purpose. `video_meta` stops
+after the first yield, while ffmpeg is alive, which is the case imageio cleans up
+correctly. `frame_count` avoids imageio entirely and runs ffmpeg through
+`subprocess.run`, which owns and closes its own pipes.
 
-### 2. `imageio_ffmpeg.read_frames` generators are left unclosed in tests
-
-```
-ResourceWarning: unclosed file <_io.BufferedReader name=13>
-pytest.PytestUnraisableExceptionWarning: Exception ignored in ...
-```
-
-`count_frames` in `tests/test_render_video.py` consumes the reader with
-`sum(1 for _ in reader)` and never closes it, so the ffmpeg subprocess pipes are
-finalised by the garbage collector. pytest 9 promotes unraisable exceptions to
-failures, and `filterwarnings = ["error"]` in `pyproject.toml` turns the
-`ResourceWarning` into one.
-
-Fails on every platform, on 3.12, 3.13 and 3.14 alike. Purely a test defect: the
-same helper pattern appears in `test_audio.py` and `test_cli_run.py` and wants
-fixing in all three. Wrapping the reader in `contextlib.closing`, or a small
-shared fixture that always closes, fixes it in one place.
+**This one could not be reproduced locally.** Re-reading the logs, it failed on
+Linux and macOS only; the Windows run failed on the colour assertion alone. POSIX
+wraps subprocess pipes in file objects that warn when finalised, and Windows does
+not. So the fix is correct by construction rather than by reproduction, and CI is
+the thing that confirms it.
 
 Worth keeping `filterwarnings = ["error"]` rather than relaxing it. It caught a
-real leak.
+real leak that would otherwise have gone unnoticed.
 
-### 3. CodeQL cannot upload: code scanning is not enabled on the repository
+### 3. Outstanding: CodeQL cannot upload its results
 
 ```
-Warning: This run of the CodeQL Action does not have permission to access the
-CodeQL Action API endpoints ... Code scanning is not enabled for this repository.
+Code scanning is not enabled for this repository.
 ```
 
-A repository setting, not a code change: enable code scanning under
-Settings, Security, Code security and analysis. If it is not wanted, delete
-`.github/workflows/codeql.yml` rather than leaving a workflow that always warns.
+A repository setting, not a code change. Enable code scanning under Settings,
+Security, Code security and analysis. If it is not wanted, delete
+`.github/workflows/codeql.yml` rather than leave a workflow that always warns.
 
 ### Also noted, not urgent
 
 GitHub is deprecating Node 20 on Actions runners. The workflow already runs on
-Node 24 by default and nothing here pins Node 20, so there is nothing to do
-unless a pinned action starts failing.
+Node 24 and nothing here pins Node 20, so there is nothing to do unless a pinned
+action starts failing.
 
 ### The wider lesson
 
-The full matrix runs Python 3.12, 3.13 and 3.14 across three operating systems.
-Local development is 3.14 on Windows only, so a 3.12-and-3.13 regression, or a
-Linux-only one, cannot be seen here. Running the matrix before pushing is not
-possible; reading the logs after is, and was not being done.
+The matrix runs three Python versions across three operating systems, and local
+development is one of each. A 3.12-only regression, or a POSIX-only one, cannot
+be seen here. Running the matrix before pushing is not possible; reading the logs
+after is, and was not being done.
 
 ---
 
