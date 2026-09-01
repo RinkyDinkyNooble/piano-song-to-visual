@@ -9,3 +9,9 @@ backend = "fluidsynth"
 soundfont = "C:/Users/harka/.local/fluidsynth/GeneralUser-GS.sf2"
 fluidsynth_bin = "C:/Users/harka/.local/fluidsynth/bin"
 program = 0
+
+[hands]
+max_span_semitones = 30
+
+[difficulty]
+level = "original"

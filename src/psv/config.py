@@ -19,8 +19,8 @@ from typing import Any, Self, get_type_hints
 
 from psv.model import DEFAULT_OVERLAP_TOLERANCE_S
 
-#: The widest simultaneous reach the engine will ever allow, about 1.5 octaves.
-MAX_ALLOWED_SPAN = 18
+#: The widest simultaneous reach the engine will ever allow, about 2.5 octaves.
+MAX_ALLOWED_SPAN = 36
 
 DIFFICULTY_LEVELS = ("beginner", "easy", "medium", "hard", "original")
 AUDIO_BACKENDS = ("fluidsynth", "mux", "builtin", "none")
@@ -52,7 +52,7 @@ class HandsConfig:
 
 @dataclass(frozen=True, slots=True)
 class DifficultyConfig:
-    level: str = "medium"
+    level: str = "original"
 
     def validate(self) -> None:
         if self.level not in DIFFICULTY_LEVELS:

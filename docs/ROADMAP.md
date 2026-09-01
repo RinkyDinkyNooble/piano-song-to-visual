@@ -1,6 +1,7 @@
 # Build plan
 
-Eight milestones, then a list of optional touches. Each one ends with something you can actually run, and each one's
+Eight milestones, all done. Then the CI failures to clear, a list of optional
+touches, and the one big thing still ahead. Each one ends with something you can actually run, and each one's
 exit criteria are checkable rather than vibes. Ordering is chosen so that the fuzziest,
 least-certain work happens last, on top of foundations that are already proven.
 
@@ -303,6 +304,79 @@ render over a soundtrack would be the wrong trade for a practice tool.
 
 ---
 
+## CI is red: fix before anything else
+
+Eight workflow logs were captured from GitHub Actions. Every failure traces back
+to one of three causes, and none of them is a fault in `psv` itself: two are
+defects in this repo's own test setup, and one is a repository setting.
+
+### 1. `FORCE_COLOR: 1` breaks the CLI help assertion on Python 3.14
+
+```
+assert 'usage: psv' in '\x1b[1;34musage: \x1b[0m\x1b[1;35mpsv\x1b[0m ...'
+```
+
+Python 3.14 colours argparse help output. `.github/workflows/ci.yml` sets
+`FORCE_COLOR: 1`, which tells it to do so even when stdout is not a terminal, so
+`test_bare_invocation_prints_help` sees ANSI escapes between the words it is
+looking for. It fails on 3.14 only and passes on 3.12 and 3.13, which is exactly
+why it was not caught locally.
+
+Three ways out, in order of preference:
+
+- Drop `FORCE_COLOR` from the workflow. It buys coloured pytest output and costs
+  this; not a good trade.
+- Set `NO_COLOR=1` or `PYTHON_COLORS=0` for the test step specifically.
+- Strip ANSI from captured output in the test. This is the least good option: it
+  makes the test pass while leaving the environment lying to the program.
+
+### 2. `imageio_ffmpeg.read_frames` generators are left unclosed in tests
+
+```
+ResourceWarning: unclosed file <_io.BufferedReader name=13>
+pytest.PytestUnraisableExceptionWarning: Exception ignored in ...
+```
+
+`count_frames` in `tests/test_render_video.py` consumes the reader with
+`sum(1 for _ in reader)` and never closes it, so the ffmpeg subprocess pipes are
+finalised by the garbage collector. pytest 9 promotes unraisable exceptions to
+failures, and `filterwarnings = ["error"]` in `pyproject.toml` turns the
+`ResourceWarning` into one.
+
+Fails on every platform, on 3.12, 3.13 and 3.14 alike. Purely a test defect: the
+same helper pattern appears in `test_audio.py` and `test_cli_run.py` and wants
+fixing in all three. Wrapping the reader in `contextlib.closing`, or a small
+shared fixture that always closes, fixes it in one place.
+
+Worth keeping `filterwarnings = ["error"]` rather than relaxing it. It caught a
+real leak.
+
+### 3. CodeQL cannot upload: code scanning is not enabled on the repository
+
+```
+Warning: This run of the CodeQL Action does not have permission to access the
+CodeQL Action API endpoints ... Code scanning is not enabled for this repository.
+```
+
+A repository setting, not a code change: enable code scanning under
+Settings, Security, Code security and analysis. If it is not wanted, delete
+`.github/workflows/codeql.yml` rather than leaving a workflow that always warns.
+
+### Also noted, not urgent
+
+GitHub is deprecating Node 20 on Actions runners. The workflow already runs on
+Node 24 by default and nothing here pins Node 20, so there is nothing to do
+unless a pinned action starts failing.
+
+### The wider lesson
+
+The full matrix runs Python 3.12, 3.13 and 3.14 across three operating systems.
+Local development is 3.14 on Windows only, so a 3.12-and-3.13 regression, or a
+Linux-only one, cannot be seen here. Running the matrix before pushing is not
+possible; reading the logs after is, and was not being done.
+
+---
+
 ## M8 - Optional touches
 
 Everything deliberately left out of the MVP. **Nothing here is needed to use the
@@ -333,6 +407,28 @@ options, or attach them through `parents=`, so either order works.
 **One hand at a time.** `--hands left` renders and sounds only one hand, with the
 other still drawn faintly for reference. Hands are already assigned and audio is
 already synthesised note by note, so this is a filter rather than new machinery.
+
+**An unlimited-span mode.** `hands.max_span_semitones` is validated to 1 to 18,
+so there is currently no way to say "leave it exactly as written". Sometimes that
+is what you want: to see the real piece before deciding what to give up, or
+because a passage is playable rolled or redistributed in a way the engine cannot
+know about. Allow `max_span_semitones = 0` or `"none"` to mean no limit, and have
+`constrain` then verify nothing and change nothing.
+
+This does not weaken the guarantee. The promise is that output never exceeds *the
+configured* span; asking for no limit is a different request, not a violated one.
+It should be loud in the report, so an unplayable arrangement is never a surprise.
+
+**Say what the instruments are.** `audio.program` is a bare General MIDI number,
+so finding anything past a few known ones means guessing and re-rendering. Add
+`psv instruments`, listing the 128 GM names, and flag the handful worth trying on
+a piano piece. Better still, read the SoundFont's own preset names, since a
+SoundFont may not follow the GM map at all.
+
+**Document adding other sounds.** Swapping instruments is really swapping
+SoundFonts, and nothing says so. A short guide: where to get `.sf2` files, that
+bigger usually means better sampled, that `program` indexes into whatever the
+font provides, and how to point `audio.soundfont` at a new one.
 
 ### Sound
 
@@ -418,6 +514,64 @@ it, and a speed-up that costs that is not worth having.
 ### Explicitly not planned
 
 YouTube upload, or any distribution automation. This is a local tool.
+
+---
+
+## M9 - The composer: audio to playable piano
+
+The thing this project was originally for. Point it at a recording of anything,
+get back a piano arrangement you can learn.
+
+    audio (mp3, mp4, flac, wav) -> transcribe -> MIDI -> arrange -> constrain -> video
+
+**Most of this already exists.** Everything from `arrange` rightwards is built and
+tested: reduction to two hands, the guaranteed hand span, difficulty, the video.
+The only missing stage is the first one, turning audio into note data.
+
+### The approach
+
+**Use an existing transcription model. Do not train one.** Training an
+audio-to-MIDI model needs a large aligned audio-and-MIDI corpus and serious
+compute, and the published models are already close to the state of the art. The
+work here is choosing and wiring one up, not inventing one.
+
+Candidates, by what the source is:
+
+| Source | Model | Why |
+| --- | --- | --- |
+| Solo piano recording | ByteDance high-resolution piano transcription | Best onsets and offsets by a distance, and the only one that also **detects the sustain pedal** |
+| Anything else | Spotify `basic-pitch` | General polyphonic, permissive licence, ONNX, runs on CPU in seconds |
+| Multi-instrument, best quality | Google MT3 or MR-MT3 | Transcribes several instruments to separate tracks, which is exactly what `arrange` wants. Heavy: needs a GPU to be pleasant |
+
+Recommendation: start with `basic-pitch` because it is small, permissive, and
+CPU-only, and add the ByteDance model for piano sources, since the pedal data it
+recovers is worth having and nothing else provides it. Treat MT3 as a later
+upgrade rather than a starting point.
+
+For `.mp4` and other containers, ffmpeg is already a dependency and can extract
+the audio track, so video files need no extra machinery.
+
+### The honest limit
+
+**Transcription quality is the ceiling on the whole thing, and no amount of
+downstream cleverness raises it.** A clean solo piano recording transcribes very
+well. A dense orchestral mix, or anything with drums and distorted guitars, does
+not: you get approximately the right notes, plus spurious ones, minus quiet ones.
+What comes out is a starting point to correct by hand, not a finished score.
+
+This is precisely why MIDI stayed the input format for the main tool, and why
+this belongs in its own stage with its own honest reporting rather than being
+folded silently into `run`.
+
+### Where it should live
+
+A separate package, `psv-transcribe`, or an optional extra here. Keeping it apart
+means the machine-learning dependency stack stays out of the main tool: `psv`
+currently installs in seconds and its CI runs in under twenty, and neither should
+change for people who already have MIDI.
+
+The seam is a file. The transcriber emits MIDI; `psv` reads MIDI. Nothing else
+needs to couple.
 
 ---
 
