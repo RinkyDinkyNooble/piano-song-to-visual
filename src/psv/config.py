@@ -254,8 +254,17 @@ class AudioConfig:
     program: int = 0
     audio_file: str = ""
     offset_s: float = 0.0
+    #: Spread the built-in synth across the stereo field by register, low notes
+    #: to the left and high to the right, as they sit at the instrument. 0 is
+    #: mono; 1 puts the extremes hard left and hard right, wider than any real
+    #: piano and mostly useful for hearing that it works.
+    stereo_width: float = 0.5
 
     def validate(self) -> None:
+        if not 0.0 <= self.stereo_width <= 1.0:
+            raise ConfigError(
+                f"audio.stereo_width must be between 0 and 1, got {self.stereo_width}"
+            )
         if not 0 <= self.program <= 127:
             raise ConfigError(
                 f"audio.program must be a GM program 0-127, got {self.program}"

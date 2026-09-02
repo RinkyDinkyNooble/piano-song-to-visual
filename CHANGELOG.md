@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **M8 quality of life.** Everything that stood between the tool working and
+  the tool being pleasant to use.
+  - `--preset small-hands|beginner|as-written|draft`, with `psv presets`
+    printing what each one sets. Precedence is file, then preset, then flags.
+  - `hands.max_span_semitones = 0` and `--span N` for an unlimited-span mode.
+    `constrain` then verifies nothing and changes nothing, rather than running
+    at a very wide limit, so "unlimited" cannot come to mean 36. Loud in the
+    report: an unplayable arrangement should not be a surprise at the piano.
+  - `psv instruments`, reading the SoundFont's own preset names where one is
+    configured and the General MIDI names where none is. The `.sf2` parser
+    checks every chunk offset against the real file length, because SoundFonts
+    are untrusted input.
+  - `visual.note_border`, an outline in a darker shade of each bar's own
+    colour. Repeated notes on one key drew as a single block; four fast repeats
+    looked like one long note, which defeats the point of the video.
+  - `audio.stereo_width`, panning the built-in synth by register with an
+    equal-power law. Low notes left, high right, as they sit under your hands.
+  - `docs/SOUNDS.md`: where SoundFonts come from, why bigger is usually better,
+    and that `program` indexes into the font rather than into General MIDI.
+
+### Changed
+
+- Global flags work on either side of the subcommand. `psv run ... -c x.toml`
+  was a usage error while `psv -c x.toml run ...` was not, which nothing about
+  the flags suggested.
+- Every pinned GitHub action moves to the version Dependabot asked for, which
+  clears the Node 20 deprecation warning on every job.
+- Duet mode moves out of the roadmap to `research/future-ideas.md`. The data
+  model is shaped for it, but a third and fourth hand colour would eat the
+  margin that makes hue-for-hand and brightness-for-velocity readable.
+
 - **M8: the four practice settings, on one bar index.** `psv run` and
   `psv render` take `--tempo`, `--bars`, `--hands` and `--count-in`
   / `--metronome`, and a `[practice]` table says the same in a config file.

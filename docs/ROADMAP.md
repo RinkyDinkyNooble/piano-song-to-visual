@@ -445,111 +445,84 @@ was given, and combining them is an error rather than a guess.
 bars of clicks in front of it. *(Met, and the arrangement is asserted identical
 across practice tempos.)*
 
-### Worth doing first
+### Also done
 
-**Accept global flags in either position.** `-c` and `-v` are defined on the top
-level parser, so they only work *before* the subcommand: `psv -c x.toml run ...`
-is accepted and `psv run ... -c x.toml` is a usage error. Nothing about the flags
-suggests that, and it has caught a user twice. Give each subparser the same
-options, or attach them through `parents=`, so either order works.
+**Global flags on either side of the subcommand.** `-c` and `-v` were defined on
+the top-level parser only, so `psv -c x.toml run ...` was accepted and
+`psv run ... -c x.toml` was a usage error. They are attached twice now, through
+`parents=`, with the subcommand copies defaulting to `SUPPRESS`: argparse parses
+a subcommand into its own namespace and copies every attribute back over the
+top-level one, so a real default there overwrites what was given before the
+subcommand.
 
-**An unlimited-span mode.** `hands.max_span_semitones` is validated to 1 to 18,
-so there is currently no way to say "leave it exactly as written". Sometimes that
-is what you want: to see the real piece before deciding what to give up, or
-because a passage is playable rolled or redistributed in a way the engine cannot
-know about. Allow `max_span_semitones = 0` or `"none"` to mean no limit, and have
-`constrain` then verify nothing and change nothing.
+**An unlimited-span mode.** `hands.max_span_semitones = 0`, or `--span 0`.
+`constrain` then detects nothing and changes nothing, rather than running with a
+very wide limit, so "unlimited" cannot quietly come to mean 36. This does not
+weaken the guarantee: the promise is that output never exceeds *the configured*
+span, and this configures no span. It is loud in the report and in the log,
+because an unplayable arrangement should never be a surprise at the piano. Hand
+assignment still lays out against a nominal span, since splitting the notes
+between two hands is a separate question from limiting the reach.
 
-This does not weaken the guarantee. The promise is that output never exceeds *the
-configured* span; asking for no limit is a different request, not a violated one.
-It should be loud in the report, so an unplayable arrangement is never a surprise.
+**`psv instruments`.** Reads the SoundFont's own preset names where one is
+configured, and falls back to the 128 General MIDI names where none is. GM is a
+convention rather than a guarantee, and a font may put anything at any program
+number, so the names in the file are the ones that will actually sound. The
+`.sf2` parser walks the RIFF chunks and checks every offset against the real
+file length, because SoundFonts are untrusted input.
 
-**Say what the instruments are.** `audio.program` is a bare General MIDI number,
-so finding anything past a few known ones means guessing and re-rendering. Add
-`psv instruments`, listing the 128 GM names, and flag the handful worth trying on
-a piano piece. Better still, read the SoundFont's own preset names, since a
-SoundFont may not follow the GM map at all.
+**A guide to changing the sound**, in `docs/SOUNDS.md`: where `.sf2` files come
+from, why bigger is usually better, that `program` indexes into the font rather
+than into GM, and how to audition one in a couple of seconds.
 
-**Document adding other sounds.** Swapping instruments is really swapping
-SoundFonts, and nothing says so. A short guide: where to get `.sf2` files, that
-bigger usually means better sampled, that `program` indexes into whatever the
-font provides, and how to point `audio.soundfont` at a new one.
+**Borders on the note bars.** Repeated notes on one key drew as a single block.
+Each bar is now outlined in a darker shade of its own colour: an outline rather
+than a gap, because a gap eats into short notes that are only a few pixels tall
+at speed, and the bar's own hue rather than a neutral edge, because which hand
+is playing has to survive being drawn at the border. `visual.note_border` is a
+fraction of the frame width, since the right amount depends on the resolution,
+and it is capped so it can never swallow the bar it outlines.
 
-### Sound
+**Config presets.** `--preset small-hands`, `beginner`, `as-written`, `draft`.
+Overlays on top of the loaded config, with `psv presets` printing what each one
+sets. Precedence runs least specific to most: file, preset, then flags.
 
-**Better built-in tone.** The current synth is additive sine harmonics with an
-ADSR envelope. It is clearly synthetic. One short recorded piano sample per
-octave, pitch shifted, would sound far better for very little code.
+**Stereo, panned by register.** Low notes left, high notes right, as they sit
+under your hands. Equal-power law, so a note does not dip in volume crossing the
+middle. Not only prettier: it stops the hands competing for the same place in
+the mix, which is what makes a left-hand line audible under a busy right hand.
 
-**Stereo, with pan following register.** Low notes to the left, high notes to the
-right, as at the instrument.
-
-### Visuals
-
-**Config presets.** `--preset small-hands`, `--preset beginner`. Named bundles of
-settings that go together, so getting a sensible result does not require
-assembling a TOML file first.
-
-**Borders on the note bars, with a configurable size.** Repeated notes on the
-same key currently draw as one continuous bar. There is already a horizontal gap
-between adjacent *pitches*, so a chord reads as separate notes, but nothing
-separates consecutive notes in the same column: play the same key four times
-quickly and you see one long block and have to count it by ear. That defeats the
-point of the video.
-
-Two ways to fix it, and they are not exclusive. Trim a small amount off the
-bottom of every bar, the vertical twin of `BAR_GAP_RATIO`, so consecutive notes
-never touch. Or outline each bar in a darker shade of its own colour, which
-separates them and keeps the hand hue readable. The outline is probably the
-better default, since a gap eats into short notes that are already only a few
-pixels tall at speed.
-
-Either way the size wants to be configurable: the right amount depends on
-resolution and on how fast the piece is, and at 320 pixels wide a border that
-looks right at 1080p would swallow the bar entirely.
+### Still open
 
 **Note name labels.** Optional letters on the bars, useful when learning and
-clutter when not, so strictly opt-in.
+clutter when not, so strictly opt-in. Needs a small bitmap font, since the
+renderer deliberately loads nothing from the filesystem.
 
-**Bar numbers down the side.** Makes it possible to say "the bit at bar 31".
+**Bar numbers down the side.** Makes it possible to say "the bit at bar 31". The
+bar index exists now, so this is drawing rather than arithmetic, and it wants
+the same bitmap font as the labels above.
 
-**Opt-in visual effects.** Key-strike flashes, glow, particles. Off by default and
-never at the cost of readability; the spec is explicit that effects usually hurt.
+**Better built-in tone.** The current synth is additive sine harmonics with an
+ADSR envelope. One short recorded piano sample per octave, pitch shifted, would
+sound far better for very little code. Lower priority now that FluidSynth works
+and is documented.
 
-### Bigger things
+**Opt-in visual effects.** Key-strike flashes, glow, particles. Off by default
+and never at the cost of readability; the spec is explicit that effects usually
+hurt.
 
-**Better salience for arranging.** The current function is velocity, duration, and
-an outer-voice bonus. Real salience needs harmonic analysis: which notes are chord
-tones, which are passing, which carry the line. This is the largest single lever on
-arrangement quality, and it is one function with two call sites.
+**Better salience for arranging.** The current function is velocity, duration,
+and an outer-voice bonus. Real salience needs harmonic analysis: which notes are
+chord tones, which are passing, which carry the line. It is one function with
+two call sites, and the largest single lever on arrangement quality.
 
-**Fingering suggestions.** Genuinely hard, genuinely useful, and a project in its
-own right.
-
-**A live player instead of a video file.** A window that scrolls in real time, with
-pause, rewind, and loop-a-section. Better for practice than a video. `render_frame`
-is already a pure function of time, so the drawing code needs no changes: what is
-missing is a window and an event loop.
-
-**Speed, generally.** A 1080p60 render of a long piece takes minutes, and that is
-the single biggest thing standing between a change and seeing it. Worth a proper
-look rather than piecemeal tuning:
-
-- **Parallel frame rendering.** Frames are independent and `render_frame` is
-  pure, so this parallelises about as cleanly as anything ever does. Likely the
-  largest single win, and the obvious place to start.
-- **Profile before optimising anything else.** The per-frame cost is currently
-  assumed, not measured. Measure first, then decide.
-- **Draw only what changed.** The keyboard, lanes, and grid are identical across
-  most frames; only the falling bars move. Rendering the static parts once and
-  compositing could cut a lot of work.
-- **Consider the encoder settings.** Frames are handed to ffmpeg one at a time
-  and re-encoded at default quality; a faster preset may matter more than the
-  drawing does.
-
-Whatever it turns out to be, keep `render_frame` a pure function of the score and
-the time. The reference-image tests and the determinism guarantee both rest on
-it, and a speed-up that costs that is not worth having.
+**Speed, generally.** A 1080p60 render of a long piece takes minutes, and that
+is the single biggest thing standing between a change and seeing it. Frames are
+independent and `render_frame` is pure, so parallel rendering is the obvious
+first move; profile before anything else, because the per-frame cost is
+currently assumed rather than measured. Whatever it turns out to be, keep
+`render_frame` a pure function of the score and the time: the reference images
+and the determinism guarantee both rest on it.
 
 ### Explicitly not planned
 

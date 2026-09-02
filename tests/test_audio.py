@@ -22,7 +22,7 @@ from psv.audio import (
     synthesise,
     write_wav,
 )
-from psv.audio.backends import AudioError, mux_into_video
+from psv.audio.backends import AudioError, mux_into_video, pan_gains
 from psv.audio.click import click_wave, mix_clicks
 from psv.config import AudioConfig
 from psv.midi import read_midi
@@ -436,3 +436,67 @@ def test_a_click_entirely_before_the_buffer_is_dropped() -> None:
         silence, [Click(-5.0, accent=True)], start=0.0, sample_rate=SAMPLE_RATE
     )
     assert np.abs(mixed).max() == 0.0
+
+
+# -- stereo ---------------------------------------------------------------
+
+
+@pytest.mark.feature("F-60")
+def test_low_notes_sit_left_and_high_notes_sit_right() -> None:
+    """As they do under your hands. It is not only prettier: it stops the two
+    hands competing for the same place in the mix, which is what makes a
+    left-hand line audible underneath a busy right hand."""
+    low_left, low_right = pan_gains(30, 1.0)
+    high_left, high_right = pan_gains(100, 1.0)
+    assert low_left > low_right
+    assert high_right > high_left
+
+
+@pytest.mark.feature("F-60")
+def test_panning_holds_its_power_across_the_field() -> None:
+    """Equal power, not linear: a note must not dip in volume as it crosses the
+    middle."""
+    for pitch in (21, 40, 60, 80, 108):
+        left, right = pan_gains(pitch, 1.0)
+        assert left**2 + right**2 == pytest.approx(1.0, abs=1e-6)
+
+
+@pytest.mark.feature("F-60")
+def test_zero_width_puts_everything_in_the_centre() -> None:
+    for pitch in (21, 60, 108):
+        left, right = pan_gains(pitch, 0.0)
+        assert left == pytest.approx(right)
+
+
+@pytest.mark.feature("F-60")
+def test_stereo_synthesis_is_interleaved_and_twice_as_long() -> None:
+    """The same shape FluidSynth produces, so everything downstream handles one
+    layout rather than two."""
+    score = Score(parts=(Part(notes=(Note(pitch=30, start=0.0, end=1.0),)),))
+    mono = synthesise(score, duration=1.5)
+    stereo = synthesise(score, duration=1.5, stereo_width=1.0)
+
+    assert stereo.size == mono.size * 2
+    assert np.abs(stereo[0::2]).max() > np.abs(stereo[1::2]).max(), "a low note"
+
+
+@pytest.mark.feature("F-60")
+def test_the_builtin_backend_writes_a_stereo_file(tmp_path: Path) -> None:
+    score = Score(parts=(Part(notes=(Note(pitch=60, start=0.0, end=1.0),)),))
+    config = replace(AudioConfig(), stereo_width=0.6)
+    result = render_audio(score, config, tmp_path, duration=1.5)
+
+    assert result.path is not None
+    with wave.open(str(result.path)) as handle:
+        assert handle.getnchannels() == 2
+
+
+@pytest.mark.feature("F-60")
+def test_mono_stays_reachable(tmp_path: Path) -> None:
+    score = Score(parts=(Part(notes=(Note(pitch=60, start=0.0, end=1.0),)),))
+    config = replace(AudioConfig(), stereo_width=0.0)
+    result = render_audio(score, config, tmp_path, duration=1.5)
+
+    assert result.path is not None
+    with wave.open(str(result.path)) as handle:
+        assert handle.getnchannels() == 1

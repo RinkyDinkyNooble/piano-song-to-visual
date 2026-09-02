@@ -501,3 +501,11 @@ milestone = "M8"
 status = "done"
 verify = "e2e"
 uses = ["fixture:wide-span-chord", "fixture:single-note"]
+
+[[feature]]
+id = "F-60"
+name = "Stereo output with pan following register"
+milestone = "M8"
+status = "done"
+verify = "unit"
+uses = ["fixture:single-note"]

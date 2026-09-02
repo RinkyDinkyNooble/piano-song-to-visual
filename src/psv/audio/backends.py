@@ -27,7 +27,7 @@ import numpy as np
 
 from psv.audio.click import mix_clicks
 from psv.config import AudioConfig
-from psv.model import Pedal, Score
+from psv.model import HIGHEST_KEY, LOWEST_KEY, Pedal, Score
 from psv.practice import Click
 
 log = logging.getLogger(__name__)
@@ -124,14 +124,40 @@ def _release_end(note_end: float, spans: list[tuple[float, float]]) -> float:
     return note_end
 
 
+def pan_gains(pitch: int, width: float) -> tuple[float, float]:
+    """Left and right gain for a note, by where it sits on the keyboard.
+
+    Equal power rather than linear: the two gains square-sum to one, so a note
+    does not dip in volume as it crosses the middle of the field. ``width`` 0
+    puts everything in the centre and 1 sends the extremes hard left and right.
+    """
+    span = max(1, HIGHEST_KEY - LOWEST_KEY)
+    place = (pitch - LOWEST_KEY) / span * 2.0 - 1.0  # -1 low, +1 high
+    angle = (max(-1.0, min(1.0, place)) * width + 1.0) * 0.25 * np.pi
+    return float(np.cos(angle)), float(np.sin(angle))
+
+
 def synthesise(
-    score: Score, *, start: float = 0.0, duration: float | None = None
+    score: Score,
+    *,
+    start: float = 0.0,
+    duration: float | None = None,
+    stereo_width: float = 0.0,
 ) -> np.ndarray:
-    """Render the score to mono float32 samples in [-1, 1]."""
+    """Render the score to float32 samples in [-1, 1].
+
+    Mono by default. With ``stereo_width`` above zero the result is interleaved
+    stereo, panned by register: low notes to the left and high to the right, as
+    they sit under your hands at the instrument. That is not only prettier, it
+    stops the two hands competing for the same place in the mix, which is what
+    makes a left-hand line audible underneath a busy right hand.
+    """
     if duration is None:
         duration = max(0.0, score.duration - start) + TAIL_S
     total = max(1, int(duration * SAMPLE_RATE))
+    stereo = stereo_width > 0.0
     buffer = np.zeros(total, dtype=np.float32)
+    other = np.zeros(total, dtype=np.float32) if stereo else buffer
 
     spans = _sustain_spans(score)
     window_end = start + duration
@@ -157,13 +183,29 @@ def synthesise(
             wave_form += weight * np.sin(phase * index * time, dtype=np.float32)
 
         amplitude = (note.velocity / 127.0) ** 1.5
-        buffer[begin:finish] += wave_form * _envelope(length, held) * amplitude
+        voice = wave_form * _envelope(length, held) * amplitude
 
-    peak = float(np.max(np.abs(buffer))) if buffer.size else 0.0
+        if stereo:
+            gain_left, gain_right = pan_gains(note.pitch, stereo_width)
+            buffer[begin:finish] += voice * gain_left
+            other[begin:finish] += voice * gain_right
+        else:
+            buffer[begin:finish] += voice
+
+    if stereo:
+        # Interleaved, the same shape the FluidSynth backend produces, so
+        # everything downstream handles one layout rather than two.
+        out = np.empty(total * 2, dtype=np.float32)
+        out[0::2] = buffer
+        out[1::2] = other
+    else:
+        out = buffer
+
+    peak = float(np.max(np.abs(out))) if out.size else 0.0
     if peak > 0:
         # Normalise rather than clip: a dense chord otherwise turns to buzz.
-        buffer *= 0.89 / peak
-    return buffer
+        out *= 0.89 / peak
+    return out
 
 
 def write_wav(samples: np.ndarray, path: Path, channels: int = 1) -> Path:
@@ -309,12 +351,16 @@ def _builtin(
     duration: float | None,
     note: str,
     clicks: Sequence[Click] = (),
+    stereo_width: float = 0.0,
 ) -> AudioResult:
-    samples = synthesise(score, start=start, duration=duration)
-    samples = mix_clicks(
-        samples, clicks, start=start, sample_rate=SAMPLE_RATE, channels=1
+    samples = synthesise(
+        score, start=start, duration=duration, stereo_width=stereo_width
     )
-    path = write_wav(samples, out_dir / "psv-audio.wav")
+    channels = 2 if stereo_width > 0.0 else 1
+    samples = mix_clicks(
+        samples, clicks, start=start, sample_rate=SAMPLE_RATE, channels=channels
+    )
+    path = write_wav(samples, out_dir / "psv-audio.wav", channels=channels)
     return AudioResult(path=path, backend="builtin", note=note)
 
 
@@ -348,6 +394,7 @@ def render_audio(
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     backend = config.backend
+    width = config.stereo_width
 
     if backend == "none":
         return AudioResult(path=None, backend="none")
@@ -357,7 +404,7 @@ def render_audio(
             source = _mux_source(config, start, duration)
         except AudioError as exc:
             log.warning("%s; falling back to the built-in synth", exc)
-            return _builtin(score, out_dir, start, duration, str(exc), clicks)
+            return _builtin(score, out_dir, start, duration, str(exc), clicks, width)
         note = ""
         if clicks:
             note = "clicks cannot be mixed into an existing audio file"
@@ -368,7 +415,7 @@ def render_audio(
         available, why = fluidsynth_available(config.soundfont, config.fluidsynth_bin)
         if not available:
             log.warning("fluidsynth unavailable: %s; using the built-in synth", why)
-            return _builtin(score, out_dir, start, duration, why, clicks)
+            return _builtin(score, out_dir, start, duration, why, clicks, width)
         try:
             samples = synthesise_fluidsynth(
                 score,
@@ -379,14 +426,14 @@ def render_audio(
             )
         except (AudioError, OSError, RuntimeError) as exc:
             log.warning("fluidsynth failed: %s; using the built-in synth", exc)
-            return _builtin(score, out_dir, start, duration, str(exc), clicks)
+            return _builtin(score, out_dir, start, duration, str(exc), clicks, width)
         samples = mix_clicks(
             samples, clicks, start=start, sample_rate=SAMPLE_RATE, channels=2
         )
         path = write_wav(samples, out_dir / "psv-audio.wav", channels=2)
         return AudioResult(path=path, backend="fluidsynth")
 
-    return _builtin(score, out_dir, start, duration, "", clicks)
+    return _builtin(score, out_dir, start, duration, "", clicks, width)
 
 
 def mux_into_video(

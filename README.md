@@ -116,6 +116,22 @@ The last three lines are the useful ones: they tell you whether the file carries
 the dynamics and pedal data the visuals depend on, and whether it needs arranging
 at all.
 
+### Presets
+
+Named bundles, so a sensible result does not need a TOML file first:
+
+```bash
+psv run song.mid -o practice.mp4 --preset beginner
+psv presets                                  # what each one actually sets
+```
+
+`small-hands` (a 9-semitone reach), `beginner` (small hands, thinner texture,
+0.7x tempo, two bars of count-in), `as-written` (no span limit and no reduction:
+the piece as it really is), and `draft` (640x360, no audio, for iterating).
+
+Precedence runs least specific to most: the config file, then the preset, then
+the individual flags. `--preset small-hands --span 14` gives you 14.
+
 ### Practising with it
 
 A video of the piece at full speed, both hands, from the top, is not how anyone
@@ -186,7 +202,10 @@ falling-notes view the horizontal axis is pitch and the vertical axis is time, s
 ```toml
 [hands]
 max_span_semitones = 12   # hard limit on simultaneously held notes; 18 = 1.5 octaves
-                          # never relaxed, at any difficulty
+                          # never relaxed, at any difficulty.
+                          # 0 means no limit: the piece exactly as written,
+                          # which psv then says loudly rather than implying
+                          # it checked something
 
 [difficulty]
 level = "medium"          # note density, ornamentation, harmonic detail
@@ -204,6 +223,11 @@ pedal      = "#c8a44a"
 quiet = 0.35              # brightness at pp
 loud  = 1.0               # brightness at ff
 
+[visual]
+note_border = 0.0016      # outline on each bar, as a fraction of frame width.
+                          # This is what separates four fast repeats on one key
+                          # from one long block. 0 turns it off
+
 [visual.grid]
 pitch_lines = "octave"    # vertical rules at every C, for finding a key
 beat_lines  = "beat"      # horizontal rules on the beat, for spotting simultaneity
@@ -216,6 +240,7 @@ lanes = 1                 # up to 3; sustain is the one MIDI reliably carries
 backend = "builtin"       # builtin | fluidsynth | mux | none
 audio_file = ""           # for backend = "mux": your own recording
 offset_s = 0.0            # nudge that recording into sync
+stereo_width = 0.5        # low notes left, high notes right, as at the keyboard
 
 [practice]               # how the finished arrangement is presented
 tempo = 1.0              # 0.75 renders at three-quarters speed
@@ -232,8 +257,8 @@ place, obviously synthetic. For a sampled instrument, point at a SoundFont:
 ```toml
 [audio]
 backend = "fluidsynth"
-soundfont = "C:/path/to/GeneralUser-GS.sf2"
-fluidsynth_bin = "C:/path/to/fluidsynth/bin"   # folder holding the DLL
+soundfont = "~/.local/fluidsynth/GeneralUser-GS.sf2"
+fluidsynth_bin = "~/.local/fluidsynth/bin"      # folder holding the DLL
 program = 0    # 0 grand, 1 bright, 4 Rhodes, 5 FM electric, 6 harpsichord
 ```
 
@@ -243,6 +268,12 @@ binaries matching your Python's architecture, and any `.sf2` SoundFont
 30 MB starting point). `fluidsynth_bin` exists so you do not have to put the
 library on your `PATH`. If anything is missing, the render falls back to the
 built-in synth and says which piece it could not find.
+
+`psv instruments` lists what `audio.program` can select, reading the SoundFont's
+own preset names where one is configured: General MIDI is a convention, and a
+font may put anything at any number. [docs/SOUNDS.md](docs/SOUNDS.md) covers
+where SoundFonts come from, why bigger is usually better, and how to audition
+one in a couple of seconds.
 
 ## Tests
 
