@@ -488,3 +488,71 @@ def test_an_unreadable_soundfont_falls_back_to_general_midi(
     captured = capsys.readouterr()
     assert "could not read" in captured.err
     assert "Acoustic Grand Piano" in captured.out
+
+
+# -- presets -------------------------------------------------------------
+
+
+@pytest.mark.feature("F-59")
+def test_presets_describes_what_each_one_changes(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A preset you have to render something to understand is not a shortcut."""
+    assert main(["presets"]) == 0
+    out = capsys.readouterr().out
+    assert "small-hands" in out
+    assert "hands.max_span_semitones = 9" in out
+
+
+@pytest.mark.feature("F-59")
+def test_a_preset_changes_the_settings_it_names(
+    midi_path: Callable[[str], Path], tmp_path: Path
+) -> None:
+    from psv.constraints import verify_span
+
+    output = tmp_path / "small.mid"
+    assert (
+        main(
+            [
+                "--preset",
+                "small-hands",
+                "constrain",
+                str(midi_path("wide-span-chord")),
+                "-o",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert verify_span(read_midi_file(output), 9) == []
+
+
+@pytest.mark.feature("F-59")
+def test_a_flag_beats_a_preset(
+    midi_path: Callable[[str], Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Least specific to most: the config file, then the preset, then the flag."""
+    output = tmp_path / "out.mid"
+    assert (
+        main(
+            [
+                "--preset",
+                "small-hands",
+                "constrain",
+                str(midi_path("wide-span-chord")),
+                "-o",
+                str(output),
+                "--span",
+                "0",
+            ]
+        )
+        == 0
+    )
+    assert "span not enforced" in capsys.readouterr().out
+
+
+@pytest.mark.feature("F-59")
+def test_an_unknown_preset_is_a_usage_error(midi_path: Callable[[str], Path]) -> None:
+    with pytest.raises(SystemExit) as exc:
+        main(["--preset", "nonsense", "inspect", str(midi_path("single-note"))])
+    assert exc.value.code == 2

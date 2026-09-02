@@ -15,7 +15,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from psv.config import Config, VisualConfig
+from psv.config import Config, GridConfig, VisualConfig
 from psv.midi import read_midi
 from psv.model import Hand, Note, Part, Score
 from psv.render.color import parse_hex
@@ -377,3 +377,99 @@ def test_focusing_stays_a_pure_function_of_its_inputs() -> None:
     first = render_frame(score, SMALL, 1.5, focus=Hand.LEFT)
     second = render_frame(score, SMALL, 1.5, focus=Hand.LEFT)
     assert np.array_equal(first, second)
+
+
+# -- borders on the note bars --------------------------------------------
+
+
+def repeated_note_score(count: int = 6, length: float = 0.25) -> Score:
+    """The same key struck several times in a row, with no gap between."""
+    return Score(
+        parts=(
+            Part(
+                notes=tuple(
+                    Note(
+                        pitch=60,
+                        start=index * length,
+                        end=index * length + length,
+                        velocity=90,
+                        hand=Hand.RIGHT,
+                    )
+                    for index in range(count)
+                )
+            ),
+        )
+    )
+
+
+#: The border tests read raw pixel values down one column, so the grid has to be
+#: off: a faint rule crossing the bar is a third shade that has nothing to do
+#: with what is being measured.
+NO_GRID = GridConfig(pitch_lines="none", beat_lines="none", opacity=0.0)
+
+
+def _bar_column(frame: np.ndarray, pitch: int, config: VisualConfig) -> np.ndarray:
+    """The pixels straight down the middle of one pitch's falling bar."""
+    layout = Layout.from_config(config)
+    geometry = KeyboardGeometry(
+        width=layout.keyboard_width,
+        height=layout.height - layout.keyboard_top,
+        black_bar_ratio=config.black_key_bar_width,
+    )
+    left, right = geometry.bar_span(pitch)
+    column = round((left + right) / 2)
+    return frame[: layout.keyboard_top, column]
+
+
+@pytest.mark.feature("F-58")
+def test_repeated_notes_on_one_key_are_separated() -> None:
+    """Without this they draw as one continuous block: there is already a gap
+    between adjacent pitches, so a chord reads as separate notes, but nothing
+    separated consecutive notes in the same column. Six fast repeats looked like
+    one long note, which defeats the point of the video."""
+    score = repeated_note_score()
+    config = small_config(width=560, height=360, note_border=0.0016, grid=NO_GRID)
+
+    column = _bar_column(render_frame(score, config, 0.0, pedal_lanes=0), 60, config)
+    shades = {tuple(pixel) for pixel in column}
+    assert len(shades) >= 3, "bar colour, border colour, and background"
+
+
+@pytest.mark.feature("F-58")
+def test_a_border_of_zero_leaves_the_bar_solid() -> None:
+    """Off means off. The old picture has to remain reachable."""
+    score = repeated_note_score()
+    config = small_config(width=560, height=360, note_border=0.0, grid=NO_GRID)
+
+    column = _bar_column(render_frame(score, config, 0.0, pedal_lanes=0), 60, config)
+    lit = {tuple(p) for p in column if tuple(p) != (16, 16, 16)}
+    assert len(lit) == 1, "one bar colour and nothing else"
+
+
+@pytest.mark.feature("F-58")
+def test_a_border_never_swallows_a_short_bar() -> None:
+    """A short note at speed is a few pixels tall. An outline that consumed it
+    would cost exactly the thing the outline is for."""
+    score = repeated_note_score(count=40, length=0.03)
+    config = small_config(width=320, height=180, note_border=0.02, grid=NO_GRID)
+
+    column = _bar_column(render_frame(score, config, 0.0, pedal_lanes=0), 60, config)
+    background = tuple(parse_hex(config.background))
+    assert any(tuple(pixel) != background for pixel in column), "notes still drawn"
+
+
+@pytest.mark.feature("F-58")
+def test_the_border_keeps_the_hand_hue() -> None:
+    """A darker shade of the bar's own colour, not a neutral outline: which hand
+    is playing has to survive being drawn at the edge."""
+    from psv.render.color import scale
+    from psv.render.frame import BORDER_DARKENING
+
+    score = repeated_note_score()
+    config = small_config(width=560, height=360, note_border=0.0016, grid=NO_GRID)
+    column = _bar_column(render_frame(score, config, 0.0, pedal_lanes=0), 60, config)
+
+    background = tuple(parse_hex(config.background))
+    lit = [tuple(p) for p in column if tuple(p) != background]
+    brightest = max(lit, key=lambda pixel: sum(int(c) for c in pixel))
+    assert scale(brightest, 1.0 - BORDER_DARKENING) in lit

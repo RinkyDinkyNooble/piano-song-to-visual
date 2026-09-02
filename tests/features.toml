@@ -485,3 +485,19 @@ milestone = "M8"
 status = "done"
 verify = "e2e"
 uses = ["soundfont:named-presets", "soundfont:not-a-soundfont"]
+
+[[feature]]
+id = "F-58"
+name = "Configurable borders separate repeated notes on one key"
+milestone = "M8"
+status = "done"
+verify = "visual"
+uses = ["fixture:two-hands"]
+
+[[feature]]
+id = "F-59"
+name = "Named config presets, overridable by flags"
+milestone = "M8"
+status = "done"
+verify = "e2e"
+uses = ["fixture:wide-span-chord", "fixture:single-note"]

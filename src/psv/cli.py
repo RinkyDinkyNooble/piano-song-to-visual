@@ -33,6 +33,7 @@ from psv.midi import read_midi_file, write_midi_file
 from psv.midi.read import MidiReadError
 from psv.pipeline import run as run_pipeline
 from psv.practice import prepare
+from psv.presets import DESCRIPTIONS, PRESETS, apply_preset
 from psv.render.video import TAIL_S, VideoWriteError, render_video
 
 log = logging.getLogger("psv")
@@ -52,6 +53,7 @@ IMPLEMENTED = frozenset({"inspect", "export", "arrange", "constrain", "render", 
 #: Commands that answer a question instead of moving a file through a stage.
 UTILITY_COMMANDS: dict[str, str] = {
     "instruments": "list the instruments audio.program can select",
+    "presets": "describe the named setting bundles --preset accepts",
 }
 
 
@@ -83,6 +85,13 @@ def _global_options(suppress: bool) -> argparse.ArgumentParser:
         type=Path,
         default=argparse.SUPPRESS if suppress else None,
         help="path to a psv config file (TOML)",
+    )
+    parent.add_argument(
+        "-p",
+        "--preset",
+        choices=sorted(PRESETS),
+        default=argparse.SUPPRESS if suppress else None,
+        help="a named bundle of settings; `psv presets` describes each one",
     )
     return parent
 
@@ -334,6 +343,18 @@ def _check_window_flags(args: argparse.Namespace) -> None:
         raise ConfigError(f"--bars cannot be combined with {' or '.join(clashes)}")
 
 
+def _cmd_presets(args: argparse.Namespace, config: Config) -> int:
+    """What each preset does, without having to render something to find out."""
+    del args, config
+    width = max(len(name) for name in PRESETS)
+    for name in sorted(PRESETS):
+        print(f"  {name:{width}}  {DESCRIPTIONS[name]}")
+        for section, fields in sorted(PRESETS[name].items()):
+            for key, value in sorted(fields.items()):
+                print(f"  {'':{width}}    {section}.{key} = {value!r}")
+    return 0
+
+
 def _hands_with_overrides(config: Config, args: argparse.Namespace) -> Config:
     """`--span` beats hands.max_span_semitones, as the size overrides do."""
     span = getattr(args, "span", None)
@@ -447,6 +468,7 @@ HANDLERS: dict[str, Callable[[argparse.Namespace, Config], int]] = {
     "render": _cmd_render,
     "run": _cmd_run,
     "instruments": _cmd_instruments,
+    "presets": _cmd_presets,
 }
 
 
@@ -464,7 +486,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         # Loaded first, so a bad config fails before any work is done.
-        config = _hands_with_overrides(Config.load(args.config), args)
+        # Least specific to most: the file, then the preset, then the flags.
+        config = Config.load(args.config)
+        if args.preset is not None:
+            config = apply_preset(config, args.preset)
+        config = _hands_with_overrides(config, args)
         return HANDLERS[args.command](args, config)
     except (
         ConfigError,

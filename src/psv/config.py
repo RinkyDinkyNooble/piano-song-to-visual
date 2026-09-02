@@ -168,6 +168,16 @@ class VisualConfig:
     #: How much darker a black-key bar is drawn, on top of its colour.
     black_key_darkening: float = 0.2
     background: str = "#101010"
+    #: Outline drawn around each note bar, as a fraction of the frame width.
+    #: Repeated notes on one key otherwise draw as a single block: there is
+    #: already a horizontal gap between adjacent *pitches*, so a chord reads as
+    #: separate notes, but nothing separates consecutive notes in the same
+    #: column, and four fast repeats look like one long note.
+    #:
+    #: A fraction rather than pixels because the right amount depends on the
+    #: resolution. At 320 wide, a border that looks right at 1080p swallows the
+    #: bar. 0 turns it off.
+    note_border: float = 0.0016
     colors: ColorConfig = field(default_factory=ColorConfig)
     grid: GridConfig = field(default_factory=GridConfig)
 
@@ -188,6 +198,10 @@ class VisualConfig:
             raise ConfigError(
                 "visual.black_key_bar_width must be greater than 0 and at most 1, "
                 f"got {self.black_key_bar_width}"
+            )
+        if not 0.0 <= self.note_border <= 0.02:
+            raise ConfigError(
+                f"visual.note_border must be between 0 and 0.02, got {self.note_border}"
             )
         if not 0.0 <= self.black_key_darkening <= 1.0:
             raise ConfigError(

@@ -31,6 +31,7 @@ from psv.render.color import (
     note_color,
     parse_hex,
     pedal_color,
+    scale,
 )
 from psv.render.geometry import KeyboardGeometry
 
@@ -45,6 +46,15 @@ PEDAL_LANE_FRACTION = 0.028
 
 #: Gap between the keyboard and the pedal lanes, as a fraction of the frame.
 PEDAL_GUTTER_FRACTION = 0.008
+
+#: How much darker a note bar's outline is than the bar itself. Dark enough to
+#: read as an edge, still the bar's own hue, so which hand is playing survives.
+BORDER_DARKENING = 0.45
+
+#: A border may take at most this fraction of a bar's width or height. A short
+#: note at speed is only a few pixels tall, and an outline that swallowed it
+#: would cost exactly the thing the outline is for.
+BORDER_MAX_SHARE = 0.34
 
 #: How much of its own colour a note keeps when the other hand has the focus.
 #: Faint enough to read past, strong enough to still say which hand and how
@@ -306,9 +316,58 @@ def _draw_falling_notes(
             continue
 
         left, right = geometry.bar_span(note.pitch)
-        _fill(frame, left, top, right, min(bottom, layout.keyboard_top), colour)
+        _draw_bar(
+            frame,
+            left,
+            top,
+            right,
+            min(bottom, layout.keyboard_top),
+            colour,
+            border=round(config.width * config.note_border),
+        )
 
     return sounding
+
+
+def _draw_bar(
+    frame: Frame,
+    left: float,
+    top: float,
+    right: float,
+    bottom: float,
+    colour: RGB,
+    border: int,
+) -> None:
+    """One note bar, outlined in a darker shade of its own colour.
+
+    The outline is what separates consecutive notes on the same key. Drawn
+    inside the bar rather than around it, so a note still occupies exactly the
+    pixels its timing says it does and the bar's bottom edge stays on the
+    keyboard at the moment the note starts.
+    """
+    if border <= 0:
+        _fill(frame, left, top, right, bottom, colour)
+        return
+
+    # Never let the outline eat the bar it is outlining.
+    thickness = min(
+        border,
+        int((right - left) * BORDER_MAX_SHARE),
+        int((bottom - top) * BORDER_MAX_SHARE),
+    )
+    if thickness <= 0:
+        _fill(frame, left, top, right, bottom, colour)
+        return
+
+    _fill(frame, left, top, right, bottom, scale(colour, 1.0 - BORDER_DARKENING))
+    _fill(
+        frame,
+        left + thickness,
+        top + thickness,
+        right - thickness,
+        bottom - thickness,
+        colour,
+    )
 
 
 # -- pedals --------------------------------------------------------------
