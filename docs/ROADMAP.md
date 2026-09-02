@@ -549,28 +549,42 @@ get back a piano arrangement you can learn.
 tested: reduction to two hands, the guaranteed hand span, difficulty, the video.
 The only missing stage is the first one, turning audio into note data.
 
-### The approach
+Planned in full in [COMPOSER.md](COMPOSER.md). The short version:
 
-**Use an existing transcription model. Do not train one.** Training an
-audio-to-MIDI model needs a large aligned audio-and-MIDI corpus and serious
-compute, and the published models are already close to the state of the art. The
-work here is choosing and wiring one up, not inventing one.
+**Ease of installation decides the design, above transcription quality.** A tool
+nobody can install transcribes nothing. Measured on this machine, on Python 3.14:
+`onnxruntime` resolves to six wheels with no build step, while the `basic-pitch`
+package has no wheel at all and its sdist build fails outright. So the tool
+depends on ONNX Runtime and on model authors' exported `.onnx` weights, never on
+their packages, which come pinned to a particular TensorFlow or PyTorch and a
+narrow Python range.
 
-Candidates, by what the source is:
+**The audio front end is ffmpeg, which ships already.** `imageio-ffmpeg` is
+required for video output and the same binary decodes any container to the exact
+array a model wants, which keeps `librosa` and its numba stack out entirely. Net
+new dependency for the whole feature: `onnxruntime`.
 
-| Source | Model | Why |
-| --- | --- | --- |
-| Solo piano recording | ByteDance high-resolution piano transcription | Best onsets and offsets by a distance, and the only one that also **detects the sustain pedal** |
-| Anything else | Spotify `basic-pitch` | General polyphonic, permissive licence, ONNX, runs on CPU in seconds |
-| Multi-instrument, best quality | Google MT3 or MR-MT3 | Transcribes several instruments to separate tracks, which is exactly what `arrange` wants. Heavy: needs a GPU to be pleasant |
+**It lives here, as an optional extra**, rather than in the separate
+`psv-transcribe` package the earlier sketch proposed. Ease of use is the
+governing constraint, and a separate package means two installs and a manual
+hand-off; an extra means `psv run song.mp3` does the whole job. What the split
+was protecting is protected by the extra instead: someone who already has MIDI
+installs nothing new, and the ONNX import stays inside the backend.
 
-Recommendation: start with `basic-pitch` because it is small, permissive, and
-CPU-only, and add the ByteDance model for piano sources, since the pedal data it
-recovers is worth having and nothing else provides it. Treat MT3 as a later
-upgrade rather than a starting point.
+**Weights are fetched and hash-verified, never committed and never downloaded
+silently**, reusing the manifest-and-SHA-256 pattern `scripts/fetch_test_songs.py`
+already uses for the CC BY-SA songs.
 
-For `.mp4` and other containers, ffmpeg is already a dependency and can extract
-the audio track, so video files need no extra machinery.
+**Ground truth is free here**, which is unusual for transcription: the tool
+already contains a synthesiser, so a committed MIDI fixture can be rendered to
+audio, transcribed, and scored against the notes that produced it. Synthesised
+audio flatters a model, so that is a regression test rather than a benchmark.
+
+**The one genuine unknown** is whether the CQT and harmonic stacking live inside
+the exported model graph or in the Python that was left behind. It is half an
+hour to answer by loading the weights and printing the input signature, and the
+estimate for the work after it is worthless until it is answered. That spike
+comes before anything is committed to.
 
 ### The honest limit
 
@@ -580,19 +594,10 @@ well. A dense orchestral mix, or anything with drums and distorted guitars, does
 not: you get approximately the right notes, plus spurious ones, minus quiet ones.
 What comes out is a starting point to correct by hand, not a finished score.
 
-This is precisely why MIDI stayed the input format for the main tool, and why
-this belongs in its own stage with its own honest reporting rather than being
-folded silently into `run`.
-
-### Where it should live
-
-A separate package, `psv-transcribe`, or an optional extra here. Keeping it apart
-means the machine-learning dependency stack stays out of the main tool: `psv`
-currently installs in seconds and its CI runs in under twenty, and neither should
-change for people who already have MIDI.
-
-The seam is a file. The transcriber emits MIDI; `psv` reads MIDI. Nothing else
-needs to couple.
+Every stage reads and writes MIDI, so correcting it by hand and picking up from
+`arrange` is the intended workflow rather than a consolation. This is why MIDI
+stays the main tool's input, and why transcription is its own command rather than
+being folded silently into `run`.
 
 ---
 
