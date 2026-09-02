@@ -156,8 +156,11 @@ def synthesise(
         duration = max(0.0, score.duration - start) + TAIL_S
     total = max(1, int(duration * SAMPLE_RATE))
     stereo = stereo_width > 0.0
-    buffer = np.zeros(total, dtype=np.float32)
-    other = np.zeros(total, dtype=np.float32) if stereo else buffer
+    left = np.zeros(total, dtype=np.float32)
+    # A separate array only when there is a second channel to fill. Kept None
+    # rather than aliased to `left`, so a write outside the stereo branch fails
+    # loudly instead of silently doubling into the mono buffer.
+    right = np.zeros(total, dtype=np.float32) if stereo else None
 
     spans = _sustain_spans(score)
     window_end = start + duration
@@ -185,21 +188,21 @@ def synthesise(
         amplitude = (note.velocity / 127.0) ** 1.5
         voice = wave_form * _envelope(length, held) * amplitude
 
-        if stereo:
+        if right is not None:
             gain_left, gain_right = pan_gains(note.pitch, stereo_width)
-            buffer[begin:finish] += voice * gain_left
-            other[begin:finish] += voice * gain_right
+            left[begin:finish] += voice * gain_left
+            right[begin:finish] += voice * gain_right
         else:
-            buffer[begin:finish] += voice
+            left[begin:finish] += voice
 
-    if stereo:
+    if right is not None:
         # Interleaved, the same shape the FluidSynth backend produces, so
         # everything downstream handles one layout rather than two.
         out = np.empty(total * 2, dtype=np.float32)
-        out[0::2] = buffer
-        out[1::2] = other
+        out[0::2] = left
+        out[1::2] = right
     else:
-        out = buffer
+        out = left
 
     peak = float(np.max(np.abs(out))) if out.size else 0.0
     if peak > 0:

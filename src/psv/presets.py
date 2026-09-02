@@ -29,6 +29,9 @@ PRESETS: dict[str, dict[str, dict[str, Any]]] = {
         "practice": {"tempo": 0.7, "count_in_bars": 2},
         "visual": {"note_border": 0.0022},
     },
+    # Arrangement still reduces a multi-instrument score to two hands, because
+    # two hands is the whole premise. This turns off the two things that are
+    # optional: the span limit and difficulty thinning.
     "as-written": {
         "hands": {"max_span_semitones": 0},
         "difficulty": {"level": "original"},
@@ -43,7 +46,7 @@ PRESETS: dict[str, dict[str, dict[str, Any]]] = {
 DESCRIPTIONS: dict[str, str] = {
     "small-hands": "a 9-semitone reach instead of 12",
     "beginner": "small hands, thinner texture, 0.7x tempo, two bars of count-in",
-    "as-written": "no span limit and no reduction: the piece as it really is",
+    "as-written": "no span limit and nothing thinned for difficulty",
     "draft": "640x360 at 24fps with no audio, for iterating on visuals",
 }
 

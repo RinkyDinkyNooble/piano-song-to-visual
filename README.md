@@ -126,8 +126,12 @@ psv presets                                  # what each one actually sets
 ```
 
 `small-hands` (a 9-semitone reach), `beginner` (small hands, thinner texture,
-0.7x tempo, two bars of count-in), `as-written` (no span limit and no reduction:
-the piece as it really is), and `draft` (640x360, no audio, for iterating).
+0.7x tempo, two bars of count-in), `as-written` (no span limit and nothing
+thinned for difficulty), and `draft` (640x360, no audio, for iterating).
+
+`as-written` still reduces a multi-instrument score to two hands, because two
+hands is the premise. What it turns off is the span limit and difficulty
+thinning.
 
 Precedence runs least specific to most: the config file, then the preset, then
 the individual flags. `--preset small-hands --span 14` gives you 14.

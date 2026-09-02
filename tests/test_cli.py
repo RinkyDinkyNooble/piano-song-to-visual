@@ -556,3 +556,46 @@ def test_an_unknown_preset_is_a_usage_error(midi_path: Callable[[str], Path]) ->
     with pytest.raises(SystemExit) as exc:
         main(["--preset", "nonsense", "inspect", str(midi_path("single-note"))])
     assert exc.value.code == 2
+
+
+@pytest.mark.feature("F-59")
+def test_every_preset_applies_cleanly() -> None:
+    """PRESETS names config sections and fields as plain strings, so a typo is
+    invisible to mypy and only shows up when someone runs that preset. Only
+    `small-hands` is exercised above; this covers the rest."""
+    from psv.config import Config
+    from psv.presets import DESCRIPTIONS, PRESETS, apply_preset
+
+    base = Config.load(None)
+    for name in PRESETS:
+        applied = apply_preset(base, name)
+        applied.validate()
+        assert applied != base, f"preset {name!r} changed nothing"
+
+    assert set(DESCRIPTIONS) == set(PRESETS), "every preset needs a description"
+
+
+@pytest.mark.feature("F-59")
+def test_an_unknown_preset_names_the_real_ones() -> None:
+    from psv.config import Config, ConfigError
+    from psv.presets import apply_preset
+
+    with pytest.raises(ConfigError, match="small-hands"):
+        apply_preset(Config.load(None), "nonsense")
+
+
+@pytest.mark.feature("F-57")
+def test_control_characters_are_stripped_from_preset_names(tmp_path: Path) -> None:
+    """Preset names come from an untrusted file and go straight to a terminal.
+    An escape sequence could recolour it and a carriage return could overwrite
+    the line above, hiding an entry."""
+    from psv.instruments import soundfont_presets
+    from tests.fixtures.soundfont_builder import minimal_soundfont
+
+    font = tmp_path / "evil.sf2"
+    font.write_bytes(minimal_soundfont([(0, 0, "\x1b[31mRED\x1b[0m\rHIDDEN")]))
+
+    name = soundfont_presets(font)[0].name
+    assert "\x1b" not in name
+    assert "\r" not in name
+    assert "RED" in name

@@ -297,6 +297,9 @@ def _draw_falling_notes(
     """
     window_end = time + layout.lookahead_s
     sounding: dict[int, RGB] = {}
+    # Frame-invariant, and this loop runs per note per frame: about 14,400
+    # frames for a four-minute 1080p60 render.
+    border = round(config.width * config.note_border)
 
     for note in score.notes_between(time, window_end):
         if not geometry.contains(note.pitch):
@@ -323,7 +326,7 @@ def _draw_falling_notes(
             right,
             min(bottom, layout.keyboard_top),
             colour,
-            border=round(config.width * config.note_border),
+            border=border,
         )
 
     return sounding

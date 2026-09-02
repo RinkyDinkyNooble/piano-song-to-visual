@@ -11,6 +11,8 @@ names inside the file are what will actually sound.
 
 from __future__ import annotations
 
+import mmap
+import re
 import struct
 from dataclasses import dataclass
 from pathlib import Path
@@ -168,6 +170,10 @@ _PHDR_RECORD = 38
 #: Refuse to walk a file claiming more presets than any real SoundFont has.
 _MAX_PRESETS = 8192
 
+#: Preset names come out of an untrusted file and end up on a terminal, so
+#: anything that could move the cursor or change the colour is stripped.
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
 
 class SoundFontError(ValueError):
     """A SoundFont could not be read far enough to list its presets."""
@@ -202,10 +208,21 @@ def soundfont_presets(path: Path | str) -> list[Preset]:
     Only the `phdr` chunk is read. Everything else in a SoundFont is sample
     data, which is FluidSynth's business rather than this module's.
     """
-    data = Path(path).expanduser().read_bytes()
-    if len(data) < 12 or data[:4] != b"RIFF" or data[8:12] != b"sfbk":
-        raise SoundFontError(f"not a SoundFont: {path}")
+    source = Path(path).expanduser()
+    with source.open("rb") as handle:
+        if source.stat().st_size < 12:
+            raise SoundFontError(f"not a SoundFont: {path}")
+        # Mapped rather than read: a well-regarded piano font runs to a gigabyte
+        # and the preset names sit in a chunk near the front, so there is no
+        # reason to hold the samples in memory to read them. Every access below
+        # is still bounds-checked against the real length.
+        with mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ) as data:
+            if data[:4] != b"RIFF" or data[8:12] != b"sfbk":
+                raise SoundFontError(f"not a SoundFont: {path}")
+            return _read_presets(data, path)
 
+
+def _read_presets(data: mmap.mmap, path: Path | str) -> list[Preset]:
     phdr = _find_phdr(data)
     if phdr is None:
         raise SoundFontError(f"no preset list in {path}")
@@ -219,7 +236,7 @@ def soundfont_presets(path: Path | str) -> list[Preset]:
     for index in range(count):
         offset = start + index * _PHDR_RECORD
         raw_name, program, bank = struct.unpack_from("<20sHH", data, offset)
-        name = raw_name.split(b"\0", 1)[0].decode("latin-1").strip()
+        name = clean_name(raw_name)
         # The last record is a terminator named EOP and is not a real preset.
         if name == "EOP":
             break
@@ -227,7 +244,19 @@ def soundfont_presets(path: Path | str) -> list[Preset]:
     return sorted(presets)
 
 
-def _find_phdr(data: bytes) -> tuple[int, int] | None:
+def clean_name(raw: bytes) -> str:
+    """Decode a preset name and make it safe to print.
+
+    The bytes come from an untrusted file and go straight to a terminal, so an
+    escape sequence in a name could recolour the output, or a carriage return
+    could overwrite the line above and hide an entry. Neither belongs in the
+    name of an instrument.
+    """
+    text = raw.split(b"\0", 1)[0].decode("latin-1")
+    return _CONTROL.sub("", text).strip()
+
+
+def _find_phdr(data: mmap.mmap) -> tuple[int, int] | None:
     """Walk the RIFF chunks to the preset header, checking every length.
 
     Structure is RIFF/sfbk containing LIST chunks, one of which is `pdta`, which
@@ -241,7 +270,9 @@ def _find_phdr(data: bytes) -> tuple[int, int] | None:
         tag = data[position : position + 4]
         (size,) = struct.unpack_from("<I", data, position + 4)
         body = position + 8
-        if size < 0 or body + size > end:
+        # `<I` is unsigned, so the only way a chunk can be wrong is by claiming
+        # more bytes than the file holds.
+        if body + size > end:
             raise SoundFontError("chunk runs past the end of the file")
 
         if tag == b"LIST" and data[body : body + 4] == b"pdta":

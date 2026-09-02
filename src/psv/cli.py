@@ -285,12 +285,6 @@ def _cmd_render(args: argparse.Namespace, config: Config) -> int:
         tail=TAIL_S,
     )
 
-    show_progress = args.verbose > 0 and sys.stderr.isatty()
-
-    def on_frame(done: int, total: int) -> None:
-        if show_progress and (done % 30 == 0 or done == total):
-            print(f"\r  frame {done}/{total}", end="", file=sys.stderr)
-
     path = render_video(
         show.score,
         visual,
@@ -299,9 +293,9 @@ def _cmd_render(args: argparse.Namespace, config: Config) -> int:
         duration=show.duration,
         pedal_lanes=config.pedals.lanes,
         focus=show.focus,
-        on_frame=on_frame,
+        on_frame=_progress(args),
     )
-    if show_progress:
+    if args.verbose > 0 and sys.stderr.isatty():
         print(file=sys.stderr)
     if show.label:
         print(f"  practice         {show.label}")
@@ -380,16 +374,19 @@ def _cmd_instruments(args: argparse.Namespace, config: Config) -> int:
             print(f"psv: could not read {font}: {exc}", file=sys.stderr)
             print("falling back to the General MIDI names\n", file=sys.stderr)
         else:
-            print(f"{Path(font).name}: {len(presets)} preset(s)")
-            for preset in presets:
-                if preset.bank and not args.verbose:
-                    continue  # bank 0 is the GM set; the rest need -v
+            # Bank 0 is the General MIDI set. The variation banks are
+            # usually the bulk of a font and rarely what someone is
+            # looking for, so they sit behind -v.
+            shown = [p for p in presets if not p.bank or args.verbose]
+            hidden = len(presets) - len(shown)
+            print(f"{Path(font).name}: {len(shown)} preset(s)")
+            for preset in shown:
                 label = f"  {preset.program:3}"
                 if preset.bank:
                     label += f"  bank {preset.bank:3}"
                 print(f"{label}  {preset.name}")
-            if not args.verbose and any(p.bank for p in presets):
-                print("\n-v also lists the variation banks")
+            if hidden:
+                print(f"\n{hidden} more in variation banks; -v lists them too")
             return 0
 
     for program, name in enumerate(GM_PROGRAMS):
