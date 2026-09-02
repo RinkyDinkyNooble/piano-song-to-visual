@@ -35,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The CodeQL workflow is back. It was removed because code scanning
+  cannot be enabled on a private repository without Advanced Security;
+  the repository is public now, so it has somewhere to report to.
 - `--start` now defaults to unset rather than 0, so `--bars` can tell whether it
   was given. Combining `--bars` with `--start` or `--seconds` is an error: they
   are two ways of saying the same thing.

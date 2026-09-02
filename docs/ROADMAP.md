@@ -21,7 +21,7 @@ least-certain work happens last, on top of foundations that are already proven.
 ## M0 - Foundations (done)
 
 Packaging, linting, strict typing, tests, CI across three OSes and three Python
-versions, Dependabot, issue/PR templates, 0BSD licence, architecture doc.
+versions, CodeQL, Dependabot, issue/PR templates, 0BSD licence, architecture doc.
 
 **Exit criteria:** `ruff check`, `ruff format --check`, `mypy --strict`, `pytest`, and
 `python -m build` all pass locally and in CI. *(Verified.)*
@@ -309,7 +309,7 @@ render over a soundtrack would be the wrong trade for a practice tool.
 Eight workflow logs were captured from GitHub Actions. Every failure traced back
 to one of three causes, none of them a fault in `psv` itself: two were defects in
 this repo's own test setup, and the third was a workflow asking for something a
-free personal account cannot provide.
+private repository on a free account cannot give it.
 
 ### 1. Fixed: `FORCE_COLOR: 1` broke the CLI help assertion on Python 3.14
 
@@ -361,20 +361,20 @@ the thing that confirms it.
 Worth keeping `filterwarnings = ["error"]` rather than relaxing it. It caught a
 real leak that would otherwise have gone unnoticed.
 
-### 3. Fixed by removal: the CodeQL workflow is gone
+### 3. Fixed by going public: CodeQL had nowhere to upload its results
 
-CodeQL could not upload its results because code scanning is not enabled on the
-repository, and it cannot be: GitHub gives code scanning away on *public*
+Code scanning was not enabled on the repository, and while the repository was
+private it could not be: GitHub gives code scanning away on *public*
 repositories, and on a private one it needs Advanced Security, which is an
-organisation product. On a personal free account there is no setting to turn on.
+organisation product. There was no setting on a personal free account to turn
+on, so the workflow was deleted rather than left warning on every push about
+something nobody could act on.
 
-So the workflow is deleted rather than left to warn on every push about something
-nobody can act on. If this repository is ever made public, adding it back is one
-file and it will work.
+Making the repository public is what fixed it. The workflow is back, unchanged,
+and now has somewhere to upload to.
 
-Static analysis has not gone away. `ruff`'s bandit ruleset still runs on every
-push, and it is the check that actually reads this code; CodeQL was the
-belt-and-braces layer.
+`ruff`'s bandit ruleset runs alongside it and is the check that actually reads
+this code; CodeQL is the belt-and-braces layer.
 
 ### Also noted, not urgent
 
@@ -629,5 +629,5 @@ These are built in as the code is written, not bolted on at the end:
 - **Types**: `mypy --strict` on everything, no exceptions granted.
 - **Security**: MIDI, SoundFont, and audio inputs are untrusted. Parsing is bounded, no
   input-derived string reaches a shell, ffmpeg is invoked with argument lists. `ruff`'s
-  bandit rules run on every push.
+  bandit rules and CodeQL run on every push.
 - **Docs**: every stage gets its rationale written down while the reasoning is fresh.

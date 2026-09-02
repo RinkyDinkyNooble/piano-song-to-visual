@@ -145,4 +145,4 @@ configuration change later rather than a rewrite.
   stage 4.
 - **Security**: input files are untrusted. The MIDI parser is the main attack surface;
   parsing is bounded and no input-derived string is passed to a shell. `ruff`'s bandit
-  rules run in CI.
+  rules and CodeQL run in CI.
