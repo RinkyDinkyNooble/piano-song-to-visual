@@ -15,12 +15,14 @@ from psv.audio.backends import (
     synthesise,
     write_wav,
 )
+from psv.audio.click import mix_clicks
 
 __all__ = [
     "SAMPLE_RATE",
     "AudioError",
     "AudioResult",
     "fluidsynth_available",
+    "mix_clicks",
     "mux_into_video",
     "pitch_to_hz",
     "render_audio",

@@ -116,6 +116,39 @@ The last three lines are the useful ones: they tell you whether the file carries
 the dynamics and pedal data the visuals depend on, and whether it needs arranging
 at all.
 
+### Practising with it
+
+A video of the piece at full speed, both hands, from the top, is not how anyone
+learns a piece. Four flags cover how it is actually done:
+
+```bash
+psv run song.mid -o practice.mp4 --bars 20-40 --tempo 0.6 --hands left --count-in 2
+```
+
+- `--tempo 0.6` plays at six-tenths of the written speed, same notes. Work a hard
+  passage up from something you can play cleanly.
+- `--bars 20-40` renders only those bars, counting from 1 and including both
+  ends. Bars are what you think in; `--start` and `--seconds` are still there
+  when you want wall-clock time instead, and cannot be combined with `--bars`.
+- `--hands left` sounds one hand. The other stays on screen, faintly, so you can
+  still see where it is.
+- `--count-in 2` puts two bars of clicks in front of the music, at the tempo and
+  meter you are about to play. `--metronome` keeps clicking through the piece.
+
+None of these touch the arrangement. They run after arrange and constrain, so
+the piece you practise at half speed is note for note the piece you practise at
+full speed. All four can also live in a config file:
+
+```toml
+[practice]
+tempo = 0.75
+hands = "both"       # both | left | right
+count_in_bars = 2
+metronome = false
+```
+
+A flag on the command line beats the file.
+
 ### Iterating quickly
 
 A full 1080p60 render of a long piece takes minutes. While you are trying
@@ -183,6 +216,12 @@ lanes = 1                 # up to 3; sustain is the one MIDI reliably carries
 backend = "builtin"       # builtin | fluidsynth | mux | none
 audio_file = ""           # for backend = "mux": your own recording
 offset_s = 0.0            # nudge that recording into sync
+
+[practice]               # how the finished arrangement is presented
+tempo = 1.0              # 0.75 renders at three-quarters speed
+hands = "both"           # both | left | right
+count_in_bars = 0        # bars of clicks before the music
+metronome = false        # keep clicking through it
 ```
 
 ### A real piano sound

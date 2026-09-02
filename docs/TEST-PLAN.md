@@ -7,7 +7,7 @@ feature that was wired up wrong, or quietly never wired up at all.
 
 ## How that is enforced
 
-`tests/features.toml` lists all 50 user-visible features. Each entry has an id, the
+`tests/features.toml` lists all 54 user-visible features. Each entry has an id, the
 milestone it belongs to, how it gets verified, a status, and the assets it needs.
 
 Tests claim a feature with a marker:

@@ -18,12 +18,13 @@ is faint enough to read past. See ``color.py`` for why saturation is left alone.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 import numpy as np
 
 from psv.config import VisualConfig
-from psv.model import Note, Pedal, PedalEvent, Score
+from psv.model import Hand, Note, Pedal, PedalEvent, Score
 from psv.render.color import (
     RGB,
     blend,
@@ -44,6 +45,11 @@ PEDAL_LANE_FRACTION = 0.028
 
 #: Gap between the keyboard and the pedal lanes, as a fraction of the frame.
 PEDAL_GUTTER_FRACTION = 0.008
+
+#: How much of its own colour a note keeps when the other hand has the focus.
+#: Faint enough to read past, strong enough to still say which hand and how
+#: loud: you are practising one hand, not pretending the other does not exist.
+MUTED_HAND_MIX = 0.26
 
 #: Pedals in the order they sit under your feet, left to right. Fewer lanes
 #: means dropping from the left, so a single lane is the sustain pedal: the one
@@ -153,8 +159,14 @@ def render_frame(
     *,
     palette: Palette | None = None,
     pedal_lanes: int = 1,
+    focus: Hand | None = None,
 ) -> Frame:
-    """Render the piece as it looks at ``time``, in seconds."""
+    """Render the piece as it looks at ``time``, in seconds.
+
+    ``focus`` picks one hand out for practice. The other hand is still drawn,
+    faintly, because knowing where it is is half the reason to practise hands
+    separately; it is the soundtrack that goes quiet, not the picture.
+    """
     palette = palette or Palette(background=parse_hex(config.background))
     layout = Layout.from_config(config, pedal_lanes)
     geometry = KeyboardGeometry(
@@ -168,7 +180,7 @@ def render_frame(
 
     _draw_grid(frame, score, config, layout, geometry, palette, time)
     sounding = _draw_falling_notes(
-        frame, score, config, layout, geometry, palette, time
+        frame, score, config, layout, geometry, palette, time, focus
     )
     active_pedals = _draw_pedal_lanes(frame, score, config, layout, palette, time)
     _draw_keyboard(frame, layout, geometry, palette, sounding, config)
@@ -231,23 +243,28 @@ def _draw_grid(
             _fill(frame, left, 0, left + 1, layout.keyboard_top, colour)
 
     if grid.beat_lines != "none":
-        beats_per_line = _beat_step(score, grid.beat_lines)
-        for beat_time in score.tempo_map.beat_times(
-            time + layout.lookahead_s, step=beats_per_line
-        ):
-            if beat_time < time:
-                continue
-            y = layout.time_to_y(beat_time, time)
+        for line_time in _beat_line_times(score, grid.beat_lines, time, layout):
+            y = layout.time_to_y(line_time, time)
             _fill(frame, 0, y, layout.width, y + 1, colour)
 
 
-def _beat_step(score: Score, mode: str) -> float:
-    """How many beats between horizontal rules."""
-    if mode != "bar":
-        return 1.0
-    if score.time_signatures:
-        return score.time_signatures[0].beats_per_bar
-    return 4.0
+def _beat_line_times(
+    score: Score, mode: str, time: float, layout: Layout
+) -> Iterator[float]:
+    """When the horizontal rules in view fall.
+
+    Bar lines come from the bar index rather than from a fixed number of beats,
+    so a piece that changes meter part way through keeps its lines on its bars
+    instead of drifting off them from the change onward.
+    """
+    until = time + layout.lookahead_s
+    if mode == "bar":
+        for _, seconds in score.meter.bar_times(until, since_seconds=max(0.0, time)):
+            yield seconds
+        return
+    for seconds in score.tempo_map.beat_times(until):
+        if seconds >= time:
+            yield seconds
 
 
 # -- notes ---------------------------------------------------------------
@@ -261,13 +278,13 @@ def _draw_falling_notes(
     geometry: KeyboardGeometry,
     palette: Palette,
     time: float,
+    focus: Hand | None = None,
 ) -> dict[int, RGB]:
     """Draw the visible bars; return the pitches sounding now and their colours.
 
     A note reaches the keyboard exactly at its start time, so its bar bottom is
     at the keyboard's top edge when ``time`` equals ``note.start``.
     """
-    del palette
     window_end = time + layout.lookahead_s
     sounding: dict[int, RGB] = {}
 
@@ -278,6 +295,8 @@ def _draw_falling_notes(
             continue
 
         colour = note_color(note, config.colors, config.black_key_darkening)
+        if focus is not None and note.hand is not focus:
+            colour = blend(palette.background, colour, MUTED_HAND_MIX)
         if note.start <= time < note.end:
             sounding[note.pitch] = colour
 

@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **M8: the four practice settings, on one bar index.** `psv run` and
+  `psv render` take `--tempo`, `--bars`, `--hands` and `--count-in`
+  / `--metronome`, and a `[practice]` table says the same in a config file.
+  - `psv.tempo.Meter` - where the bar lines fall, built from the tempo map and
+    the time signatures together. Bars are numbered from 1 and a meter change
+    starts a new one. All four settings rest on this, and `beat_lines = "bar"`
+    now draws from it too, so bar lines stay on the bars after a meter change
+    instead of drifting from the change onward.
+  - `psv.practice` - `time_scaled`, `for_hand`, `bar_window`, `click_times`,
+    and `prepare`, which applies the lot. Every one of them runs *after*
+    arrange and constrain, so the arrangement is the same at any practice
+    speed: the constraint engine measures overlaps in real seconds against a
+    fixed tolerance, and scaling the time before it ran would give a different
+    piece at every tempo.
+  - `psv.audio.click` - the count-in and metronome click, mixed into whatever
+    the synth backends produced. `mux` cannot carry them, because the audio is
+    a file you already have, and it says so rather than dropping them quietly.
+  - `render_frame` takes a `focus` hand. The other hand is still drawn, faintly:
+    knowing where it is is half the reason to practise hands separately. It is
+    the soundtrack that goes quiet, not the picture.
+  - The count-in opens the render window before the music rather than splicing
+    silence into the score, so the notes keep the times they already had and
+    the picture and the soundtrack cannot disagree about where the music starts.
+
+### Changed
+
+- `--start` now defaults to unset rather than 0, so `--bars` can tell whether it
+  was given. Combining `--bars` with `--start` or `--seconds` is an error: they
+  are two ways of saying the same thing.
+
+### Fixed
+
+- Config rejects a boolean where a number is wanted. `bool` is a subclass of
+  `int` in Python, so `pedals.lanes = true` had been accepted as 1.
+
 - **M5, M6 and M7: a working MVP.** `psv run song.mid -o practice.mp4` now does
   the whole job in one command.
   - `psv.arrange` - multi-instrument scores reduce to two hands. Density is

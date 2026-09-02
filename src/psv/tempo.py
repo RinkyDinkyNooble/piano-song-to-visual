@@ -7,6 +7,7 @@ is in force. Everything downstream of parsing works in seconds and in beats.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 
@@ -172,3 +173,138 @@ class TempoMap:
 
 def _tick_span_seconds(ticks: int, us_per_beat: int, ticks_per_beat: int) -> float:
     return ticks * us_per_beat / ticks_per_beat / MICROSECONDS_PER_SECOND
+
+
+@dataclass(frozen=True, slots=True)
+class MeterSegment:
+    """One time signature's stretch of the piece, measured in beats."""
+
+    start_beat: float
+    beats_per_bar: float
+    first_bar: int
+
+
+@dataclass(frozen=True, slots=True)
+class Meter:
+    """Where the bar lines fall.
+
+    A bar boundary needs both halves of the timing: the time signatures say how
+    many beats are in a bar, and the tempo map says when those beats happen. So
+    neither ``TempoMap`` nor ``TimeSignature`` can answer "when does bar 31
+    start" alone, and this is the pair that can.
+
+    Bars are numbered from 1, and a time-signature change starts a new one. That
+    is the convention printed music follows, and it is what lets a partial bar
+    before a meter change keep its own number instead of silently merging into
+    the next.
+
+    Times before bar 1 are not defined here. A count-in extrapolates backwards
+    from the tempo at the start; see :mod:`psv.practice`.
+    """
+
+    tempo_map: TempoMap
+    #: Non-empty, sorted by tick, starting at tick 0. Build with
+    #: :meth:`from_score_data` rather than the constructor.
+    segments: tuple[MeterSegment, ...]
+
+    @classmethod
+    def from_score_data(
+        cls, tempo_map: TempoMap, time_signatures: Sequence[TimeSignature]
+    ) -> Meter:
+        """Build the bar index from a score's tempo map and time signatures."""
+        ordered: list[TimeSignature] = []
+        for signature in sorted(time_signatures, key=lambda sig: sig.tick):
+            if ordered and ordered[-1].tick == signature.tick:
+                ordered[-1] = signature  # two on one tick: the later one wins
+            else:
+                ordered.append(signature)
+        if not ordered or ordered[0].tick > 0:
+            ordered.insert(0, TimeSignature(0, 0.0, 4, 4))
+
+        segments: list[MeterSegment] = []
+        first_bar = 1
+        for index, signature in enumerate(ordered):
+            start_beat = tempo_map.tick_to_beat(signature.tick)
+            segments.append(
+                MeterSegment(
+                    start_beat=start_beat,
+                    beats_per_bar=signature.beats_per_bar,
+                    first_bar=first_bar,
+                )
+            )
+            if index + 1 < len(ordered):
+                span = tempo_map.tick_to_beat(ordered[index + 1].tick) - start_beat
+                # A meter change part way through a bar still ends that bar, so
+                # round the count up rather than dropping the remainder.
+                first_bar += max(1, _bars_in(span, signature.beats_per_bar))
+
+        return cls(tempo_map, tuple(segments))
+
+    # -- lookups ---------------------------------------------------------
+
+    def _segment_for_bar(self, bar: int) -> MeterSegment:
+        found = self.segments[0]
+        for segment in self.segments:
+            if segment.first_bar > bar:
+                break
+            found = segment
+        return found
+
+    def _segment_for_beat(self, beat: float) -> MeterSegment:
+        found = self.segments[0]
+        for segment in self.segments:
+            if segment.start_beat > beat:
+                break
+            found = segment
+        return found
+
+    def bar_start_beat(self, bar: int) -> float:
+        """The beat position where ``bar`` begins. Bar 1 begins at beat 0."""
+        if bar < 1:
+            raise ValueError(f"bars are numbered from 1, got {bar}")
+        segment = self._segment_for_bar(bar)
+        return segment.start_beat + (bar - segment.first_bar) * segment.beats_per_bar
+
+    def bar_start(self, bar: int) -> float:
+        """The wall-clock second where ``bar`` begins."""
+        return self.tempo_map.beat_to_seconds(self.bar_start_beat(bar))
+
+    def bar_beats(self, bar: int) -> float:
+        """How many beats long ``bar`` is, under the meter in force there."""
+        if bar < 1:
+            raise ValueError(f"bars are numbered from 1, got {bar}")
+        return self._segment_for_bar(bar).beats_per_bar
+
+    def bar_at(self, seconds: float) -> int:
+        """Which bar is sounding at ``seconds``."""
+        beat = self.tempo_map.seconds_to_beat(seconds)
+        segment = self._segment_for_beat(beat)
+        offset = int((beat - segment.start_beat) / segment.beats_per_bar + 1e-9)
+        return segment.first_bar + max(0, offset)
+
+    def beats_per_bar_at(self, seconds: float) -> float:
+        beat = self.tempo_map.seconds_to_beat(seconds)
+        return self._segment_for_beat(beat).beats_per_bar
+
+    def bar_times(
+        self, until_seconds: float, *, since_seconds: float = 0.0
+    ) -> Iterator[tuple[int, float]]:
+        """Yield ``(bar number, seconds)`` for every bar line in a span.
+
+        Walks bar numbers rather than stepping in seconds, so the lines stay on
+        the bars through a tempo change. ``since_seconds`` skips straight to the
+        first bar in view instead of counting up from the top of the piece.
+        """
+        bar = self.bar_at(max(0.0, since_seconds))
+        while True:
+            seconds = self.bar_start(bar)
+            if seconds > until_seconds:
+                return
+            if seconds >= since_seconds:
+                yield bar, seconds
+            bar += 1
+
+
+def _bars_in(span_beats: float, beats_per_bar: float) -> int:
+    """How many bars a span covers, counting a partial bar as a whole one."""
+    return math.ceil(span_beats / beats_per_bar - 1e-9)

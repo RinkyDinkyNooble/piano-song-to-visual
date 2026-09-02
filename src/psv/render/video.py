@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 
 from psv.config import VisualConfig
-from psv.model import Score
+from psv.model import Hand, Score
 from psv.render.frame import Frame, Palette, render_frame
 
 log = logging.getLogger(__name__)
@@ -52,13 +52,19 @@ def iter_frames(
     duration: float | None = None,
     palette: Palette | None = None,
     pedal_lanes: int = 1,
+    focus: Hand | None = None,
 ) -> Iterator[Frame]:
     """Render every frame of the requested span, lazily."""
     if duration is None:
         duration = max(0.0, score.duration - start) + TAIL_S
     for time in frame_times(duration, config.fps, start=start):
         yield render_frame(
-            score, config, time, palette=palette, pedal_lanes=pedal_lanes
+            score,
+            config,
+            time,
+            palette=palette,
+            pedal_lanes=pedal_lanes,
+            focus=focus,
         )
 
 
@@ -71,6 +77,7 @@ def render_video(
     duration: float | None = None,
     palette: Palette | None = None,
     pedal_lanes: int = 1,
+    focus: Hand | None = None,
     on_frame: Callable[[int, int], None] | None = None,
 ) -> Path:
     """Render ``score`` to a video file and return its path.
@@ -123,6 +130,7 @@ def render_video(
                 duration=duration,
                 palette=palette,
                 pedal_lanes=pedal_lanes,
+                focus=focus,
             ),
             start=1,
         ):

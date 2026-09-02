@@ -15,7 +15,7 @@ from dataclasses import dataclass, field, replace
 from enum import IntEnum, StrEnum
 from pathlib import Path
 
-from psv.tempo import TempoMap, TimeSignature
+from psv.tempo import Meter, TempoMap, TimeSignature
 
 #: An 88-key piano runs from A0 to C8 in MIDI note numbers.
 LOWEST_KEY = 21
@@ -264,6 +264,16 @@ class Score:
         ends = [note.end for part in self.parts for note in part.notes]
         ends += [pedal.end for pedal in self.pedals]
         return max(ends, default=0.0)
+
+    @property
+    def meter(self) -> Meter:
+        """Where the bar lines fall, from the tempo map and the time signatures.
+
+        Rebuilt on each access. It costs one pass over the time signatures, of
+        which a piece has a handful; anything drawing bar lines per frame should
+        hold on to the result rather than asking again.
+        """
+        return Meter.from_score_data(self.tempo_map, self.time_signatures)
 
     @property
     def pitch_range(self) -> tuple[int, int] | None:

@@ -42,6 +42,14 @@ MIDI ──▶ [1] parse ──▶ [2] arrange ──▶ [3] constrain ──▶
 Each stage reads and writes a serialisable intermediate, so any stage can be run,
 inspected, hand-edited, and re-run alone.
 
+Between [3] and [4] sits one more `Score -> Score` step, `psv.practice`: playback
+speed, a bar range, one hand, and a count-in. It is not numbered because it
+changes nothing about the piece, only how it is presented — and it runs *after*
+the constraint engine rather than before, which is load-bearing. The engine
+measures overlaps in real seconds against a fixed tolerance, so scaling the time
+first would change which stretches it repaired, and the same file would come
+back differently arranged at every practice speed.
+
 ### Stage 1 — Parse (MIDI → Score)
 
 `mido` reads the file; we convert to an internal `Score`: absolute-time notes with
@@ -104,6 +112,10 @@ quiet notes read dark and desaturated while loud notes read bright and saturated
 channels stay legible without fighting each other. Black-key bars are drawn thinner than
 white-key bars and darkened further, so they are distinguishable by shape far from the
 keyboard and by tone up close — independent of whatever dynamics colour is applied.
+
+`render_frame(score, config, t)` is a pure function, and stays one. Practising a
+single hand is a keyword on it rather than a filtered score, because the muted
+hand is still drawn: it is the soundtrack that goes quiet, not the picture.
 
 ### Audio
 

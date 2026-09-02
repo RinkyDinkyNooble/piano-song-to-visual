@@ -427,3 +427,36 @@ milestone = "M1"
 status = "done"
 verify = "e2e"
 uses = ["fixture:empty", "fixture:single-note"]
+
+# ------------------------------------------------------------- M8: practice
+[[feature]]
+id = "F-51"
+name = "Practice tempo renders slower without changing the arrangement"
+milestone = "M8"
+status = "done"
+verify = "e2e"
+uses = ["fixture:two-hands", "fixture:tempo-changes", "fixture:orchestral"]
+
+[[feature]]
+id = "F-52"
+name = "Section practice by bar number"
+milestone = "M8"
+status = "done"
+verify = "e2e"
+uses = ["fixture:two-hands", "fixture:time-signatures"]
+
+[[feature]]
+id = "F-53"
+name = "Count-in bars and a metronome click"
+milestone = "M8"
+status = "done"
+verify = "e2e"
+uses = ["fixture:two-hands", "fixture:tempo-changes"]
+
+[[feature]]
+id = "F-54"
+name = "One hand at a time, with the other still drawn faintly"
+milestone = "M8"
+status = "done"
+verify = "e2e"
+uses = ["fixture:two-hands", "fixture:sustain-pedal", "fixture:single-note"]

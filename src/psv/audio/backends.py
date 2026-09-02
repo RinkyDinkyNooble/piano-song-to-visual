@@ -19,13 +19,16 @@ import os
 import shutil
 import subprocess
 import wave
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 
+from psv.audio.click import mix_clicks
 from psv.config import AudioConfig
 from psv.model import Pedal, Score
+from psv.practice import Click
 
 log = logging.getLogger(__name__)
 
@@ -300,11 +303,18 @@ def ffmpeg_exe() -> str:
 
 
 def _builtin(
-    score: Score, out_dir: Path, start: float, duration: float | None, note: str
+    score: Score,
+    out_dir: Path,
+    start: float,
+    duration: float | None,
+    note: str,
+    clicks: Sequence[Click] = (),
 ) -> AudioResult:
-    path = write_wav(
-        synthesise(score, start=start, duration=duration), out_dir / "psv-audio.wav"
+    samples = synthesise(score, start=start, duration=duration)
+    samples = mix_clicks(
+        samples, clicks, start=start, sample_rate=SAMPLE_RATE, channels=1
     )
+    path = write_wav(samples, out_dir / "psv-audio.wav")
     return AudioResult(path=path, backend="builtin", note=note)
 
 
@@ -324,11 +334,17 @@ def render_audio(
     *,
     start: float = 0.0,
     duration: float | None = None,
+    clicks: Sequence[Click] = (),
 ) -> AudioResult:
     """Produce an audio file for ``score``, or None for silence.
 
     Falls back rather than failing: an unavailable backend is reported and the
     next one down is used, so a render never dies because a library is missing.
+
+    ``clicks`` is the count-in and metronome track, in score time. Every backend
+    that synthesises can mix it in. ``mux`` cannot, because the audio is a file
+    the user already has and re-encoding it to add clicks is not this tool's
+    business; it says so rather than dropping them silently.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     backend = config.backend
@@ -341,14 +357,18 @@ def render_audio(
             source = _mux_source(config, start, duration)
         except AudioError as exc:
             log.warning("%s; falling back to the built-in synth", exc)
-            return _builtin(score, out_dir, start, duration, note=str(exc))
-        return AudioResult(path=source, backend="mux")
+            return _builtin(score, out_dir, start, duration, str(exc), clicks)
+        note = ""
+        if clicks:
+            note = "clicks cannot be mixed into an existing audio file"
+            log.warning("%s; the count-in and metronome are silent", note)
+        return AudioResult(path=source, backend="mux", note=note)
 
     if backend == "fluidsynth":
         available, why = fluidsynth_available(config.soundfont, config.fluidsynth_bin)
         if not available:
             log.warning("fluidsynth unavailable: %s; using the built-in synth", why)
-            return _builtin(score, out_dir, start, duration, note=why)
+            return _builtin(score, out_dir, start, duration, why, clicks)
         try:
             samples = synthesise_fluidsynth(
                 score,
@@ -359,11 +379,14 @@ def render_audio(
             )
         except (AudioError, OSError, RuntimeError) as exc:
             log.warning("fluidsynth failed: %s; using the built-in synth", exc)
-            return _builtin(score, out_dir, start, duration, note=str(exc))
+            return _builtin(score, out_dir, start, duration, str(exc), clicks)
+        samples = mix_clicks(
+            samples, clicks, start=start, sample_rate=SAMPLE_RATE, channels=2
+        )
         path = write_wav(samples, out_dir / "psv-audio.wav", channels=2)
         return AudioResult(path=path, backend="fluidsynth")
 
-    return _builtin(score, out_dir, start, duration, note="")
+    return _builtin(score, out_dir, start, duration, "", clicks)
 
 
 def mux_into_video(

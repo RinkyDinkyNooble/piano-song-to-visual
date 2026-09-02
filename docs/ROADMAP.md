@@ -397,30 +397,61 @@ Everything deliberately left out of the MVP. **Nothing here is needed to use the
 tool.** Each item makes it nicer, and each is independent of the others, so they
 can be picked off in any order. Roughly ordered by value.
 
+The four most useful are done, and are written up first. The rest is still
+open.
+
+### Done: the practice settings
+
+The four things that turn a video of the piece into something you learn from:
+play it slower, play forty bars of it, count yourself in, play one hand.
+
+They landed together because they are one feature underneath. All four need to
+know where the bar lines are, and nothing did: `TempoMap` knows when the beats
+happen and `TimeSignature` knows how many are in a bar, but neither can answer
+"when does bar 31 start" alone. `Meter` is the pair that can, and it is now what
+`beat_lines = "bar"` draws from as well, so bar lines stay on the bars through a
+meter change instead of drifting from the change onward.
+
+- **Practice tempo**, `--tempo 0.75`. Scales the notes, the pedalling and the
+  tempo map together, so the grid stays on the music.
+- **Section practice**, `--bars 20-40`. Inclusive of both ends, counting from 1,
+  running to the start of the bar after the last one plus the usual tail.
+- **Count-in and metronome**, `--count-in 2` and `--metronome`. The count-in
+  beats are extrapolated backwards at a steady tempo, because there is no music
+  there to follow; the clicks during the piece come from the tempo map and the
+  bar index, so they track tempo and meter changes.
+- **One hand at a time**, `--hands left`. A filter on the soundtrack, not on the
+  picture: the other hand stays on screen, faintly.
+
+All four also live in a `[practice]` config table, and a flag beats the file.
+
+**Where they run matters more than what they do.** They are applied after
+arrange and constrain, never before. The constraint engine measures overlaps in
+real seconds against a fixed tolerance, so scaling the time first would change
+which stretches it repaired and hand back a different arrangement at every
+practice speed. Slowing a piece down must not quietly re-arrange it.
+
+Two things came out differently from the original sketch.
+
+The count-in is a window that opens *before* the music rather than silence
+spliced into the score. Every note keeps the time it already had, so the picture
+and the soundtrack cannot end up disagreeing about where the music starts, and
+`render_frame` needs no notion of a lead-in at all.
+
+`--start` now defaults to unset rather than 0, so `--bars` can tell whether it
+was given, and combining them is an error rather than a guess.
+
+**Exit criteria:** a hard passage renders on its own, slowly, one hand, with two
+bars of clicks in front of it. *(Met, and the arrangement is asserted identical
+across practice tempos.)*
+
 ### Worth doing first
-
-**Practice tempo** (`--tempo 0.75`). Render slower than written while keeping the
-pitches. Learning a hard passage at three-quarter speed and working up is how a
-piece actually gets learned, and this is the single most useful thing missing.
-Scale the tempo map on the way into the renderer and the synth; the score itself
-stays untouched.
-
-**Section practice** (`--bars 20-40`). `--start` and `--seconds` already exist but
-are in seconds, which means counting. Bars are what you actually think in. Needs a
-bar index built from the tempo map and time signatures, both of which exist.
-
-**Count-in and a metronome click.** Two bars of clicks before the music starts,
-and optionally a click through it. Straightforward inside the built-in synth.
 
 **Accept global flags in either position.** `-c` and `-v` are defined on the top
 level parser, so they only work *before* the subcommand: `psv -c x.toml run ...`
 is accepted and `psv run ... -c x.toml` is a usage error. Nothing about the flags
 suggests that, and it has caught a user twice. Give each subparser the same
 options, or attach them through `parents=`, so either order works.
-
-**One hand at a time.** `--hands left` renders and sounds only one hand, with the
-other still drawn faintly for reference. Hands are already assigned and audio is
-already synthesised note by note, so this is a filter rather than new machinery.
 
 **An unlimited-span mode.** `hands.max_span_semitones` is validated to 1 to 18,
 so there is currently no way to say "leave it exactly as written". Sometimes that

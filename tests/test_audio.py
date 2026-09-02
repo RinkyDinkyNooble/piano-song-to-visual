@@ -23,9 +23,11 @@ from psv.audio import (
     write_wav,
 )
 from psv.audio.backends import AudioError, mux_into_video
+from psv.audio.click import click_wave, mix_clicks
 from psv.config import AudioConfig
 from psv.midi import read_midi
 from psv.model import Hand, Note, Part, Pedal, PedalEvent, Score
+from psv.practice import Click
 from tests.fixtures.midi_builder import FIXTURES
 from tests.probe import video_meta
 
@@ -315,3 +317,122 @@ def test_muxing_a_missing_audio_file_raises_a_clear_error(tmp_path: Path) -> Non
 def test_the_default_config_uses_a_backend_that_always_works() -> None:
     """A fresh install must produce sound with no setup at all."""
     assert replace(AudioConfig()).backend == "builtin"
+
+
+# -- the metronome click -------------------------------------------------
+
+
+@pytest.mark.feature("F-53")
+def test_a_click_lands_where_it_was_asked_for() -> None:
+    silence = np.zeros(SAMPLE_RATE, dtype=np.float32)
+    mixed = mix_clicks(
+        silence, [Click(0.5, accent=False)], start=0.0, sample_rate=SAMPLE_RATE
+    )
+    before = np.abs(mixed[: int(0.4 * SAMPLE_RATE)]).max()
+    at = np.abs(mixed[int(0.5 * SAMPLE_RATE) : int(0.55 * SAMPLE_RATE)]).max()
+    assert before == 0.0
+    assert at > 0.3
+
+
+@pytest.mark.feature("F-53")
+def test_a_count_in_click_before_the_buffer_starts_lines_up() -> None:
+    """A count-in makes the buffer start at a negative score time. The click
+    times are in score time too, so the two have to meet there."""
+    silence = np.zeros(SAMPLE_RATE, dtype=np.float32)
+    mixed = mix_clicks(
+        silence, [Click(-1.5, accent=True)], start=-2.0, sample_rate=SAMPLE_RATE
+    )
+    assert np.abs(mixed[int(0.5 * SAMPLE_RATE) : int(0.55 * SAMPLE_RATE)]).max() > 0.3
+
+
+@pytest.mark.feature("F-53")
+def test_the_accent_is_higher_pitched_than_the_beat() -> None:
+    """Louder alone stops working once the music is loud too; pitch survives."""
+    accent = click_wave(True, SAMPLE_RATE)
+    beat = click_wave(False, SAMPLE_RATE)
+    assert _dominant_hz(accent) > _dominant_hz(beat)
+
+
+def _dominant_hz(wave: np.ndarray) -> float:
+    spectrum = np.abs(np.fft.rfft(wave))
+    return float(np.fft.rfftfreq(wave.size, 1 / SAMPLE_RATE)[int(spectrum.argmax())])
+
+
+@pytest.mark.feature("F-53")
+def test_clicks_never_push_the_mix_into_clipping() -> None:
+    loud = np.full(SAMPLE_RATE, 0.89, dtype=np.float32)
+    clicks = [Click(index * 0.1, accent=index % 4 == 0) for index in range(10)]
+    mixed = mix_clicks(loud, clicks, start=0.0, sample_rate=SAMPLE_RATE)
+    assert np.abs(mixed).max() <= 0.89 + 1e-6
+
+
+@pytest.mark.feature("F-53")
+def test_a_click_reaches_both_channels_of_a_stereo_buffer() -> None:
+    """FluidSynth hands back interleaved stereo, so a click has to be written
+    into every channel of a frame rather than into every other sample."""
+    silence = np.zeros(2 * SAMPLE_RATE, dtype=np.float32)
+    mixed = mix_clicks(
+        silence,
+        [Click(0.25, accent=False)],
+        start=0.0,
+        sample_rate=SAMPLE_RATE,
+        channels=2,
+    )
+    left, right = mixed[0::2], mixed[1::2]
+    assert np.abs(left).max() > 0.3
+    assert np.array_equal(left, right)
+
+
+def test_mixing_no_clicks_changes_nothing() -> None:
+    samples = np.linspace(-0.5, 0.5, 100, dtype=np.float32)
+    assert mix_clicks(samples, [], start=0.0, sample_rate=SAMPLE_RATE) is samples
+
+
+@pytest.mark.feature("F-53")
+def test_the_builtin_backend_mixes_the_clicks_in(tmp_path: Path) -> None:
+    """End to end through the backend, because that is where it has to work."""
+    score = Score(parts=(Part(notes=(Note(pitch=60, start=2.0, end=3.0),)),))
+    clicks = [Click(0.5, accent=True), Click(1.0, accent=False)]
+    result = render_audio(
+        score, AudioConfig(), tmp_path, start=0.0, duration=4.0, clicks=clicks
+    )
+    assert result.path is not None
+    with wave.open(str(result.path)) as handle:
+        data = np.frombuffer(handle.readframes(handle.getnframes()), dtype="<i2")
+    # Nothing sounds before the note except the two clicks.
+    lead = np.abs(data[: int(1.5 * SAMPLE_RATE)].astype(np.float32))
+    assert lead.max() > 0.2 * 32767
+
+
+@pytest.mark.feature("F-53")
+def test_the_mux_backend_says_it_cannot_carry_the_clicks(tmp_path: Path) -> None:
+    """Silently dropping them would look like the flag did nothing."""
+    source = write_wav(np.zeros(SAMPLE_RATE, dtype=np.float32), tmp_path / "in.wav")
+    config = replace(AudioConfig(), backend="mux", audio_file=str(source))
+    result = render_audio(Score(), config, tmp_path, clicks=[Click(0.0, accent=True)])
+    assert result.backend == "mux"
+    assert "cannot be mixed" in result.note
+
+
+@pytest.mark.feature("F-53")
+def test_clicks_past_the_end_of_the_buffer_are_dropped() -> None:
+    """The last beat of a section can fall after the tail runs out. Writing it
+    would be an index error; dropping it is what the picture already does."""
+    silence = np.zeros(SAMPLE_RATE // 2, dtype=np.float32)
+    mixed = mix_clicks(
+        silence,
+        [Click(9.0, accent=True), Click(0.25, accent=False)],
+        start=0.0,
+        sample_rate=SAMPLE_RATE,
+    )
+    assert mixed.size == silence.size
+    assert np.abs(mixed).max() > 0.3
+
+
+@pytest.mark.feature("F-53")
+def test_a_click_entirely_before_the_buffer_is_dropped() -> None:
+    silence = np.zeros(SAMPLE_RATE, dtype=np.float32)
+    mixed = mix_clicks(
+        silence, [Click(-5.0, accent=True)], start=0.0, sample_rate=SAMPLE_RATE
+    )
+    assert np.abs(mixed).max() == 0.0

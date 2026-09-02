@@ -19,14 +19,15 @@ from pathlib import Path
 from psv import __version__
 from psv.arrange import arrange as arrange_score
 from psv.audio.backends import AudioError
-from psv.config import Config, ConfigError, VisualConfig
+from psv.config import Config, ConfigError, PracticeConfig, VisualConfig
 from psv.constraints import ConstraintError
 from psv.constraints import constrain as constrain_score
 from psv.inspect import format_report, inspect_score
 from psv.midi import read_midi_file, write_midi_file
 from psv.midi.read import MidiReadError
 from psv.pipeline import run as run_pipeline
-from psv.render.video import VideoWriteError, render_video
+from psv.practice import prepare
+from psv.render.video import TAIL_S, VideoWriteError, render_video
 
 log = logging.getLogger("psv")
 
@@ -93,7 +94,11 @@ def _add_render_options(parser: argparse.ArgumentParser) -> None:
     loop into about a second.
     """
     parser.add_argument(
-        "--start", type=float, default=0.0, metavar="S", help="start time in seconds"
+        "--start",
+        type=float,
+        default=None,
+        metavar="S",
+        help="start time in seconds, measured in the rendered video",
     )
     parser.add_argument(
         "--seconds",
@@ -107,6 +112,70 @@ def _add_render_options(parser: argparse.ArgumentParser) -> None:
         "--height", type=int, default=None, help="override frame height"
     )
     parser.add_argument("--fps", type=int, default=None, help="override frame rate")
+    _add_practice_options(parser)
+
+
+def _add_practice_options(parser: argparse.ArgumentParser) -> None:
+    """How the finished arrangement is presented, rather than what is in it.
+
+    These are how a piece actually gets learned: slow it down, take the hard
+    forty bars on their own, count yourself in, and play one hand at a time.
+    """
+    group = parser.add_argument_group("practice")
+    group.add_argument(
+        "--tempo",
+        type=float,
+        default=None,
+        metavar="FACTOR",
+        help="playback speed; 0.75 is three-quarters of the written tempo",
+    )
+    group.add_argument(
+        "--bars",
+        type=bar_range,
+        default=None,
+        metavar="FIRST-LAST",
+        help="render only these bars, counting from 1 (e.g. 20-40, or 31)",
+    )
+    group.add_argument(
+        "--hands",
+        choices=("both", "left", "right"),
+        default=None,
+        help="which hand to sound; the other stays on screen, faintly",
+    )
+    group.add_argument(
+        "--count-in",
+        type=int,
+        default=None,
+        metavar="BARS",
+        help="bars of metronome clicks before the music starts",
+    )
+    group.add_argument(
+        "--metronome",
+        action="store_true",
+        default=None,
+        help="keep clicking through the piece, not only into it",
+    )
+
+
+def bar_range(text: str) -> tuple[int, int]:
+    """Parse ``--bars``: either ``20-40`` or a single bar, ``31``."""
+    parts = text.split("-")
+    try:
+        numbers = [int(part) for part in parts]
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"bars must be numbers like 20-40, got {text!r}"
+        ) from None
+    if len(numbers) == 1:
+        numbers *= 2
+    if len(numbers) != 2:
+        raise argparse.ArgumentTypeError(f"bars must be FIRST-LAST, got {text!r}")
+    first, last = numbers
+    if first < 1:
+        raise argparse.ArgumentTypeError(f"bars are numbered from 1, got {first}")
+    if last < first:
+        raise argparse.ArgumentTypeError(f"bar range runs backwards: {text!r}")
+    return first, last
 
 
 def configure_logging(verbosity: int) -> None:
@@ -145,6 +214,22 @@ def _visual_with_overrides(
 def _cmd_render(args: argparse.Namespace, config: Config) -> int:
     score = read_midi_file(args.input)
     visual = _visual_with_overrides(config.visual, args)
+    practice = _practice_with_overrides(config.practice, args)
+    _check_window_flags(args)
+
+    if practice.metronome:
+        # `render` writes a silent video, so saying nothing here would look like
+        # the flag was accepted and the clicks went missing.
+        print("psv: --metronome needs sound; use `psv run`", file=sys.stderr)
+
+    show = prepare(
+        score,
+        practice,
+        start=args.start or 0.0,
+        seconds=args.seconds,
+        bars=args.bars,
+        tail=TAIL_S,
+    )
 
     show_progress = args.verbose > 0 and sys.stderr.isatty()
 
@@ -153,18 +238,55 @@ def _cmd_render(args: argparse.Namespace, config: Config) -> int:
             print(f"\r  frame {done}/{total}", end="", file=sys.stderr)
 
     path = render_video(
-        score,
+        show.score,
         visual,
         args.output,
-        start=args.start,
-        duration=args.seconds,
+        start=show.start,
+        duration=show.duration,
         pedal_lanes=config.pedals.lanes,
+        focus=show.focus,
         on_frame=on_frame,
     )
     if show_progress:
         print(file=sys.stderr)
+    if show.label:
+        print(f"  practice         {show.label}")
     print(f"wrote {path}")
     return 0
+
+
+def _practice_with_overrides(
+    practice: PracticeConfig, args: argparse.Namespace
+) -> PracticeConfig:
+    """Command-line flags win over the config file, as the size overrides do."""
+    overrides = {
+        field: getattr(args, name)
+        for field, name in (
+            ("tempo", "tempo"),
+            ("hands", "hands"),
+            ("count_in_bars", "count_in"),
+            ("metronome", "metronome"),
+        )
+        if getattr(args, name, None) is not None
+    }
+    if not overrides:
+        return practice
+    updated = replace(practice, **overrides)
+    updated.validate()
+    return updated
+
+
+def _check_window_flags(args: argparse.Namespace) -> None:
+    """``--bars`` and the second-based flags say the same thing two ways."""
+    if args.bars is None:
+        return
+    clashes = [
+        flag
+        for flag, value in (("--start", args.start), ("--seconds", args.seconds))
+        if value is not None
+    ]
+    if clashes:
+        raise ConfigError(f"--bars cannot be combined with {' or '.join(clashes)}")
 
 
 def _cmd_constrain(args: argparse.Namespace, config: Config) -> int:
@@ -208,12 +330,15 @@ def _progress(args: argparse.Namespace) -> Callable[[int, int], None]:
 
 def _cmd_run(args: argparse.Namespace, config: Config) -> int:
     visual = _visual_with_overrides(config.visual, args)
+    practice = _practice_with_overrides(config.practice, args)
+    _check_window_flags(args)
     result = run_pipeline(
         args.input,
         args.output,
-        replace(config, visual=visual),
-        start=args.start,
+        replace(config, visual=visual, practice=practice),
+        start=args.start or 0.0,
         duration=args.seconds,
+        bars=args.bars,
         on_frame=_progress(args),
     )
     if args.verbose > 0 and sys.stderr.isatty():

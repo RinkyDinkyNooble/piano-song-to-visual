@@ -22,7 +22,8 @@ from psv.config import Config
 from psv.constraints import ConstrainResult, constrain
 from psv.midi import read_midi_file
 from psv.model import Score
-from psv.render.video import render_video
+from psv.practice import prepare
+from psv.render.video import TAIL_S, render_video
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +37,8 @@ class PipelineResult:
     arranged: ArrangeResult
     constrained: ConstrainResult
     audio: AudioResult
+    #: What the practice settings did, empty when they were all defaults.
+    practice: str = ""
 
     def summary(self) -> str:
         lines = [
@@ -48,6 +51,8 @@ class PipelineResult:
         if self.audio.note:
             audio += f" ({self.audio.note})"
         lines.append(f"  audio            {audio}")
+        if self.practice:
+            lines.append(f"  practice         {self.practice}")
         lines.append(f"  notes            {len(self.score.notes)}")
         return "\n".join(lines)
 
@@ -59,6 +64,7 @@ def run(
     *,
     start: float = 0.0,
     duration: float | None = None,
+    bars: tuple[int, int] | None = None,
     on_frame: Callable[[int, int], None] | None = None,
 ) -> PipelineResult:
     """Run every stage and write a finished video.
@@ -66,6 +72,10 @@ def run(
     The video is rendered silent to a temporary file and the soundtrack muxed on
     afterwards, rather than being interleaved. That keeps the renderer a pure
     function of the score and means a failure in either half says which half.
+
+    The practice settings in ``config`` are applied last of all, after the
+    arrangement is settled, so the same file gives the same arrangement whatever
+    speed or section you asked to practise.
     """
     output = Path(output)
     score = read_midi_file(source)
@@ -76,7 +86,22 @@ def run(
         tolerance=config.hands.overlap_tolerance_s,
     )
     constrained = constrain(arranged.score, config)
-    final = constrained.score
+
+    show = prepare(
+        constrained.score,
+        config.practice,
+        start=start,
+        seconds=duration,
+        bars=bars,
+        tail=TAIL_S,
+    )
+    final = show.score
+    audible = show.audio_score
+    if show.focus is not None and audible.is_empty:
+        log.warning(
+            "no notes are assigned to the %s hand; the soundtrack will be silent",
+            show.focus.value,
+        )
 
     with tempfile.TemporaryDirectory(prefix="psv-") as scratch:
         workspace = Path(scratch)
@@ -84,14 +109,20 @@ def run(
             final,
             config.visual,
             workspace / "video.mp4",
-            start=start,
-            duration=duration,
+            start=show.start,
+            duration=show.duration,
             pedal_lanes=config.pedals.lanes,
+            focus=show.focus,
             on_frame=on_frame,
         )
 
         audio = render_audio(
-            final, config.audio, workspace, start=start, duration=duration
+            audible,
+            config.audio,
+            workspace,
+            start=show.start,
+            duration=show.duration,
+            clicks=show.clicks,
         )
 
         if audio.path is None:
@@ -118,6 +149,7 @@ def run(
         arranged=arranged,
         constrained=constrained,
         audio=audio,
+        practice=show.label,
     )
 
 

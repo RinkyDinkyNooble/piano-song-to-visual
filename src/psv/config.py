@@ -24,6 +24,14 @@ MAX_ALLOWED_SPAN = 36
 
 DIFFICULTY_LEVELS = ("beginner", "easy", "medium", "hard", "original")
 AUDIO_BACKENDS = ("fluidsynth", "mux", "builtin", "none")
+PRACTICE_HANDS = ("both", "left", "right")
+
+#: Slowest and fastest practice playback.
+MIN_TEMPO = 0.1
+MAX_TEMPO = 4.0
+
+#: A count-in longer than this is waiting, not counting.
+MAX_COUNT_IN_BARS = 8
 
 
 class ConfigError(ValueError):
@@ -229,12 +237,52 @@ class AudioConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class PracticeConfig:
+    """How the finished arrangement is presented, not what it contains.
+
+    None of these change a note. They are applied after arrange and constrain,
+    so the same file practised at half speed with one hand is the same
+    arrangement you get at full speed with both.
+    """
+
+    #: Playback speed. 0.75 renders at three-quarters of the written tempo.
+    tempo: float = 1.0
+    #: Which hand sounds. The other is still drawn, faintly.
+    hands: str = "both"
+    #: Bars of clicks before the music starts. 0 for none.
+    count_in_bars: int = 0
+    #: Keep clicking through the piece, not only into it.
+    metronome: bool = False
+
+    @property
+    def is_default(self) -> bool:
+        return self == PracticeConfig()
+
+    def validate(self) -> None:
+        if not MIN_TEMPO <= self.tempo <= MAX_TEMPO:
+            raise ConfigError(
+                f"practice.tempo must be between {MIN_TEMPO} and {MAX_TEMPO}, "
+                f"got {self.tempo}"
+            )
+        if self.hands not in PRACTICE_HANDS:
+            raise ConfigError(
+                f"practice.hands must be one of {PRACTICE_HANDS}, got {self.hands!r}"
+            )
+        if not 0 <= self.count_in_bars <= MAX_COUNT_IN_BARS:
+            raise ConfigError(
+                f"practice.count_in_bars must be 0 to {MAX_COUNT_IN_BARS}, "
+                f"got {self.count_in_bars}"
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class Config:
     hands: HandsConfig = field(default_factory=HandsConfig)
     difficulty: DifficultyConfig = field(default_factory=DifficultyConfig)
     visual: VisualConfig = field(default_factory=VisualConfig)
     pedals: PedalsConfig = field(default_factory=PedalsConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
+    practice: PracticeConfig = field(default_factory=PracticeConfig)
 
     def validate(self) -> None:
         self.hands.validate()
@@ -242,6 +290,7 @@ class Config:
         self.visual.validate()
         self.pedals.validate()
         self.audio.validate()
+        self.practice.validate()
 
     @classmethod
     def load(cls, path: Path | str | None) -> Self:
@@ -321,10 +370,17 @@ def _build(target: type[Any], raw: dict[str, Any], prefix: str) -> Any:
 
 
 def _coerce(value: Any, expected: Any, location: str) -> Any:
-    """Accept an int where a float is wanted; reject anything else mistyped."""
+    """Accept an int where a float is wanted; reject anything else mistyped.
+
+    Booleans are checked separately because TOML has them and Python makes
+    ``bool`` a subclass of ``int``, so ``pedals.lanes = true`` would otherwise
+    be accepted as 1.
+    """
     if expected is float and isinstance(value, int) and not isinstance(value, bool):
         return float(value)
-    if expected in (int, float, str) and not isinstance(value, expected):
+    mistyped = expected in (int, float, str) and not isinstance(value, expected)
+    swapped = isinstance(value, bool) is not (expected is bool)
+    if expected in (bool, int, float, str) and (mistyped or swapped):
         raise ConfigError(
             f"{location} must be {expected.__name__}, got "
             f"{type(value).__name__} ({value!r})"

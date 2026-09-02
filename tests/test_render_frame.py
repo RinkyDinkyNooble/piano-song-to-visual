@@ -17,7 +17,7 @@ from hypothesis import strategies as st
 
 from psv.config import Config, VisualConfig
 from psv.midi import read_midi
-from psv.model import Note, Part, Score
+from psv.model import Hand, Note, Part, Score
 from psv.render.color import parse_hex
 from psv.render.frame import Layout, Palette, render_frame, visible_notes
 from psv.render.geometry import KeyboardGeometry
@@ -315,3 +315,65 @@ def test_the_default_config_renders_a_full_size_frame() -> None:
     config = Config.load(None).visual
     frame = render_frame(read_midi(FIXTURES["single-note"]()), config, 0.0)
     assert frame.shape == (config.height, config.width, 3)
+
+
+# -- practising one hand -------------------------------------------------
+
+
+def two_hand_note_score() -> Score:
+    """One note in each hand, at the same moment, an octave and a half apart."""
+    return Score(
+        parts=(
+            Part(
+                notes=(
+                    Note(pitch=48, start=1.0, end=2.0, hand=Hand.LEFT),
+                    Note(pitch=72, start=1.0, end=2.0, hand=Hand.RIGHT),
+                ),
+            ),
+        )
+    )
+
+
+def _bar_colour(frame: np.ndarray, pitch: int, config: VisualConfig) -> np.ndarray:
+    layout = Layout.from_config(config)
+    geometry = KeyboardGeometry(
+        width=layout.keyboard_width,
+        height=layout.height - layout.keyboard_top,
+        black_bar_ratio=config.black_key_bar_width,
+    )
+    left, right = geometry.bar_span(pitch)
+    column = round((left + right) / 2)
+    # Just above the keyboard, where a note starting now has its bottom edge.
+    pixel: np.ndarray = frame[layout.keyboard_top - 3, column]
+    return pixel
+
+
+@pytest.mark.feature("F-54")
+def test_focusing_a_hand_dims_the_other_and_leaves_it_visible() -> None:
+    """Faint, not gone. Knowing where the other hand is is half the reason to
+    practise hands separately."""
+    score = two_hand_note_score()
+    both = render_frame(score, SMALL, 1.0, pedal_lanes=0)
+    right = render_frame(score, SMALL, 1.0, pedal_lanes=0, focus=Hand.RIGHT)
+
+    background = np.array(parse_hex(SMALL.background), dtype=np.int16)
+    muted = _bar_colour(right, 48, SMALL).astype(np.int16)
+    full = _bar_colour(both, 48, SMALL).astype(np.int16)
+
+    assert int(np.abs(muted - background).sum()) > 0, "the muted hand is still drawn"
+    assert int(np.abs(muted - background).sum()) < int(np.abs(full - background).sum())
+
+
+@pytest.mark.feature("F-54")
+def test_focusing_a_hand_leaves_that_hand_exactly_as_it_was() -> None:
+    score = two_hand_note_score()
+    both = render_frame(score, SMALL, 1.0, pedal_lanes=0)
+    right = render_frame(score, SMALL, 1.0, pedal_lanes=0, focus=Hand.RIGHT)
+    assert np.array_equal(_bar_colour(both, 72, SMALL), _bar_colour(right, 72, SMALL))
+
+
+def test_focusing_stays_a_pure_function_of_its_inputs() -> None:
+    score = two_hand_note_score()
+    first = render_frame(score, SMALL, 1.5, focus=Hand.LEFT)
+    second = render_frame(score, SMALL, 1.5, focus=Hand.LEFT)
+    assert np.array_equal(first, second)
