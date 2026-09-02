@@ -56,7 +56,26 @@ jobs:
       # No network in the test job: the two public-domain songs are committed,
       # and tests needing the gitignored CC BY-SA pair skip themselves.
       - run: python scripts/fetch_test_songs.py --check
-      - run: pytest --cov --cov-report=term-missing
+      - name: Test
+        shell: bash
+        run: |
+          set -o pipefail
+          pytest --cov --cov-report=term-missing 2>&1 | tee pytest-output.txt
+      # A failing matrix job's log needs repository admin rights to download,
+      # which makes a red build hard to read for anyone who is not the owner,
+      # including from a phone. The step summary is part of the run page, so
+      # this puts the failure where the failure already is.
+      - name: Publish the failure to the run page
+        if: failure()
+        shell: bash
+        run: |
+          {
+            echo "### ${{ matrix.os }}, Python ${{ matrix.python-version }}"
+            echo
+            echo '```'
+            tail -n 150 pytest-output.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   build:
     name: Build distribution
