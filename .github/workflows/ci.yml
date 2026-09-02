@@ -62,10 +62,11 @@ jobs:
           set -o pipefail
           pytest --cov --cov-report=term-missing 2>&1 | tee pytest-output.txt
       # A failing matrix job's log needs repository admin rights to download,
-      # which makes a red build hard to read for anyone who is not the owner,
-      # including from a phone. The step summary is part of the run page, so
-      # this puts the failure where the failure already is.
-      - name: Publish the failure to the run page
+      # so a red build is unreadable to everyone except the owner. Two ways out,
+      # because they are visible to different readers: the step summary renders
+      # on the run page for a person, and the error annotation is served by the
+      # public checks API for anything reading the repository over HTTP.
+      - name: Publish the failure
         if: failure()
         shell: bash
         run: |
@@ -76,6 +77,13 @@ jobs:
             tail -n 150 pytest-output.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+          # One annotation, not sixty: a step is allowed ten, and the newlines
+          # have to be escaped as %0A to survive inside a workflow command.
+          body=$(tail -n 60 pytest-output.txt \
+            | sed -e 's/%/%25/g' -e 's/\r//g' \
+            | awk '{printf "%s%%0A", $0}')
+          echo "::error title=pytest ${{ matrix.os }} py${{ matrix.python-version }}::${body}"
 
   build:
     name: Build distribution
