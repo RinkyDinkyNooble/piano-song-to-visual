@@ -249,10 +249,35 @@ class Score:
     source: Path | None = None
     title: str = ""
 
+    # Derived values, computed once on first use. Not constructor arguments and
+    # not part of equality or the repr: they carry no information the fields
+    # above do not already carry.
+    #
+    # Memoising on a frozen dataclass is safe precisely because it is frozen.
+    # Parts, notes, pedals and the tempo map are all immutable all the way down,
+    # so neither of these can go stale, and `replace()` does not copy init=False
+    # fields, so a derived score starts with an empty cache rather than the
+    # wrong one. Two threads racing would compute the same answer twice and
+    # store the same value, which matters because parallel frame rendering is
+    # the next thing on the roadmap.
+    _notes: tuple[Note, ...] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _meter: Meter | None = field(default=None, init=False, repr=False, compare=False)
+
     @property
     def notes(self) -> tuple[Note, ...]:
-        """Every note across every part, in playing order."""
-        return tuple(sorted(note for part in self.parts for note in part.notes))
+        """Every note across every part, in playing order.
+
+        Cached. The renderer asks once per frame, which is about 14,400 times
+        for a four-minute 1080p60 render, and sorting several thousand notes
+        into a fresh tuple that often was a fifth of the whole frame cost.
+        """
+        cached = self._notes
+        if cached is None:
+            cached = tuple(sorted(note for part in self.parts for note in part.notes))
+            object.__setattr__(self, "_notes", cached)
+        return cached
 
     @property
     def is_empty(self) -> bool:
@@ -269,11 +294,15 @@ class Score:
     def meter(self) -> Meter:
         """Where the bar lines fall, from the tempo map and the time signatures.
 
-        Rebuilt on each access. It costs one pass over the time signatures, of
-        which a piece has a handful; anything drawing bar lines per frame should
-        hold on to the result rather than asking again.
+        Cached, like `notes`. Cheap to build, but the renderer asks for it once
+        per frame when the grid is drawing bar lines, and a value that cannot
+        change is not worth rebuilding fourteen thousand times.
         """
-        return Meter.from_score_data(self.tempo_map, self.time_signatures)
+        cached = self._meter
+        if cached is None:
+            cached = Meter.from_score_data(self.tempo_map, self.time_signatures)
+            object.__setattr__(self, "_meter", cached)
+        return cached
 
     @property
     def pitch_range(self) -> tuple[int, int] | None:

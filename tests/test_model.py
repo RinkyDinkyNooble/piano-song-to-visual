@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from psv.model import (
@@ -17,6 +19,7 @@ from psv.model import (
     is_black_key,
     pitch_name,
 )
+from psv.tempo import TimeSignature
 
 
 def note(pitch: int = 60, start: float = 0.0, end: float = 1.0, **kw: object) -> Note:
@@ -232,3 +235,53 @@ def test_half_pedal_is_not_reduced_to_a_boolean() -> None:
     assert shallow != deep
     assert not shallow.is_full
     assert deep.is_full
+
+
+# -- derived values are cached -------------------------------------------
+
+
+def test_notes_are_computed_once() -> None:
+    """The renderer asks per frame, about 14,400 times for a four-minute
+    1080p60 render, and sorting several thousand notes into a fresh tuple each
+    time was a fifth of the whole frame cost."""
+    score = Score(
+        parts=(
+            Part(
+                notes=(
+                    Note(pitch=60, start=1.0, end=2.0),
+                    Note(pitch=48, start=0.0, end=1.0),
+                )
+            ),
+        )
+    )
+    assert [note.pitch for note in score.notes] == [48, 60], "still sorted"
+    assert score.notes is score.notes, "and not rebuilt"
+
+
+def test_the_meter_is_computed_once() -> None:
+    score = Score(time_signatures=(TimeSignature(0, 0.0, 3, 4),))
+    assert score.meter is score.meter
+
+
+def test_a_derived_score_does_not_inherit_a_stale_cache() -> None:
+    """Caching on a frozen dataclass is only safe if `replace` starts clean."""
+    original = Score(parts=(Part(notes=(Note(pitch=60, start=0.0, end=1.0),)),))
+    assert len(original.notes) == 1  # populate the cache
+
+    changed = replace(original, parts=())
+    assert changed.notes == ()
+
+    regrouped = original.with_notes([Note(pitch=72, start=0.0, end=1.0)])
+    assert [note.pitch for note in regrouped.notes] == [72]
+
+
+def test_caching_does_not_affect_equality_or_repr() -> None:
+    """The cache carries no information the fields do not already carry, so it
+    must not leak into either."""
+    parts = (Part(notes=(Note(pitch=60, start=0.0, end=1.0),)),)
+    warm, cold = Score(parts=parts), Score(parts=parts)
+    assert len(warm.notes) == 1  # warm one cache and not the other
+
+    assert warm == cold
+    assert repr(warm) == repr(cold)
+    assert "_notes" not in repr(warm)

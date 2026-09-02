@@ -91,8 +91,10 @@ of it. Building a rough renderer first makes M3 inspectable instead of theoretic
   same inputs, same pixels, always. Draws background, falling note bars, and the
   keyboard with pressed keys highlighted.
 - `psv/render/video.py` - frame loop piping raw RGB to ffmpeg via `imageio-ffmpeg`.
-  Only notes inside the visible time window are considered, via an interval index, so
-  cost scales with what is on screen rather than with song length.
+  Only notes inside the visible time window are drawn. Finding them is still a
+  linear scan of the score per frame, which measures at about 1% of frame cost,
+  so the interval index this once claimed to have was never built and is not
+  worth building.
 
 Scope limit for this milestone: white and black bars, correct geometry, correct timing.
 No colour mapping, no grid, no pedal lanes - those are M4.
