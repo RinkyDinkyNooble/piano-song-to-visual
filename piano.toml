@@ -6,8 +6,8 @@
 #   6 harpsichord      19 church organ
 [audio]
 backend = "fluidsynth"
-soundfont = "C:/Users/harka/.local/fluidsynth/GeneralUser-GS.sf2"
-fluidsynth_bin = "C:/Users/harka/.local/fluidsynth/bin"
+soundfont = "~/.local/fluidsynth/GeneralUser-GS.sf2"
+fluidsynth_bin = "~/.local/fluidsynth/bin"
 program = 0
 
 [hands]
