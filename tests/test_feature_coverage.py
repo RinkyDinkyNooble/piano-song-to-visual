@@ -88,13 +88,19 @@ def test_registry_entries_are_complete() -> None:
 
 def test_every_used_asset_exists() -> None:
     """A feature cannot point at a song or fixture that was never defined."""
-    song_ids = {song["id"] for song in _load(SONGS_FILE)["song"]}
+    from tests.fixtures.soundfont_builder import SOUNDFONTS
+
+    catalogue: dict[str, object] = {
+        "song": {song["id"] for song in _load(SONGS_FILE)["song"]},
+        "fixture": FIXTURES,
+        "soundfont": SOUNDFONTS,
+    }
     unknown: list[str] = []
     for feature in _registry():
         for ref in feature.get("uses", []):
             kind, _, name = ref.partition(":")
-            known = song_ids if kind == "song" else FIXTURES
-            if kind not in {"song", "fixture"} or name not in known:
+            known = catalogue.get(kind)
+            if known is None or name not in known:  # type: ignore[operator]
                 unknown.append(f"{feature['id']} -> {ref}")
     assert not unknown, f"features reference unknown assets: {unknown}"
 

@@ -68,7 +68,7 @@ def test_an_unknown_top_level_table_is_an_error(tmp_path: Path) -> None:
 
 
 @pytest.mark.feature("F-10")
-@pytest.mark.parametrize("span", [0, -1, MAX_ALLOWED_SPAN + 1, 88])
+@pytest.mark.parametrize("span", [-1, MAX_ALLOWED_SPAN + 1, 88])
 def test_a_span_outside_human_reach_is_rejected(tmp_path: Path, span: int) -> None:
     """The hand-span limit is an invariant. It cannot be set to something the
     constraint engine would have to ignore."""
@@ -167,3 +167,24 @@ def test_malformed_toml_names_the_file(tmp_path: Path) -> None:
 def test_a_missing_config_file_is_an_error(tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match="could not read"):
         Config.load(tmp_path / "absent.toml")
+
+
+@pytest.mark.feature("F-55")
+def test_a_span_of_zero_means_no_limit(tmp_path: Path) -> None:
+    """Not a weaker guarantee, a different request. The promise is that output
+    never exceeds the *configured* span, and this configures no span."""
+    config = Config.load(write(tmp_path, "[hands]\nmax_span_semitones = 0\n"))
+    assert not config.hands.is_limited
+    assert config.hands.max_span_semitones == 0
+
+
+@pytest.mark.feature("F-55")
+def test_hand_assignment_still_has_a_span_to_lay_out_against(tmp_path: Path) -> None:
+    """Splitting the notes between two hands is a separate question from
+    limiting the reach, and it still needs an answer when nothing is limited."""
+    config = Config.load(write(tmp_path, "[hands]\nmax_span_semitones = 0\n"))
+    assert config.hands.layout_span > 0
+
+    limited = Config.load(write(tmp_path, "[hands]\nmax_span_semitones = 14\n"))
+    assert limited.hands.layout_span == 14
+    assert limited.hands.is_limited

@@ -377,3 +377,114 @@ def test_stages_chain_through_intermediate_files(
         == 0
     )
     assert video.exists()
+
+
+# -- global flags on either side of the subcommand -----------------------
+
+
+@pytest.mark.feature("F-56")
+def test_config_is_accepted_after_the_subcommand(
+    tmp_path: Path, midi_path: Callable[[str], Path]
+) -> None:
+    """`psv -c x.toml run ...` worked and `psv run ... -c x.toml` did not.
+    Nothing about the flag suggests that, and it caught a user twice."""
+    config = tmp_path / "ok.toml"
+    config.write_text("[hands]\nmax_span_semitones = 15\n", encoding="utf-8")
+    path = midi_path("single-note")
+    assert main(["inspect", str(path), "-c", str(config)]) == 0
+    assert main(["-c", str(config), "inspect", str(path)]) == 0
+
+
+@pytest.mark.feature("F-56")
+def test_a_bad_config_is_caught_from_either_side(
+    tmp_path: Path, midi_path: Callable[[str], Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = tmp_path / "bad.toml"
+    config.write_text("[hands]\nmax_span_semitones = 99\n", encoding="utf-8")
+    path = midi_path("single-note")
+    assert main(["inspect", str(path), "-c", str(config)]) == 1
+    assert "max_span_semitones" in capsys.readouterr().err
+
+
+@pytest.mark.feature("F-56")
+def test_verbose_after_the_subcommand_reaches_the_report(
+    midi_path: Callable[[str], Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The subcommand's copy of -v must not overwrite the top-level one with its
+    own default, which is what argparse does unless the copy is SUPPRESSed."""
+    path = midi_path("orchestral")
+    assert main(["inspect", str(path), "-v"]) == 0
+    after = capsys.readouterr().out
+
+    assert main(["-v", "inspect", str(path)]) == 0
+    before = capsys.readouterr().out
+
+    assert "track 0" in after
+    assert after == before
+
+
+@pytest.mark.feature("F-56")
+def test_no_verbose_anywhere_stays_quiet(
+    midi_path: Callable[[str], Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["inspect", str(midi_path("orchestral"))]) == 0
+    assert "track 0" not in capsys.readouterr().out
+
+
+# -- instruments ---------------------------------------------------------
+
+
+@pytest.mark.feature("F-57")
+def test_instruments_lists_the_general_midi_set(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["instruments"]) == 0
+    out = capsys.readouterr().out
+    assert "Acoustic Grand Piano" in out
+    assert "Church Organ" in out
+    assert "worth trying on a piano piece" in out
+
+
+@pytest.mark.feature("F-57")
+def test_instruments_prefers_the_soundfonts_own_names(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A SoundFont may put anything at any program number, so its names are what
+    will actually sound. GM is a convention, not a guarantee."""
+    from tests.fixtures.soundfont_builder import SOUNDFONTS
+
+    font = tmp_path / "tiny.sf2"
+    font.write_bytes(SOUNDFONTS["named-presets"]())
+    config = tmp_path / "sf.toml"
+    config.write_text(
+        f'[audio]\nbackend = "builtin"\nsoundfont = "{font.as_posix()}"\n',
+        encoding="utf-8",
+    )
+
+    assert main(["-c", str(config), "instruments"]) == 0
+    out = capsys.readouterr().out
+    assert "Test Piano" in out
+    assert "Test Rhodes" in out
+    assert "Acoustic Grand Piano" not in out
+
+
+@pytest.mark.feature("F-57")
+def test_an_unreadable_soundfont_falls_back_to_general_midi(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The point of the command is to answer the question. A broken file is a
+    reason to say so and answer it a worse way, not to answer nothing."""
+    from tests.fixtures.soundfont_builder import SOUNDFONTS
+
+    font = tmp_path / "broken.sf2"
+    font.write_bytes(SOUNDFONTS["not-a-soundfont"]())
+    config = tmp_path / "sf.toml"
+    config.write_text(
+        f'[audio]\nbackend = "builtin"\nsoundfont = "{font.as_posix()}"\n',
+        encoding="utf-8",
+    )
+
+    assert main(["-c", str(config), "instruments"]) == 0
+    captured = capsys.readouterr()
+    assert "could not read" in captured.err
+    assert "Acoustic Grand Piano" in captured.out

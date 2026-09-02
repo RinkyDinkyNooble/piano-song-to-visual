@@ -22,6 +22,16 @@ from psv.model import DEFAULT_OVERLAP_TOLERANCE_S
 #: The widest simultaneous reach the engine will ever allow, about 2.5 octaves.
 MAX_ALLOWED_SPAN = 36
 
+#: hands.max_span_semitones = 0 means leave the piece exactly as written.
+#: Not a weaker guarantee, a different request: the promise is that output
+#: never exceeds the *configured* span, and this configures no span.
+UNLIMITED_SPAN = 0
+
+#: Hand assignment still has to put every note in one hand or the other, so
+#: it lays out against this when no limit is being enforced. It constrains
+#: nothing; it only decides where the split between the hands sits.
+NOMINAL_SPAN = 12
+
 DIFFICULTY_LEVELS = ("beginner", "easy", "medium", "hard", "original")
 AUDIO_BACKENDS = ("fluidsynth", "mux", "builtin", "none")
 PRACTICE_HANDS = ("both", "left", "right")
@@ -45,11 +55,21 @@ class HandsConfig:
     #: Overlaps shorter than this do not count as simultaneous.
     overlap_tolerance_s: float = DEFAULT_OVERLAP_TOLERANCE_S
 
+    @property
+    def is_limited(self) -> bool:
+        """Whether a span limit is being enforced at all."""
+        return self.max_span_semitones != UNLIMITED_SPAN
+
+    @property
+    def layout_span(self) -> int:
+        """The span hand assignment lays out against, limit or no limit."""
+        return self.max_span_semitones if self.is_limited else NOMINAL_SPAN
+
     def validate(self) -> None:
-        if not 1 <= self.max_span_semitones <= MAX_ALLOWED_SPAN:
+        if not UNLIMITED_SPAN <= self.max_span_semitones <= MAX_ALLOWED_SPAN:
             raise ConfigError(
-                f"hands.max_span_semitones must be between 1 and "
-                f"{MAX_ALLOWED_SPAN}, got {self.max_span_semitones}"
+                f"hands.max_span_semitones must be 0 (no limit) or between 1 "
+                f"and {MAX_ALLOWED_SPAN}, got {self.max_span_semitones}"
             )
         if self.overlap_tolerance_s < 0:
             raise ConfigError(

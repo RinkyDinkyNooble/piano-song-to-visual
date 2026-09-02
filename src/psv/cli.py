@@ -23,6 +23,12 @@ from psv.config import Config, ConfigError, PracticeConfig, VisualConfig
 from psv.constraints import ConstraintError
 from psv.constraints import constrain as constrain_score
 from psv.inspect import format_report, inspect_score
+from psv.instruments import (
+    GM_PROGRAMS,
+    SUGGESTED,
+    SoundFontError,
+    soundfont_presets,
+)
 from psv.midi import read_midi_file, write_midi_file
 from psv.midi.read import MidiReadError
 from psv.pipeline import run as run_pipeline
@@ -43,6 +49,43 @@ PIPELINE_COMMANDS: dict[str, str] = {
 
 IMPLEMENTED = frozenset({"inspect", "export", "arrange", "constrain", "render", "run"})
 
+#: Commands that answer a question instead of moving a file through a stage.
+UTILITY_COMMANDS: dict[str, str] = {
+    "instruments": "list the instruments audio.program can select",
+}
+
+
+def _global_options(suppress: bool) -> argparse.ArgumentParser:
+    """The options that work on either side of the subcommand.
+
+    Defined once and attached twice, through `parents=`, because `psv -c x.toml
+    run ...` working while `psv run ... -c x.toml` is a usage error is a
+    distinction nothing about the flags suggests.
+
+    The subcommand copies default to SUPPRESS. argparse parses a subcommand into
+    its own namespace and copies every attribute back over the top-level one, so
+    a real default there would overwrite what was given before the subcommand
+    with the default of the copy that was not given after it.
+    """
+    parent = argparse.ArgumentParser(add_help=False)
+    default: object = argparse.SUPPRESS if suppress else 0
+    parent.add_argument(
+        "-v",
+        "--verbose",
+        action="count",
+        default=default,
+        help="increase log verbosity, and show more detail in reports (repeatable)",
+    )
+    parent.add_argument(
+        "-c",
+        "--config",
+        metavar="PATH",
+        type=Path,
+        default=argparse.SUPPRESS if suppress else None,
+        help="path to a psv config file (TOML)",
+    )
+    return parent
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -51,26 +94,17 @@ def build_parser() -> argparse.ArgumentParser:
             "Turn a MIDI file into a falling-notes piano practice video, "
             "arranged to be playable by human hands."
         ),
+        parents=[_global_options(suppress=False)],
     )
     parser.add_argument("--version", action="version", version=f"psv {__version__}")
-    parser.add_argument(
-        "-v",
-        "--verbose",
-        action="count",
-        default=0,
-        help="increase log verbosity, and show more detail in reports (repeatable)",
-    )
-    parser.add_argument(
-        "-c",
-        "--config",
-        metavar="PATH",
-        type=Path,
-        help="path to a psv config file (TOML)",
-    )
 
+    shared = _global_options(suppress=True)
     sub = parser.add_subparsers(dest="command", metavar="COMMAND")
+
     for name, help_text in PIPELINE_COMMANDS.items():
-        child = sub.add_parser(name, help=help_text, description=help_text)
+        child = sub.add_parser(
+            name, help=help_text, description=help_text, parents=[shared]
+        )
         child.add_argument("input", type=Path, help="input MIDI file")
         if name != "inspect":
             child.add_argument(
@@ -80,8 +114,19 @@ def build_parser() -> argparse.ArgumentParser:
                 required=name in IMPLEMENTED,
                 help="output file",
             )
+        if name in {"arrange", "constrain", "run"}:
+            child.add_argument(
+                "--span",
+                type=int,
+                default=None,
+                metavar="SEMITONES",
+                help="override hands.max_span_semitones; 0 means no limit",
+            )
         if name in {"render", "run"}:
             _add_render_options(child)
+
+    for name, help_text in UTILITY_COMMANDS.items():
+        sub.add_parser(name, help=help_text, description=help_text, parents=[shared])
 
     return parser
 
@@ -289,6 +334,52 @@ def _check_window_flags(args: argparse.Namespace) -> None:
         raise ConfigError(f"--bars cannot be combined with {' or '.join(clashes)}")
 
 
+def _hands_with_overrides(config: Config, args: argparse.Namespace) -> Config:
+    """`--span` beats hands.max_span_semitones, as the size overrides do."""
+    span = getattr(args, "span", None)
+    if span is None:
+        return config
+    hands = replace(config.hands, max_span_semitones=span)
+    hands.validate()
+    return replace(config, hands=hands)
+
+
+def _cmd_instruments(args: argparse.Namespace, config: Config) -> int:
+    """What `audio.program` can be set to, from the SoundFont where there is one.
+
+    GM is a convention, not a guarantee. A SoundFont may put anything at any
+    program number, so when one is configured its own names are what will
+    actually sound and they are what gets printed.
+    """
+    font = config.audio.soundfont
+    if font:
+        try:
+            presets = soundfont_presets(font)
+        except (SoundFontError, OSError) as exc:
+            print(f"psv: could not read {font}: {exc}", file=sys.stderr)
+            print("falling back to the General MIDI names\n", file=sys.stderr)
+        else:
+            print(f"{Path(font).name}: {len(presets)} preset(s)")
+            for preset in presets:
+                if preset.bank and not args.verbose:
+                    continue  # bank 0 is the GM set; the rest need -v
+                label = f"  {preset.program:3}"
+                if preset.bank:
+                    label += f"  bank {preset.bank:3}"
+                print(f"{label}  {preset.name}")
+            if not args.verbose and any(p.bank for p in presets):
+                print("\n-v also lists the variation banks")
+            return 0
+
+    for program, name in enumerate(GM_PROGRAMS):
+        mark = "  *" if program in SUGGESTED else "   "
+        print(f"{mark}{program:4}  {name}")
+    print("\n  * worth trying on a piano piece:")
+    for program, why in sorted(SUGGESTED.items()):
+        print(f"      {program:3}  {GM_PROGRAMS[program]} - {why}")
+    return 0
+
+
 def _cmd_constrain(args: argparse.Namespace, config: Config) -> int:
     score = read_midi_file(args.input)
     result = constrain_score(score, config)
@@ -308,7 +399,7 @@ def _cmd_arrange(args: argparse.Namespace, config: Config) -> int:
     score = read_midi_file(args.input)
     result = arrange_score(
         score,
-        max_span=config.hands.max_span_semitones,
+        max_span=config.hands.layout_span,
         tolerance=config.hands.overlap_tolerance_s,
     )
     print(result.summary())
@@ -355,6 +446,7 @@ HANDLERS: dict[str, Callable[[argparse.Namespace, Config], int]] = {
     "constrain": _cmd_constrain,
     "render": _cmd_render,
     "run": _cmd_run,
+    "instruments": _cmd_instruments,
 }
 
 
@@ -372,7 +464,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         # Loaded first, so a bad config fails before any work is done.
-        config = Config.load(args.config)
+        config = _hands_with_overrides(Config.load(args.config), args)
         return HANDLERS[args.command](args, config)
     except (
         ConfigError,

@@ -518,11 +518,6 @@ never at the cost of readability; the spec is explicit that effects usually hurt
 
 ### Bigger things
 
-**Duet and multi-part mode.** The data model already stores parts as a list rather
-than a left/right pair specifically so this does not need a rewrite. What it needs
-is a way to say how many players there are and which part is whose, and a renderer
-that can show more than two hand colours.
-
 **Better salience for arranging.** The current function is velocity, duration, and
 an outer-voice bonus. Real salience needs harmonic analysis: which notes are chord
 tones, which are passing, which carry the line. This is the largest single lever on
@@ -559,6 +554,12 @@ it, and a speed-up that costs that is not worth having.
 ### Explicitly not planned
 
 YouTube upload, or any distribution automation. This is a local tool.
+
+Duet and multi-part mode is parked rather than planned. The data model is already
+shaped for it, but a third and fourth hand colour would eat the margin that makes
+hue-for-hand and brightness-for-velocity readable, and nothing else in the tool
+needs it. Written up in , alongside fingering, the live
+player, and harmonic salience.
 
 ---
 

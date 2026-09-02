@@ -439,3 +439,56 @@ def test_asking_for_a_hand_with_no_notes_warns_rather_than_failing(
     assert code == 0
     assert output.exists()
     assert "no notes are assigned to the left hand" in caplog.text
+
+
+@pytest.mark.feature("F-55")
+def test_no_span_limit_changes_nothing_and_says_so(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An unplayable arrangement must never be a surprise, so asking for no
+    limit has to be loud about what it did not do."""
+    from psv.midi import read_midi_file
+
+    source = (
+        Path(__file__).resolve().parent
+        / "assets"
+        / "public-domain"
+        / "bach-bwv565-toccata-and-fugue.mid"
+    )
+    output = tmp_path / "as-written.mid"
+    assert main(["constrain", str(source), "-o", str(output), "--span", "0"]) == 0
+
+    out = capsys.readouterr().out
+    assert "span not enforced" in out
+
+    before, after = read_midi_file(source), read_midi_file(output)
+    assert len(after.notes) == len(before.notes)
+    assert not any(note.was_edited for note in after.notes)
+
+
+@pytest.mark.feature("F-55")
+def test_the_span_flag_beats_the_config_file(
+    tmp_path: Path, midi_path: Callable[[str], Path]
+) -> None:
+    from psv.constraints import verify_span
+
+    config = tmp_path / "wide.toml"
+    config.write_text("[hands]\nmax_span_semitones = 18\n", encoding="utf-8")
+    output = tmp_path / "narrow.mid"
+
+    assert (
+        main(
+            [
+                "-c",
+                str(config),
+                "constrain",
+                str(midi_path("wide-span-chord")),
+                "-o",
+                str(output),
+                "--span",
+                "5",
+            ]
+        )
+        == 0
+    )
+    assert verify_span(read_midi_file(output), 5) == []

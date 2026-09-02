@@ -82,7 +82,7 @@ def run(
 
     arranged = arrange(
         score,
-        max_span=config.hands.max_span_semitones,
+        max_span=config.hands.layout_span,
         tolerance=config.hands.overlap_tolerance_s,
     )
     constrained = constrain(arranged.score, config)

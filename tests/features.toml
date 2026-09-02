@@ -460,3 +460,28 @@ milestone = "M8"
 status = "done"
 verify = "e2e"
 uses = ["fixture:two-hands", "fixture:sustain-pedal", "fixture:single-note"]
+
+# --------------------------------------------------- M8: quality of life
+[[feature]]
+id = "F-55"
+name = "Unlimited-span mode leaves the reach exactly as written"
+milestone = "M8"
+status = "done"
+verify = "e2e"
+uses = ["fixture:wide-span-chord", "song:toccata"]
+
+[[feature]]
+id = "F-56"
+name = "Global flags work on either side of the subcommand"
+milestone = "M8"
+status = "done"
+verify = "e2e"
+uses = ["fixture:single-note", "fixture:orchestral"]
+
+[[feature]]
+id = "F-57"
+name = "psv instruments names what audio.program can select"
+milestone = "M8"
+status = "done"
+verify = "e2e"
+uses = ["soundfont:named-presets", "soundfont:not-a-soundfont"]

@@ -92,6 +92,9 @@ class ConstrainResult:
     removed_for_difficulty: tuple[Note, ...] = ()
     violations_before: int = 0
     passes: int = 0
+    #: False when hands.max_span_semitones is 0. Reported loudly, because an
+    #: arrangement nobody checked is not something to discover at the piano.
+    span_enforced: bool = True
 
     @property
     def counts(self) -> dict[str, int]:
@@ -101,6 +104,14 @@ class ConstrainResult:
         return counts
 
     def summary(self) -> str:
+        if not self.span_enforced:
+            note = "span not enforced: the reach is as written and may be unplayable"
+            if not self.removed_for_difficulty:
+                return note
+            return (
+                f"{note}\n  difficulty       "
+                f"{len(self.removed_for_difficulty)} note(s) removed"
+            )
         if not self.violations_before and not self.removed_for_difficulty:
             return "nothing to do: already playable at this span"
         lines = [
@@ -349,6 +360,20 @@ def constrain(score: Score, config: Config) -> ConstrainResult:
 
     score = ensure_hands(score)
     score, removed = apply_difficulty(score, config.difficulty.level, tolerance)
+
+    if not config.hands.is_limited:
+        # Asked for no limit, so there is nothing to detect and nothing to
+        # repair. Returning here rather than running with a very wide span
+        # keeps "unlimited" from meaning "36", and keeps every note untouched.
+        log.warning(
+            "hands.max_span_semitones is 0: span is not being enforced, and the "
+            "result may not be playable"
+        )
+        return ConstrainResult(
+            score=score,
+            removed_for_difficulty=removed,
+            span_enforced=False,
+        )
 
     state = _Working(notes=list(score.notes))
     violations_before = len(detect_violations(state.notes, max_span, tolerance))
