@@ -34,7 +34,7 @@ tool being slow on a large file.
 
 ## What the project does about it
 
-- `ruff`'s bandit ruleset and CodeQL run on every push and pull request.
+- `ruff`'s bandit ruleset runs on every push and pull request.
 - Dependencies are updated weekly by Dependabot.
 - No input-derived string is ever passed to a shell; subprocesses are invoked with
   argument lists.

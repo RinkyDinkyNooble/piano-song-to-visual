@@ -43,6 +43,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     metadata without exhausting the generator and counts frames through
     `subprocess.run` instead. Reproduced only on Linux and macOS, so fixed by
     construction and confirmed by CI rather than locally.
+- **Removed the CodeQL workflow.** It could not upload results because code
+  scanning needs a public repository or GitHub Advanced Security, neither of
+  which applies here, so it warned on every push about something nobody could
+  act on. `ruff`'s bandit ruleset still runs and is the check that actually
+  reads this code.
 
 ### Deferred
 
