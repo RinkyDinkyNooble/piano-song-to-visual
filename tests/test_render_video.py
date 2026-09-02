@@ -165,3 +165,29 @@ def test_a_real_song_renders_end_to_end(tmp_path: Path) -> None:
     path = render_video(score, TINY, tmp_path / "bach.mp4", start=30.0, duration=2.0)
     assert frame_count(path) == 20
     assert path.stat().st_size > 1000
+
+
+@pytest.mark.feature("F-14")
+def test_an_unwritable_destination_fails_before_ffmpeg_starts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Letting ffmpeg discover the bad path leaks its stdin.
+
+    imageio-ffmpeg closes that pipe only while the process is still alive, and
+    one that failed to open its output has already exited, so the pipe falls to
+    the garbage collector and surfaces on POSIX as a ResourceWarning charged to
+    some unrelated later test. The only fix available from outside the library
+    is not to start ffmpeg at all, so that is what this pins.
+    """
+    import imageio_ffmpeg
+
+    def fail(*args: object, **kwargs: object) -> object:
+        raise AssertionError("ffmpeg was started for a destination it cannot open")
+
+    monkeypatch.setattr(imageio_ffmpeg, "write_frames", fail)
+
+    blocked = tmp_path / "out.mp4"
+    blocked.mkdir()
+    score = read_midi(FIXTURES["single-note"]())
+    with pytest.raises(VideoWriteError, match="could not write"):
+        render_video(score, TINY, blocked, duration=0.5)

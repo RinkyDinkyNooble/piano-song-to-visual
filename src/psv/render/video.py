@@ -97,6 +97,24 @@ def render_video(
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
 
+    # Open the destination before handing it to ffmpeg, for two reasons.
+    #
+    # The error is better: a path that is a directory, or not writable, says so
+    # here instead of arriving as a page of ffmpeg stderr.
+    #
+    # And it avoids a leak in imageio-ffmpeg. Its writer closes ffmpeg's stdin
+    # only `if p.poll() is None`, so a process that died opening its output has
+    # already exited and that pipe is left to the garbage collector. On POSIX
+    # that surfaces later as a ResourceWarning from a destructor, which this
+    # project treats as an error, and it is charged to whichever test happens to
+    # be running at the time. Not reaching that path is the only fix available
+    # from outside the library.
+    try:
+        with output.open("wb"):
+            pass
+    except OSError as exc:
+        raise VideoWriteError(f"could not write {output}: {exc}") from exc
+
     if duration is None:
         duration = max(0.0, score.duration - start) + TAIL_S
     total = max(1, round(duration * config.fps))
