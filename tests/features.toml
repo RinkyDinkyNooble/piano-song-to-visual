@@ -558,3 +558,16 @@ milestone = "M10"
 status = "done"
 verify = "e2e"
 uses = ["musicxml:piano-two-staves", "musicxml:chord", "musicxml:empty", "fixture:single-note"]
+
+[[feature]]
+id = "F-66"
+name = "Repeats, first- and second-time bars, D.C., D.S., segno, coda and fine"
+milestone = "M10"
+status = "done"
+verify = "unit"
+uses = [
+    "musicxml:simple-repeat",
+    "musicxml:first-and-second-endings",
+    "musicxml:da-capo-al-fine",
+    "musicxml:dal-segno-al-coda",
+]

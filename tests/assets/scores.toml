@@ -185,3 +185,45 @@ file = "41a-MultiParts-Partorder.musicxml"
 sha256 = "5dd7787f0bf6f0072a30c93f9ce30f7a8c1217d718b7445e061d585e878792c2"
 bytes = 4232
 covers = "several parts, which is an ensemble score rather than a piano one"
+
+[[score]]
+id = "simple-repeat"
+file = "45a-SimpleRepeat.musicxml"
+sha256 = "7274c51cb5dd284419210aec9c9e1ddd4afc8b15aeedc9447e6cf30828d6c101"
+bytes = 1711
+covers = "one measure repeated five times by `times`, which counts plays rather than jumps"
+
+[[score]]
+id = "repeat-alternatives"
+file = "45b-RepeatWithAlternatives.musicxml"
+sha256 = "2dd2a4bc1c25ad01e6e1856692ff01f06703204e1e27da9fbb48139f5a43c24c"
+bytes = 2784
+covers = "first- and second-time bars, where the wrong pass loses or duplicates a bar"
+
+[[score]]
+id = "repeat-multiple-times"
+file = "45c-RepeatMultipleTimes.musicxml"
+sha256 = "27d9d91a1ace131452e275a8098f11a461af8f4e90af8849742c11c634f637a4"
+bytes = 3118
+covers = "two backward repeats sharing one forward repeat sign"
+
+[[score]]
+id = "repeat-invalid-endings"
+file = "45f-Repeats-InvalidEndings.musicxml"
+sha256 = "3b8e7780809740fdb101ee157698ac74fdc49064f9877d6d9410de91b57f267a"
+bytes = 6373
+covers = "endings that contradict themselves; must produce a piece rather than a hang"
+
+[[score]]
+id = "repeat-not-ended"
+file = "45g-Repeats-NotEnded.musicxml"
+sha256 = "6702649055090e974c942d3dd0c23aa629e6843f4cf4b37abd5bc55a07e294ac"
+bytes = 1849
+covers = "a repeat opened and never closed, which must not swallow the rest of the score"
+
+[[score]]
+id = "repeats-nested"
+file = "45i-Repeats-Nested.musicxml"
+sha256 = "fa1ee46600e229172401700b01f54a8bb5db17db6fedf07676d2d227d0a56505"
+bytes = 4274
+covers = "nested repeats, which this reader flattens rather than nests; here to prove it still terminates"

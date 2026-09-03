@@ -538,6 +538,52 @@ player, and harmonic salience.
 
 ---
 
+## M10 - MusicXML input (done)
+
+Sheet music in, without optical recognition. `psv run sonata.musicxml`, and
+`.mxl`, and `.xml`, told apart by content rather than by extension.
+
+**Why not convert to MIDI first.** Because that throws away the one thing worth
+having. A piano part is written on two staves and the file *says* which staff
+every note is on, so the hand is read rather than guessed from a track name.
+Guessing wrong once cost the Rondo alla Turca a quarter of its notes. Dynamics
+arrive as `pp` and `ff`, and pedal as a mark with a start and a stop; a MIDI
+export of the same score usually has neither.
+
+Written against `xml.etree` and `zipfile`, both standard library. `music21`
+resolves to fourteen packages including matplotlib to parse a text format.
+
+**Step 1: the reader.** `<backup>`, which is how a second voice is written and
+the single most error-prone element in the format; ties folded into one note;
+chords; mid-score division changes; grace notes, which have no duration and so
+land in the sweep path that once cost 428 notes.
+
+*Checked by eye against a real export.* Für Elise reads as 815 notes, 517 right
+and 298 left, and the count is exact: 1008 `<note>` elements less 193 rests. It
+also caught `psv inspect` contradicting the arrange stage about whether the
+file's hands were separated, which is the third time that particular
+disagreement has cost something.
+
+**Step 2: repeats.** `|: :|` with a `times` count, first- and second-time bars,
+D.C., D.S., segno, coda and fine, unrolled into a linear timeline before
+anything else runs. Für Elise goes from 106 written measures to 127 played.
+
+The reading of the marks and the working-out of the play order are separate
+modules, and the second knows nothing about XML. That is where every mistake
+lives, and it can be tested by writing the marks down directly rather than by
+building a file to provoke them.
+
+Repeats do not nest: a `|:` written inside a first-time bar is flattened and
+the piece comes out short. That is logged at warning level rather than done
+quietly, which is the standing rule about music going missing.
+
+**Exit criteria:** a real score with repeats renders to a video whose structure
+matches the sheet music, checked by ear. Counting bars proves the unrolling is
+self-consistent and cannot prove it is the piece, which is why this one ends at
+a pair of ears rather than at a test.
+
+---
+
 ## M9 - The composer: audio to playable piano
 
 The thing this project was originally for. Point it at a recording of anything,

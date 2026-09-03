@@ -21,19 +21,47 @@ psv inspect sonata.xml                     # told apart by content, not suffix
 | Hands | Guessed from track names | **Stated.** Staff 1 is the right hand |
 | Dynamics | Velocity bytes, often all 64 | Written as `pp`, `ff` |
 | Pedal | CC64, often absent | A mark with a start and a stop |
-| Repeats | Already flattened | **Not unrolled yet.** See below |
+| Repeats | Already flattened | Unrolled here, into the same flat timeline |
 
-Für Elise exported from MuseScore reads as 815 notes, 517 right and 298 left,
-with 22 pedal presses. The same piece as MIDI usually arrives with no dynamics,
-no pedal, and two tracks named something like `track 1` and `track 2`.
+Für Elise exported from MuseScore is written as 815 notes, 517 right and 298
+left, and played as 951 once its repeats are unrolled, with 30 pedal presses.
+The same piece as MIDI usually arrives with no dynamics, no pedal, and two
+tracks named something like `track 1` and `track 2`.
 
-## What it does not do yet
+## Repeats
 
-**Repeats are not unrolled.** The reader walks the measures once, in document
-order, so a score with a repeat plays through once and comes out shorter than it
-sounds. `<repeat>`, `<ending>`, D.C., D.S., segno, coda and fine are all
-ignored. That is the next piece of work and doing half of it would be worse than
-not starting: a partly-unrolled score is wrong in a way nobody can see.
+A score is written once and played more than once. A falling note happens at a
+time, so before anything else the measures are laid out in the order a player
+meets them, each repeat spelled out in full. `|: :|` with a `times` count,
+first- and second-time bars, D.C., D.S., segno, coda and fine.
+
+Für Elise has two repeats, each with a first- and second-time bar. They take it
+from 106 written measures to 127 played, 815 notes to 951, and 2:14 to 2:36.
+
+The work is split in two. `repeats.measure_marks` reads the XML into one small
+record per measure; `repeats.play_order` turns those records into a list of
+measure indices and knows nothing about XML at all. Every mistake lives in the
+second half, and it can be tested by writing the marks down directly rather
+than by building a file to provoke it.
+
+Three things are worth knowing.
+
+**A D.C. or D.S. pass is not a repeat.** The repeats are not taken again on the
+way back, and a first-time bar does not apply, so the last ending of a group is
+played instead. Fine and the coda are obeyed only on that pass, which is what
+they mean.
+
+**A tie cannot reach across a jump.** One left open at a repeat barline is
+dropped rather than joined to whatever the jump lands on. Left in place it
+would swallow the next note on that pitch, which is the shape of the bug that
+once cost 428 notes.
+
+**Repeats do not nest.** A backward repeat returns to the most recent forward
+repeat, or to the start of the piece when there is none. A `|:` written inside
+a first- or second-time bar is beyond that, and such a score comes out shorter
+than it is written. It is logged at warning level naming the measure, because
+music going missing invisibly is the failure this project has already paid for
+twice.
 
 ## Reading it
 
@@ -81,7 +109,7 @@ Two sets, split by licence, the same way the songs are.
 **Generated fixtures**, `tests/fixtures/musicxml_builder.py`. Ours, no licence,
 committed, and what CI runs against. Each states in code exactly what it tests.
 
-**The Unofficial MusicXML Test Suite**, 23 files, fetched by
+**The Unofficial MusicXML Test Suite**, 29 files, fetched by
 `scripts/fetch_test_scores.py` and verified against the SHA-256 in
 `tests/assets/scores.toml`. MIT, which is permissive but conditional: it asks
 that its copyright notice travel with the files. This repository is 0BSD and

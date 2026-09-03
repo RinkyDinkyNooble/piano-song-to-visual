@@ -19,7 +19,15 @@ import pytest
 
 from psv.load import ScoreReadError, read_score, score_format
 from psv.model import Hand, Pedal
-from psv.musicxml import MusicXmlReadError, read_musicxml_file
+from psv.musicxml import (
+    MeasureMarks,
+    MusicXmlReadError,
+    measure_marks,
+    play_order,
+    read_musicxml_file,
+)
+from psv.musicxml.repeats import MAX_PLAYED_MEASURES, nested_repeats
+from tests.fixtures import musicxml_builder as build
 from tests.fixtures.musicxml_builder import FIXTURES, compressed, write
 
 SCORES = Path(__file__).resolve().parent / "assets" / "scores"
@@ -289,6 +297,356 @@ def test_an_empty_score_is_not_an_error(score_path: ScorePath) -> None:
 @pytest.mark.feature("F-65")
 def test_the_title_comes_from_the_file(score_path: ScorePath) -> None:
     assert read_musicxml_file(score_path("chord")).title == "chord"
+
+
+# -- repeats -------------------------------------------------------------
+
+
+def pitches(path: Path) -> list[int]:
+    return [note.pitch for note in sorted(read_musicxml_file(path).notes)]
+
+
+def written(directory: Path, name: str, text: str) -> Path:
+    path = directory / f"{name}.musicxml"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+@pytest.mark.feature("F-66")
+def test_sixteen_bars_with_one_repeat_play_thirty_two(tmp_path: Path) -> None:
+    """The count that says the unrolling is right, on the scale a real piece
+    uses. A bar per pitch, so the played order is readable in the output."""
+    bars = [
+        build.measure(
+            number,
+            build.attributes(meter=(4, 4)) if number == 1 else "",
+            build.tempo(120) if number == 1 else "",
+            build.repeat_forward() if number == 1 else "",
+            build.note(f"C{number % 7 + 2}", 4.0),
+            build.repeat_backward() if number == 16 else "",
+        )
+        for number in range(1, 17)
+    ]
+    path = written(tmp_path, "sixteen", build.score(*bars, title="sixteen"))
+
+    played = pitches(path)
+    assert len(played) == 32
+    assert played[:16] == played[16:]
+    assert read_musicxml_file(path).duration == pytest.approx(64.0)
+
+
+@pytest.mark.feature("F-66")
+def test_a_repeat_plays_the_section_twice(score_path: ScorePath) -> None:
+    """C D :| is played C D C D, at four bars' worth of time."""
+    path = score_path("simple-repeat")
+    assert pitches(path) == [60, 62, 60, 62]
+    assert read_musicxml_file(path).duration == pytest.approx(8.0)
+
+
+@pytest.mark.feature("F-66")
+def test_first_and_second_time_bars(score_path: ScorePath) -> None:
+    """The first-time bar is played once and skipped on the way back."""
+    assert pitches(score_path("first-and-second-endings")) == [60, 62, 64, 60, 62, 65]
+
+
+@pytest.mark.feature("F-66")
+def test_da_capo_stops_at_the_fine(score_path: ScorePath) -> None:
+    """C D(Fine) E(D.C.) is played C D E C D. The Fine is ignored on the way
+    through and obeyed on the way back, which is the whole of what it means."""
+    assert pitches(score_path("da-capo-al-fine")) == [60, 62, 64, 60, 62]
+
+
+@pytest.mark.feature("F-66")
+def test_dal_segno_jumps_to_the_segno_then_to_the_coda(score_path: ScorePath) -> None:
+    assert pitches(score_path("dal-segno-al-coda")) == [60, 62, 64, 65, 67, 62, 64, 69]
+
+
+@pytest.mark.feature("F-66")
+def test_a_score_with_no_marks_is_played_straight_through(
+    score_path: ScorePath,
+) -> None:
+    """The case that must not change. Nearly every file is this one."""
+    from xml.etree import ElementTree
+
+    root = ElementTree.parse(score_path("tempo-change")).getroot()
+    assert play_order(measure_marks(root)) == (0, 1)
+
+
+@pytest.mark.feature("F-66")
+def test_times_says_how_often_in_all_not_how_many_jumps() -> None:
+    marks = (
+        MeasureMarks(forward_repeat=True),
+        MeasureMarks(backward_repeat=True, times=3),
+    )
+    assert play_order(marks) == (0, 1, 0, 1, 0, 1)
+
+
+@pytest.mark.feature("F-66")
+def test_a_backward_repeat_with_no_forward_returns_to_the_start() -> None:
+    marks = (MeasureMarks(), MeasureMarks(), MeasureMarks(backward_repeat=True))
+    assert play_order(marks) == (0, 1, 2, 0, 1, 2)
+
+
+@pytest.mark.feature("F-66")
+def test_an_ending_block_can_end_at_the_next_one() -> None:
+    """Some files mark only where each ending starts. Without the fallback the
+    first-time bar would swallow the rest of the piece."""
+    marks = (
+        MeasureMarks(forward_repeat=True),
+        MeasureMarks(endings=frozenset({1}), backward_repeat=True),
+        MeasureMarks(endings=frozenset({2})),
+    )
+    assert play_order(marks) == (0, 1, 0, 2)
+
+
+@pytest.mark.feature("F-66")
+def test_an_ending_with_no_number_applies_to_the_first_pass(tmp_path: Path) -> None:
+    """Reading it as "no pass" would drop the bar out of the piece entirely."""
+    path = written(
+        tmp_path,
+        "unnumbered",
+        build.score(
+            build.measure(
+                1,
+                build.attributes(meter=(4, 4)),
+                build.tempo(120),
+                build.repeat_forward(),
+                build.note("C4", 4.0),
+            ),
+            build.measure(
+                2,
+                '<barline location="left"><ending type="start"/></barline>',
+                build.note("D4", 4.0),
+                build.ending_stop(repeat=True),
+            ),
+            build.measure(
+                3, build.ending_start(2), build.note("E4", 4.0), build.ending_stop(2)
+            ),
+            title="unnumbered",
+        ),
+    )
+    assert pitches(path) == [60, 62, 60, 64]
+
+
+@pytest.mark.feature("F-66")
+def test_a_tie_does_not_reach_across_a_jump(tmp_path: Path) -> None:
+    """A tie left open at a repeat barline cannot be the same sounding note as
+    whatever the jump lands on. Left in place it would swallow it, which is the
+    same shape as the bug that once cost 428 notes."""
+    path = written(
+        tmp_path,
+        "tie-at-the-barline",
+        build.score(
+            build.measure(
+                1,
+                build.attributes(meter=(4, 4)),
+                build.tempo(120),
+                build.repeat_forward(),
+                build.note("C4", 4.0),
+            ),
+            build.measure(
+                2, build.note("C4", 4.0, tie="start"), build.repeat_backward()
+            ),
+            title="tie at the barline",
+        ),
+    )
+    read = read_musicxml_file(path)
+    assert len(read.notes) == 4
+    assert max(note.end - note.start for note in read.notes) == pytest.approx(2.0)
+
+
+@pytest.mark.feature("F-66")
+def test_the_bar_index_covers_the_unrolled_timeline(score_path: ScorePath) -> None:
+    """The meter has to reach the end of the played piece, not the end of the
+    written one, or the bar lines stop half way through the video."""
+    read = read_musicxml_file(score_path("simple-repeat"))
+    assert read.meter.bar_at(read.duration - 0.01) == 4
+
+
+@pytest.mark.feature("F-66")
+def test_a_coda_before_its_jump_still_terminates() -> None:
+    """A structure that points backwards at itself. It must stop, and it must
+    stop without a bounded-loop warning doing the work."""
+    marks = (
+        MeasureMarks(segno=True, coda=True),
+        MeasureMarks(tocoda=True),
+        MeasureMarks(dalsegno=True),
+    )
+    order = play_order(marks)
+    assert len(order) < 10
+    assert order[0] == 0
+
+
+@pytest.mark.feature("F-66")
+def test_an_absurd_repeat_count_is_capped() -> None:
+    """`times="1000000000"` is a typo, not a piece. It stops rather than
+    filling memory."""
+    marks = (
+        MeasureMarks(forward_repeat=True),
+        MeasureMarks(backward_repeat=True, times=1_000_000_000),
+    )
+    assert len(play_order(marks)) == MAX_PLAYED_MEASURES
+
+
+@pytest.mark.feature("F-66")
+def test_a_part_shorter_than_the_score_reads_rather_than_crashes(
+    tmp_path: Path,
+) -> None:
+    """MusicXML requires every part to carry every measure, and the repeat
+    marks are read from all of them together, so a truncated part names
+    measures it does not have. It contributes nothing at those points instead
+    of raising or reading some other bar."""
+    piano = build.measure(
+        1,
+        build.attributes(meter=(4, 4)),
+        build.tempo(120),
+        build.repeat_forward(),
+        build.note("C4", 4.0),
+    ) + build.measure(2, build.note("D4", 4.0), build.repeat_backward())
+    bass = build.measure(
+        1, build.attributes(meter=(4, 4)), build.tempo(120), build.note("C2", 4.0)
+    )
+    document = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<score-partwise version="4.0"><part-list>'
+        '<score-part id="P1"><part-name>one</part-name></score-part>'
+        '<score-part id="P2"><part-name>two</part-name></score-part>'
+        "</part-list>"
+        f'<part id="P1">{piano}</part>'
+        f'<part id="P2">{bass}</part>'
+        "</score-partwise>"
+    )
+    read = read_musicxml_file(written(tmp_path, "ragged", document))
+
+    assert sorted(note.pitch for note in read.notes) == [36, 36, 60, 60, 62, 62]
+    assert [note.pitch for note in sorted(read.notes) if note.pitch != 36] == [
+        60,
+        62,
+        60,
+        62,
+    ]
+
+
+@pytest.mark.feature("F-66")
+def test_a_da_capo_takes_the_last_ending_not_the_first() -> None:
+    """The D.C. pass is not a repeat, so a first-time bar does not apply to it.
+    Playing the first ending there would leave the piece stuck in the section
+    it just came back from."""
+    marks = (
+        MeasureMarks(forward_repeat=True),
+        MeasureMarks(endings=frozenset({1}), ending_stop=True, backward_repeat=True),
+        MeasureMarks(endings=frozenset({2}), ending_stop=True, dacapo=True),
+    )
+    assert play_order(marks) == (0, 1, 0, 2, 0, 2)
+
+
+@pytest.mark.feature("F-66")
+def test_the_corners_that_should_not_happen_and_sometimes_do() -> None:
+    """Marks that contradict each other, one per line, each with the answer
+    that loses the least music."""
+    assert play_order(()) == ()
+
+    # A D.S. with no segno anywhere jumps nowhere.
+    assert play_order((MeasureMarks(), MeasureMarks(dalsegno=True))) == (0, 1)
+
+    # An ending block that opens on a pass that never comes and never closes
+    # runs to the end, rather than back over itself.
+    assert play_order((MeasureMarks(endings=frozenset({2})), MeasureMarks())) == ()
+
+
+@pytest.mark.feature("F-66")
+def test_an_unreadable_times_falls_back_to_playing_twice(tmp_path: Path) -> None:
+    from xml.etree import ElementTree
+
+    path = written(
+        tmp_path,
+        "bad-times",
+        build.score(
+            build.measure(
+                1,
+                build.attributes(meter=(4, 4)),
+                build.tempo(120),
+                build.repeat_forward(),
+                build.note("C4", 4.0),
+                '<barline location="right">'
+                '<repeat direction="backward" times="lots"/></barline>',
+            ),
+            title="bad times",
+        ),
+    )
+    root = ElementTree.parse(path).getroot()
+    assert play_order(measure_marks(root)) == (0, 0)
+
+
+@pytest.mark.feature("F-66")
+def test_the_suite_agrees_about_a_simple_repeat() -> None:
+    """45a is one measure marked `times="5"`, then a second measure."""
+    from xml.etree import ElementTree
+
+    root = ElementTree.parse(suite("45a-SimpleRepeat.musicxml")).getroot()
+    assert play_order(measure_marks(root)) == (0, 0, 0, 0, 0, 1)
+
+
+@pytest.mark.feature("F-66")
+def test_the_suite_agrees_about_alternate_endings() -> None:
+    """45b: four measures, the second and third being the two endings."""
+    from xml.etree import ElementTree
+
+    root = ElementTree.parse(suite("45b-RepeatWithAlternatives.musicxml")).getroot()
+    assert play_order(measure_marks(root)) == (0, 1, 0, 2, 3)
+
+
+@pytest.mark.feature("F-66")
+def test_two_backward_repeats_can_share_one_forward_sign() -> None:
+    """45c: `|:` once, `:|` twice, the second reaching back past the first."""
+    from xml.etree import ElementTree
+
+    root = ElementTree.parse(suite("45c-RepeatMultipleTimes.musicxml")).getroot()
+    order = play_order(measure_marks(root))
+    assert order[:11] == (0, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2)
+    assert order[-1] == 7
+
+
+@pytest.mark.feature("F-66")
+def test_a_repeat_that_is_never_closed_repeats_nothing() -> None:
+    """45g opens `|:` in the last measure and never closes it."""
+    from xml.etree import ElementTree
+
+    root = ElementTree.parse(suite("45g-Repeats-NotEnded.musicxml")).getroot()
+    assert play_order(measure_marks(root)) == (0, 1)
+
+
+@pytest.mark.feature("F-66")
+def test_nested_repeats_are_flattened_and_said_so(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """45i puts a `|:` inside a first-time bar, which this reader cannot follow.
+    It comes out short, and the point of the test is that it says so instead of
+    doing it quietly."""
+    import logging
+    from xml.etree import ElementTree
+
+    path = suite("45i-Repeats-Nested.musicxml")
+    root = ElementTree.parse(path).getroot()
+    marks = measure_marks(root)
+    assert nested_repeats(marks) == (2, 4)
+
+    with caplog.at_level(logging.WARNING, logger="psv.musicxml.repeats"):
+        order = play_order(marks)
+    assert "nested repeats are flattened" in caplog.text
+    assert len(order) >= len(marks) - 2
+
+
+@pytest.mark.feature("F-66")
+def test_contradictory_endings_still_produce_a_piece() -> None:
+    """45f is deliberately self-contradictory. Any answer will do; hanging or
+    raising will not."""
+    from xml.etree import ElementTree
+
+    root = ElementTree.parse(suite("45f-Repeats-InvalidEndings.musicxml")).getroot()
+    order = play_order(measure_marks(root))
+    assert order
+    assert order[0] == 0
 
 
 # -- nothing silently disappears -----------------------------------------

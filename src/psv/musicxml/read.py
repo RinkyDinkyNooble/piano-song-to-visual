@@ -14,21 +14,24 @@ zip, so `xml.etree` and `zipfile` cover it. The alternative was `music21`, which
 brings fourteen packages including matplotlib to parse a text format.
 
 **Notation time, not performance time.** A duration here is in divisions of a
-quarter note, and the tempo map turns those into seconds. Repeats are *not*
-unrolled: this reader walks the measures once, in document order. A score with a
-repeat therefore comes out shorter than it sounds, and that is the next step's
-job rather than something to half-do here.
+quarter note, and the tempo map turns those into seconds. Repeats are unrolled
+before any of that: `repeats.play_order` works out which measure is played when,
+and each part is then walked in that order rather than in document order, so a
+repeated section arrives twice, with two sets of times. See `repeats` for how
+far that goes.
 """
 
 from __future__ import annotations
 
 import logging
 import zipfile
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree
 
 from psv.model import Hand, Note, Part, Pedal, PedalEvent, Score
+from psv.musicxml.repeats import measure_marks, play_order
 from psv.tempo import TempoMap, TimeSignature
 
 log = logging.getLogger(__name__)
@@ -110,7 +113,6 @@ class _PartRead:
     tempi: list[tuple[float, float]] = field(default_factory=list)
     #: (beats, numerator, denominator)
     meters: list[tuple[float, int, int]] = field(default_factory=list)
-    measure_starts: list[float] = field(default_factory=list)
 
 
 def read_musicxml_file(path: Path | str) -> Score:
@@ -185,7 +187,8 @@ def read_musicxml(root: ElementTree.Element) -> Score:
     if root.tag != "score-partwise":
         raise MusicXmlReadError(f"not a MusicXML score: root element is <{root.tag}>")
 
-    reads = [_read_part(part) for part in root.findall("part")]
+    order = play_order(measure_marks(root))
+    reads = [_read_part(part, order) for part in root.findall("part")]
     if not reads:
         raise MusicXmlReadError("score contains no parts")
 
@@ -211,19 +214,33 @@ def _title(root: ElementTree.Element) -> str:
 # -- one part ------------------------------------------------------------
 
 
-def _read_part(part: ElementTree.Element) -> _PartRead:
-    """Walk one part's measures in document order.
+def _read_part(part: ElementTree.Element, order: Sequence[int]) -> _PartRead:
+    """Walk one part's measures in playing order, which repeats have unrolled.
 
-    Repeats are not followed. See the module docstring.
+    MusicXML requires every part to carry every measure, and the repeat marks
+    are read from all the parts at once, so a part that stops early names
+    measures it does not have. Those positions contribute nothing rather than
+    raising or reading some other bar. Such a file is malformed and its short
+    part will not stay in step; that is as far as the guess goes.
     """
     out = _PartRead()
     cursor = _Cursor()
     open_ties: dict[tuple[int, str], _Pending] = {}
     velocity = DEFAULT_VELOCITY
     pedal_down: float | None = None
+    measures = part.findall("measure")
+    previous = -1
 
-    for measure in part.findall("measure"):
-        out.measure_starts.append(cursor.measure_start)
+    for position in order:
+        if not 0 <= position < len(measures):
+            continue
+        if position != previous + 1:
+            # A jump. A tie left open across it cannot be the same sounding
+            # note, and left in place it would swallow whatever comes next on
+            # that pitch.
+            open_ties.clear()
+        previous = position
+        measure = measures[position]
         cursor.position = 0
         longest = 0
 

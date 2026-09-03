@@ -121,6 +121,44 @@ def attributes(
     return "".join(out)
 
 
+def repeat_forward() -> str:
+    """`|:` at the left barline of this measure."""
+    return '<barline location="left"><repeat direction="forward"/></barline>'
+
+
+def repeat_backward(times: int = 2) -> str:
+    """`:|`. ``times`` is how often the section is played in all, not how many
+    jumps it makes."""
+    attribute = f' times="{times}"' if times != 2 else ""
+    return (
+        f'<barline location="right"><repeat direction="backward"{attribute}/></barline>'
+    )
+
+
+def ending_start(*numbers: int) -> str:
+    """The left barline of a first- or second-time bar."""
+    joined = ",".join(str(number) for number in numbers)
+    return (
+        f'<barline location="left"><ending number="{joined}" type="start"/></barline>'
+    )
+
+
+def ending_stop(*numbers: int, repeat: bool = False) -> str:
+    """The right barline that closes an ending block, with `:|` if asked."""
+    joined = ",".join(str(number) for number in numbers)
+    inner = f'<ending number="{joined}" type="stop"/>'
+    if repeat:
+        inner += '<repeat direction="backward"/>'
+    return f'<barline location="right">{inner}</barline>'
+
+
+def jump(**attributes: str) -> str:
+    """A `<sound>` carrying one of the written jumps: `dacapo`, `dalsegno`,
+    `segno`, `coda`, `tocoda`, `fine`."""
+    written = "".join(f' {name}="{value}"' for name, value in attributes.items())
+    return f"<direction><sound{written}/></direction>"
+
+
 def measure(number: int, *contents: str) -> str:
     body = "".join(contents)
     return f'    <measure number="{number}">{body}</measure>\n'
@@ -288,6 +326,61 @@ def ensemble() -> str:
     )
 
 
+def simple_repeat() -> str:
+    """Two bars between repeat marks, so four bars are played: C D C D."""
+    return score(
+        measure(
+            1,
+            attributes(meter=(4, 4)),
+            tempo(120),
+            repeat_forward(),
+            note("C4", 4.0),
+        ),
+        measure(2, note("D4", 4.0), repeat_backward()),
+        title="simple repeat",
+    )
+
+
+def first_and_second_endings() -> str:
+    """C D | 1st: E :| 2nd: F. Played C D E C D F."""
+    return score(
+        measure(
+            1,
+            attributes(meter=(4, 4)),
+            tempo(120),
+            repeat_forward(),
+            note("C4", 4.0),
+        ),
+        measure(2, note("D4", 4.0)),
+        measure(3, ending_start(1), note("E4", 4.0), ending_stop(1, repeat=True)),
+        measure(4, ending_start(2), note("F4", 4.0), ending_stop(2)),
+        title="first and second endings",
+    )
+
+
+def da_capo_al_fine() -> str:
+    """C D(fine) E(D.C.). Played C D E C D, stopping at the Fine."""
+    return score(
+        measure(1, attributes(meter=(4, 4)), tempo(120), note("C4", 4.0)),
+        measure(2, note("D4", 4.0), jump(fine="yes")),
+        measure(3, note("E4", 4.0), jump(dacapo="yes")),
+        title="da capo al fine",
+    )
+
+
+def dal_segno_al_coda() -> str:
+    """C, segno D, E "to coda", F, G "D.S.", coda A. Played C D E F G D E A."""
+    return score(
+        measure(1, attributes(meter=(4, 4)), tempo(120), note("C4", 4.0)),
+        measure(2, jump(segno="Segno"), note("D4", 4.0)),
+        measure(3, note("E4", 4.0), jump(tocoda="Coda")),
+        measure(4, note("F4", 4.0)),
+        measure(5, note("G4", 4.0), jump(dalsegno="Segno")),
+        measure(6, jump(coda="Coda"), note("A4", 4.0)),
+        title="dal segno al coda",
+    )
+
+
 def empty_score() -> str:
     return score(measure(1, attributes(meter=(4, 4)), rest(4.0)), title="empty")
 
@@ -305,6 +398,10 @@ FIXTURES = {
     "rests-only": rests_only,
     "forward-gap": forward_gap,
     "ensemble": ensemble,
+    "simple-repeat": simple_repeat,
+    "first-and-second-endings": first_and_second_endings,
+    "da-capo-al-fine": da_capo_al_fine,
+    "dal-segno-al-coda": dal_segno_al_coda,
     "empty": empty_score,
 }
 

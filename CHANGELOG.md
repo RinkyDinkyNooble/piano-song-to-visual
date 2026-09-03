@@ -37,9 +37,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     right time, and it has both a generated fixture and a real one.
   - Written against `xml.etree` and `zipfile`. The alternative, `music21`,
     brings fourteen packages including matplotlib to parse a text format.
-  - Repeats are **not** unrolled yet, so a score with a repeat plays through
-    once. That is the next step rather than something half-done here.
-  - 23 files of the Unofficial MusicXML Test Suite are fetched and
+  - **Repeats are unrolled into a linear timeline.** `|: :|` with a `times`
+    count, first- and second-time bars, D.C., D.S., segno, coda and fine. A
+    falling note happens at a time, so the measures have to be laid out in the
+    order a player meets them; Für Elise's two repeats take it from 106 written
+    measures to 127 played, 815 notes to 951, and 2:14 to 2:36.
+    - The reading of the marks and the working-out of the order are separate,
+      and the second half knows nothing about XML. That is where the mistakes
+      live and it is testable by writing the marks down directly.
+    - A tie left open across a jump is dropped rather than joined to whatever
+      the jump lands on, which is the shape of the bug that once cost 428
+      notes.
+    - **Repeats do not nest.** A `|:` inside a first-time bar is flattened, and
+      the piece comes out shorter than it is written. That is logged at warning
+      level rather than done quietly.
+  - 29 files of the Unofficial MusicXML Test Suite are fetched and
     hash-verified by `scripts/fetch_test_scores.py`. They are MIT and therefore
     gitignored, the same reasoning that keeps the CC BY-SA songs out: this
     repository is 0BSD and should not quietly attach a condition it says is not
