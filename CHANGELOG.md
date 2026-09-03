@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`psv inspect` contradicted the arrange stage on a score whose hands
+  cross.** The report asked only whether two parts sit in separate registers,
+  so Für Elise, whose left hand crosses up over the right, was called "not
+  separated; needs the arrange stage" although MusicXML had stated its hands
+  and `arrange` correctly left it alone. The report now answers from the hands
+  themselves where they are known, and falls back to register only where they
+  are not. Third time this particular disagreement has cost something, so it
+  is now asserted by a test.
+
 ### Added
 
 - **MusicXML input.** `psv run sonata.musicxml -o practice.mp4`, and `.mxl`,

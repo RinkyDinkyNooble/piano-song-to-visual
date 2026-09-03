@@ -15,6 +15,7 @@ from psv.model import (
     DEFAULT_OVERLAP_TOLERANCE_S,
     HIGHEST_KEY,
     LOWEST_KEY,
+    Hand,
     Note,
     Pedal,
     Score,
@@ -59,6 +60,10 @@ class ScoreReport:
     bpm_low: float
     bpm_high: float
     time_signatures: tuple[str, ...]
+    #: Whether every note already carries a hand. True for a MusicXML score,
+    #: where the staff says which hand plays, and for MIDI whose track names
+    #: said so.
+    hands_assigned: bool = False
 
     @property
     def has_dynamics(self) -> bool:
@@ -72,10 +77,20 @@ class ScoreReport:
     def looks_pre_separated(self) -> bool:
         """Whether the file already looks like two-hand piano writing.
 
-        Two parts with distinct registers is what a piano score exported from
-        notation software looks like. It is a hint for the arrange stage, not a
-        decision: that stage makes the call.
+        Answered two ways, and the order matters. If every note already carries
+        a hand there is nothing to infer: a MusicXML score states it, because a
+        staff *is* a hand. Falling through to the register test in that case
+        reports a lie, which is what Fur Elise did. Its left hand crosses up
+        over the right, the registers overlap by far more than an octave, and
+        the report said "needs the arrange stage" about a file whose hands were
+        already known and which the arrange stage correctly leaves alone.
+
+        Only when hands are unknown does register decide, and then this is a
+        hint rather than a verdict: `psv.arrange.looks_arranged` makes the call
+        and applies the same test.
         """
+        if self.hands_assigned:
+            return True
         if self.part_count != 2:
             return False
         low, high = sorted(self.parts, key=lambda p: p.pitch_low)
@@ -98,6 +113,7 @@ def inspect_score(score: Score) -> ScoreReport:
         title=score.title or (score.source.stem if score.source else "<untitled>"),
         duration_s=score.duration,
         part_count=len(score.parts),
+        hands_assigned=_hands_assigned(score),
         note_count=len(notes),
         parts=tuple(
             PartSummary(
@@ -192,6 +208,12 @@ def _widest_span(
             if index < len(active) and active[index] == pitch:
                 del active[index]
     return widest, at_time
+
+
+def _hands_assigned(score: Score) -> bool:
+    """Whether the file already says which hand plays every note."""
+    hands = {note.hand for note in score.notes}
+    return bool(hands) and hands <= {Hand.LEFT, Hand.RIGHT}
 
 
 def format_report(report: ScoreReport, *, verbose: bool = False) -> str:

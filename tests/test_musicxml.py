@@ -330,3 +330,63 @@ def test_every_fetched_suite_file_reads_without_crashing(name: str) -> None:
     for note in score.notes:
         assert 0 <= note.pitch <= 127
         assert note.end >= note.start
+
+
+@pytest.mark.feature("F-61")
+def test_inspect_agrees_with_arrange_when_hands_cross(score_path: ScorePath) -> None:
+    """Für Elise's left hand crosses up over the right, so the two registers
+    overlap by far more than an octave. Its hands are nonetheless known, because
+    MusicXML states them, and `arrange` correctly leaves the file alone. The
+    report used to say "needs the arrange stage" about it anyway.
+
+    Third time this exact disagreement has cost something, so it is asserted
+    rather than trusted.
+    """
+    from psv.arrange import looks_arranged
+    from psv.inspect import inspect_score
+    from psv.model import Note, Part, Score
+
+    crossed = Score(
+        parts=(
+            Part(
+                name="right",
+                hand=Hand.RIGHT,
+                notes=tuple(
+                    Note(
+                        pitch=64 + i % 3,
+                        start=i * 0.5,
+                        end=i * 0.5 + 0.4,
+                        hand=Hand.RIGHT,
+                    )
+                    for i in range(12)
+                ),
+            ),
+            Part(
+                name="left",
+                hand=Hand.LEFT,
+                # Reaches well above the right hand, as a crossing bass line does.
+                notes=tuple(
+                    Note(
+                        pitch=40 + i * 3,
+                        start=i * 0.5,
+                        end=i * 0.5 + 0.4,
+                        hand=Hand.LEFT,
+                    )
+                    for i in range(12)
+                ),
+            ),
+        )
+    )
+    report = inspect_score(crossed)
+    assert report.hands_assigned
+    assert report.looks_pre_separated, "the report must not contradict the stage"
+    assert looks_arranged(crossed)
+
+
+@pytest.mark.feature("F-61")
+def test_register_still_decides_when_hands_are_unknown(score_path: ScorePath) -> None:
+    """The fallback has to keep working for MIDI, which usually says nothing."""
+    from psv.inspect import inspect_score
+
+    score = read_musicxml_file(score_path("ensemble"))
+    assert not inspect_score(score).hands_assigned

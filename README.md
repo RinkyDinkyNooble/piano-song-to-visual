@@ -110,7 +110,8 @@ inferred from track names. Dynamics arrive as `pp` and `ff` rather than as
 velocity bytes, and pedalling as a mark with a start and a stop.
 
 Repeats are not yet unrolled: a score with a repeat currently plays through
-once. Everything else is in place.
+once. [docs/MUSICXML.md](docs/MUSICXML.md) covers what the reader handles and
+what it does not.
 
 Before committing to a file, it is worth asking what is actually in it:
 
