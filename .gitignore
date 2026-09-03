@@ -13,6 +13,13 @@
 # the songs.toml manifest that describes both sets.
 /tests/assets/fetched/
 
+# MIT-licensed MusicXML test scores. Fetched by scripts/fetch_test_scores.py,
+# never committed: MIT asks that its copyright notice travel with the files, and
+# this repository is 0BSD and promises downstream users no conditions at all.
+# The generated fixtures in tests/fixtures/musicxml_builder.py are ours and are
+# what CI actually runs against.
+/tests/assets/scores/
+
 # Synthetic fixtures written for eyeballing. Reproduce with scripts/make_fixtures.py;
 # the builder in tests/fixtures/ is the committed source of truth, not these blobs.
 /tests/assets/generated/

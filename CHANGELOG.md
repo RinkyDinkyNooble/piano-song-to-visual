@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **MusicXML input.** `psv run sonata.musicxml -o practice.mp4`, and `.mxl`,
+  and `.xml`. Any command that reads a file now takes either format, told apart
+  by content rather than by extension, since notation software exports `.xml`
+  as readily as `.musicxml`.
+  - **Staves are hands, stated rather than inferred.** This is the reason to
+    read MusicXML at all. A piano part is written on two staves and the file
+    says which staff every note is on. Guessing that from MIDI track names is
+    what cost the Rondo alla Turca a quarter of its notes.
+  - Dynamics arrive as `pp` and `ff` rather than as velocity bytes, and pedal
+    as a mark with a start and a stop. A MIDI export of the same score usually
+    has neither.
+  - Ties become one note rather than two. Chords, `<backup>`, `<forward>`,
+    mid-score division changes, grace notes, rests and tempo marks all handled;
+    `<backup>` is the one that decides whether a second voice lands at the
+    right time, and it has both a generated fixture and a real one.
+  - Written against `xml.etree` and `zipfile`. The alternative, `music21`,
+    brings fourteen packages including matplotlib to parse a text format.
+  - Repeats are **not** unrolled yet, so a score with a repeat plays through
+    once. That is the next step rather than something half-done here.
+  - 23 files of the Unofficial MusicXML Test Suite are fetched and
+    hash-verified by `scripts/fetch_test_scores.py`. They are MIT and therefore
+    gitignored, the same reasoning that keeps the CC BY-SA songs out: this
+    repository is 0BSD and should not quietly attach a condition it says is not
+    there. CI runs against the generated fixtures instead.
+
 ### Fixed
 
 - **The short-note leak was in five sweeps, not one.** The previous entry fixed

@@ -509,3 +509,52 @@ milestone = "M8"
 status = "done"
 verify = "unit"
 uses = ["fixture:single-note"]
+
+# ------------------------------------------------------ M10: MusicXML input
+[[feature]]
+id = "F-61"
+name = "Staves become hands, stated rather than inferred"
+milestone = "M10"
+status = "done"
+verify = "unit"
+uses = ["musicxml:piano-two-staves", "musicxml:ensemble"]
+
+[[feature]]
+id = "F-62"
+name = "MusicXML timing: ties, chords, backup, forward, divisions, grace notes"
+milestone = "M10"
+status = "done"
+verify = "unit"
+uses = [
+    "musicxml:tied-note",
+    "musicxml:chord",
+    "musicxml:two-voices",
+    "musicxml:forward-gap",
+    "musicxml:division-change",
+    "musicxml:grace-notes",
+    "musicxml:rests-only",
+]
+
+[[feature]]
+id = "F-63"
+name = "Tempo and meter from the score reach the tempo map and bar index"
+milestone = "M10"
+status = "done"
+verify = "unit"
+uses = ["musicxml:tempo-change", "musicxml:meter-change"]
+
+[[feature]]
+id = "F-64"
+name = "Written dynamics and pedal marks, which MIDI can only guess at"
+milestone = "M10"
+status = "done"
+verify = "unit"
+uses = ["musicxml:dynamics-and-pedal"]
+
+[[feature]]
+id = "F-65"
+name = "MusicXML, .mxl and MIDI told apart by content, not by extension"
+milestone = "M10"
+status = "done"
+verify = "e2e"
+uses = ["musicxml:piano-two-staves", "musicxml:chord", "musicxml:empty", "fixture:single-note"]

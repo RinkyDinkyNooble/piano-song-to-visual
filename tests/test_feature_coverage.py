@@ -88,12 +88,14 @@ def test_registry_entries_are_complete() -> None:
 
 def test_every_used_asset_exists() -> None:
     """A feature cannot point at a song or fixture that was never defined."""
+    from tests.fixtures.musicxml_builder import FIXTURES as SCORES
     from tests.fixtures.soundfont_builder import SOUNDFONTS
 
     catalogue: dict[str, object] = {
         "song": {song["id"] for song in _load(SONGS_FILE)["song"]},
         "fixture": FIXTURES,
         "soundfont": SOUNDFONTS,
+        "musicxml": SCORES,
     }
     unknown: list[str] = []
     for feature in _registry():

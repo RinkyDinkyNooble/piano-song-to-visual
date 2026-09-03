@@ -29,7 +29,8 @@ from psv.instruments import (
     SoundFontError,
     soundfont_presets,
 )
-from psv.midi import read_midi_file, write_midi_file
+from psv.load import ScoreReadError, read_score
+from psv.midi import write_midi_file
 from psv.midi.read import MidiReadError
 from psv.pipeline import run as run_pipeline
 from psv.practice import prepare
@@ -114,7 +115,7 @@ def build_parser() -> argparse.ArgumentParser:
         child = sub.add_parser(
             name, help=help_text, description=help_text, parents=[shared]
         )
-        child.add_argument("input", type=Path, help="input MIDI file")
+        child.add_argument("input", type=Path, help="input MIDI or MusicXML file")
         if name != "inspect":
             child.add_argument(
                 "-o",
@@ -238,13 +239,13 @@ def configure_logging(verbosity: int) -> None:
 
 
 def _cmd_inspect(args: argparse.Namespace, _config: Config) -> int:
-    score = read_midi_file(args.input)
+    score = read_score(args.input)
     print(format_report(inspect_score(score), verbose=args.verbose > 0))
     return 0
 
 
 def _cmd_export(args: argparse.Namespace, _config: Config) -> int:
-    score = read_midi_file(args.input)
+    score = read_score(args.input)
     path = write_midi_file(score, args.output)
     print(f"wrote {path}")
     return 0
@@ -266,7 +267,7 @@ def _visual_with_overrides(
 
 
 def _cmd_render(args: argparse.Namespace, config: Config) -> int:
-    score = read_midi_file(args.input)
+    score = read_score(args.input)
     visual = _visual_with_overrides(config.visual, args)
     practice = _practice_with_overrides(config.practice, args)
     _check_window_flags(args)
@@ -399,7 +400,7 @@ def _cmd_instruments(args: argparse.Namespace, config: Config) -> int:
 
 
 def _cmd_constrain(args: argparse.Namespace, config: Config) -> int:
-    score = read_midi_file(args.input)
+    score = read_score(args.input)
     result = constrain_score(score, config)
 
     print(result.summary())
@@ -414,7 +415,7 @@ def _cmd_constrain(args: argparse.Namespace, config: Config) -> int:
 
 
 def _cmd_arrange(args: argparse.Namespace, config: Config) -> int:
-    score = read_midi_file(args.input)
+    score = read_score(args.input)
     result = arrange_score(
         score,
         max_span=config.hands.layout_span,
@@ -491,6 +492,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return HANDLERS[args.command](args, config)
     except (
         ConfigError,
+        ScoreReadError,
         MidiReadError,
         VideoWriteError,
         ConstraintError,

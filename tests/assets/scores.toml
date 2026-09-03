@@ -1,0 +1,187 @@
+# MusicXML test-score assets.
+#
+# These come from the Unofficial MusicXML Test Suite, a set of small files each
+# built to exercise one corner of the format. They are worth far more to a
+# parser than a real piece is: a real score exercises whatever it happens to
+# contain, while these exercise the things that are easy to get wrong.
+#
+# NOT COMMITTED, for the same reason the CC BY-SA songs are not. The suite is
+# MIT, which is a permissive licence but still a conditional one: it requires
+# the copyright notice to travel with the files. This repository is 0BSD and
+# imposes no conditions on anyone downstream, so carrying MIT files inside it
+# would quietly attach an obligation that the repository's own licence says is
+# not there. They are fetched instead, with `python scripts/fetch_test_scores.py`.
+#
+# Tests that need them skip when they are absent. Continuous integration runs
+# without them and covers the parser with the generated fixtures in
+# tests/fixtures/musicxml_builder.py, which are ours and carry no licence at
+# all.
+
+source = "Unofficial MusicXML Test Suite"
+licence = "MIT"
+homepage = "https://github.com/w3c-cg/musicxmlTestSuite"
+base_url = "https://raw.githubusercontent.com/w3c-cg/musicxmlTestSuite/main/xmlFiles"
+
+# Each entry names why it is here. A file that does not test something this
+# parser can get wrong is not worth fetching.
+
+[[score]]
+id = "piano-staff"
+file = "43a-PianoStaff.musicxml"
+sha256 = "820450630ce05ea3bbc53c5ac63c0a8ac6597d7db4c232201d54f0ca162d1503"
+bytes = 1596
+covers = "two staves in one part, which is what says which hand is which"
+
+[[score]]
+id = "backup"
+file = "03b-Rhythm-Backup.musicxml"
+sha256 = "6a03c9a2f22997145f45695dc03bb2a6ef790dded508d9f8e133e02b9af58bda"
+bytes = 2004
+covers = "the cursor rewinding to write a second voice: the single most error-prone element in the format"
+
+[[score]]
+id = "forward"
+file = "03f-Rhythm-Forward.musicxml"
+sha256 = "22d6f261c21208b3690241a1f37fe3790ef2c66f42be242213279077536006c1"
+bytes = 2019
+covers = "the cursor skipping ahead, leaving a gap rather than a rest"
+
+[[score]]
+id = "division-change"
+file = "03c-Rhythm-DivisionChange.musicxml"
+sha256 = "9795a6ffef846fc5d38947f3123d9b635d098763600a7bf72e5f10f0ab2fed8d"
+bytes = 2898
+covers = "divisions changing mid-score, so a duration means different things in different bars"
+
+[[score]]
+id = "no-divisions"
+file = "03e-Rhythm-No-Divisions.musicxml"
+sha256 = "d993c4af8d773d7570ece7f31c17179f58181a301c366358243c27e9aa327bf4"
+bytes = 1212
+covers = "divisions missing entirely"
+
+[[score]]
+id = "durations"
+file = "03a-Rhythm-Durations.musicxml"
+sha256 = "2ffa3b72ee544da943215c6e04a7f8d7970801dfb5765ce7515468373839122b"
+bytes = 11749
+covers = "every note value from breve to 128th, dotted and undotted"
+
+[[score]]
+id = "chords"
+file = "21a-Chord-Basic.musicxml"
+sha256 = "c915fc752d4e2e942489e6e499e7c85227a8d939b60957bbd384572fbac078d9"
+bytes = 1440
+covers = "the <chord/> flag, which means 'no time passed since the last note'"
+
+[[score]]
+id = "chord-interrupted"
+file = "21f-Chord-ElementInBetween.musicxml"
+sha256 = "9e481826c8fe018d16a891376d3c261a22ae9168396c05410e444a6999217b86"
+bytes = 2237
+covers = "a chord whose notes are separated by another element"
+
+[[score]]
+id = "chord-voices"
+file = "21i-Chord-DifferentVoices.musicxml"
+sha256 = "110dc468aa4d34a264055b74809d6c57e1ccedcc3036a691085eabad19557b1f"
+bytes = 1893
+covers = "chords in two voices at once"
+
+[[score]]
+id = "ties"
+file = "33b-Spanners-Tie.musicxml"
+sha256 = "748af2952913be4023f6e43993cc92668fb41f9ca4d639a80c284f85c393f70e"
+bytes = 1386
+covers = "a tied note, which must become one note and not two"
+
+[[score]]
+id = "tie-types"
+file = "33k-Tie-Types.musicxml"
+sha256 = "67f4d3c8748f2e42c73cf2fcba686fa56485ec2fa2af17f190dfe62abb45c64c"
+bytes = 7481
+covers = "tie starts and stops written every way the format allows"
+
+[[score]]
+id = "ties-unended"
+file = "33i-Ties-NotEnded.musicxml"
+sha256 = "7ca5ff5968e6f9273f971f3e702d06595a13b40b851231f38bb53f0e2e32c0f7"
+bytes = 3821
+covers = "a tie that never stops, which must not hang or swallow the rest of the piece"
+
+[[score]]
+id = "grace-notes"
+file = "24a-GraceNotes.musicxml"
+sha256 = "872293a5844f5983351cf1836e227b94e0f68bcf9e7228591ff250537fde760e"
+bytes = 8143
+covers = "notes with no duration at all, which land in the sweep path that cost 428 notes once"
+
+[[score]]
+id = "two-voices"
+file = "42a-MultiVoice-TwoVoicesOnStaff-Lyrics.musicxml"
+sha256 = "1f21a23a83b5fab73489f191085cbd51ac381887af1d5574e5ff5e932b084b25"
+bytes = 7305
+covers = "two voices sharing one staff, so hand is not simply voice"
+
+[[score]]
+id = "tuplets"
+file = "23a-Tuplets.musicxml"
+sha256 = "4abf43cb9d119047fc138f0b4768deb5b3805cb4120b7c34c13266d7b2b66f10"
+bytes = 12688
+covers = "durations that do not divide evenly"
+
+[[score]]
+id = "time-signatures"
+file = "11a-TimeSignatures.musicxml"
+sha256 = "2d9dccb46e08e05c36e339a3a5dab61de2ede11b48e20ea5d7f4664fa8b9f80d"
+bytes = 5571
+covers = "meters the bar index has to follow"
+
+[[score]]
+id = "metronome"
+file = "31c-MetronomeMarks.musicxml"
+sha256 = "e58b8b4b4dc80fd032b5f84aab36671a45948ab5f8993d6892f90825974f5cba"
+bytes = 4646
+covers = "tempo written as notation rather than as a sounding tempo"
+
+[[score]]
+id = "directions"
+file = "31a-Directions.musicxml"
+sha256 = "830db690e37a793b091f4361ea0467129abda4205e34ce9512900bd800574818"
+bytes = 26695
+covers = "dynamics and pedal marks, which MIDI can only guess at"
+
+[[score]]
+id = "pitches"
+file = "01a-Pitches-Pitches.musicxml"
+sha256 = "ca77d3d279175451411b3c1730a05d375072a92fe2e1d68be7ce77afe1a0bc17"
+bytes = 30624
+covers = "every pitch and accidental, including double sharps and flats"
+
+[[score]]
+id = "rests"
+file = "02a-Rests-Durations.musicxml"
+sha256 = "e3ea4e142675886b0b0f231d70e5e2acbd0a00f543f703543fdf140a5bc0151c"
+bytes = 5699
+covers = "rests, which take time but make no note"
+
+[[score]]
+id = "pickup"
+file = "46d-PickupMeasure-ImplicitMeasures.musicxml"
+sha256 = "4b2967a9ae59902e9d9b75cae887c04c2f0d380783aec4447284f8f21296b1b0"
+bytes = 3674
+covers = "an incomplete first bar, which shifts every bar number after it"
+
+[[score]]
+id = "empty-measure"
+file = "46j-EmptyMeasure.musicxml"
+sha256 = "7f899ac6ce4fb3700fd31445ae420e3d801e6c709836ce16ccbd1b184394303f"
+bytes = 3642
+covers = "a bar with nothing in it"
+
+[[score]]
+id = "multi-part"
+file = "41a-MultiParts-Partorder.musicxml"
+sha256 = "5dd7787f0bf6f0072a30c93f9ce30f7a8c1217d718b7445e061d585e878792c2"
+bytes = 4232
+covers = "several parts, which is an ensemble score rather than a piano one"

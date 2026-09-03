@@ -93,6 +93,25 @@ wrote practice.mp4
 That is a Beethoven string quartet becoming a piano piece you can reach every
 chord of, with sound, in about four seconds.
 
+### MusicXML as well as MIDI
+
+Any command that takes a file takes either, told apart by content rather than by
+extension:
+
+```bash
+psv run sonata.musicxml -o practice.mp4
+psv run sonata.mxl      -o practice.mp4    # the zipped form
+```
+
+MusicXML is the better input where you have the choice, because it *states*
+what MIDI leaves to be guessed. A piano score is written on two staves and the
+file says which staff every note is on, so the hands are read rather than
+inferred from track names. Dynamics arrive as `pp` and `ff` rather than as
+velocity bytes, and pedalling as a mark with a start and a stop.
+
+Repeats are not yet unrolled: a score with a repeat currently plays through
+once. Everything else is in place.
+
 Before committing to a file, it is worth asking what is actually in it:
 
 ```bash

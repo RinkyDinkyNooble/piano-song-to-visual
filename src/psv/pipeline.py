@@ -20,7 +20,7 @@ from psv.audio import AudioResult, mux_into_video, render_audio
 from psv.audio.backends import AudioError
 from psv.config import Config
 from psv.constraints import ConstrainResult, constrain
-from psv.midi import read_midi_file
+from psv.load import read_score
 from psv.model import Score
 from psv.practice import prepare
 from psv.render.video import TAIL_S, render_video
@@ -78,7 +78,7 @@ def run(
     speed or section you asked to practise.
     """
     output = Path(output)
-    score = read_midi_file(source)
+    score = read_score(source)
 
     arranged = arrange(
         score,
