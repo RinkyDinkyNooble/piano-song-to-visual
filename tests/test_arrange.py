@@ -15,10 +15,11 @@ import mido
 import pytest
 
 from psv.arrange import arrange, assign_hands, looks_arranged, reduce_texture
+from psv.arrange.reduce import PRESS, _instants
 from psv.config import Config, VisualConfig
 from psv.constraints import constrain, verify_span
 from psv.midi import read_midi
-from psv.model import Hand, Note, Score
+from psv.model import DEFAULT_OVERLAP_TOLERANCE_S, Hand, Note, Part, Score
 from psv.pipeline import run
 from tests.fixtures.midi_builder import FIXTURES
 from tests.probe import video_meta
@@ -289,3 +290,133 @@ def test_run_writes_a_silent_video_when_audio_is_off(tmp_path: Path) -> None:
     assert result.audio.is_silent
     assert output.exists()
     assert output.stat().st_size > 0
+
+
+# -- notes shorter than the overlap tolerance ----------------------------
+
+
+def test_a_note_shorter_than_the_tolerance_does_not_hold_a_voice() -> None:
+    """Its release is clamped to its own start, and releases sort before
+    presses, so it used to be taken out of the held set before it was put in
+    and then left there forever. After eight such notes every later note was
+    dropped as if the texture were full."""
+    short = DEFAULT_OVERLAP_TOLERANCE_S / 2
+    notes = [
+        Note(pitch=60 + index % 12, start=index * 0.1, end=index * 0.1 + short)
+        for index in range(200)
+    ]
+    kept, dropped = reduce_texture(notes, max_voices=8)
+    assert dropped == [], "nothing here ever sounds with anything else"
+    assert len(kept) == len(notes)
+
+
+def test_the_held_set_empties_again_after_short_notes() -> None:
+    """The leak, stated directly: press and release must balance."""
+    short = DEFAULT_OVERLAP_TOLERANCE_S / 2
+    notes = [
+        Note(pitch=60, start=index * 0.5, end=index * 0.5 + short)
+        for index in range(20)
+    ]
+    depth = 0
+    for _time, rank, _index in _instants(notes, DEFAULT_OVERLAP_TOLERANCE_S):
+        depth += 1 if rank == PRESS else -1
+        assert depth >= 0, "a release arrived before its own press"
+    assert depth == 0, "every press was released"
+
+
+def test_short_notes_still_get_a_hand() -> None:
+    """They have to stay visible to the sweep, not be skipped by it: a note
+    with no hand renders in the neutral unassigned colour."""
+    short = DEFAULT_OVERLAP_TOLERANCE_S / 2
+    notes = [
+        Note(pitch=48, start=0.0, end=short),
+        Note(pitch=84, start=0.0, end=short),
+    ]
+    assigned = assign_hands(notes, max_span=12)
+    assert {note.hand for note in assigned} == {Hand.LEFT, Hand.RIGHT}
+
+
+# -- a file whose tracks are named by an engraver, not by hand -----------
+
+
+def two_part_score(low_name: str = "track 1", high_name: str = "track 2") -> Score:
+    """Two parts in clearly separate registers, with no hands assigned.
+
+    What LilyPond exports: real two-hand piano writing whose track names say
+    nothing about which hand is which.
+    """
+    left = Part(
+        name=low_name,
+        notes=tuple(
+            Note(pitch=45 + index % 5, start=index * 0.5, end=index * 0.5 + 0.4)
+            for index in range(40)
+        ),
+    )
+    right = Part(
+        name=high_name,
+        notes=tuple(
+            Note(pitch=72 + index % 7, start=index * 0.25, end=index * 0.25 + 0.2)
+            for index in range(80)
+        ),
+    )
+    return Score(parts=(left, right))
+
+
+@pytest.mark.feature("F-44")
+def test_two_parts_in_separate_registers_are_left_alone() -> None:
+    """`psv inspect` calls this "hands look already separated" and says the
+    decision is the arrange stage's to make. The stage has to make the same one,
+    or the report is a lie and a quarter of the piece is thrown away."""
+    score = two_part_score()
+    result = arrange(score, max_span=12)
+
+    assert result.was_already_arranged
+    assert result.dropped == ()
+    assert [n.pitch for n in result.score.notes] == [n.pitch for n in score.notes]
+
+
+@pytest.mark.feature("F-44")
+def test_an_already_separated_score_still_gets_its_hands_named() -> None:
+    """Left alone means no note moves, not that hands stay unassigned: the
+    renderer colours by hand and the constraint engine works per hand."""
+    result = arrange(two_part_score(), max_span=12)
+    hands = {note.hand for note in result.score.notes}
+    assert hands == {Hand.LEFT, Hand.RIGHT}
+
+    low = [n for n in result.score.notes if n.hand is Hand.LEFT]
+    high = [n for n in result.score.notes if n.hand is Hand.RIGHT]
+    assert max(n.pitch for n in low) < min(n.pitch for n in high)
+
+
+@pytest.mark.feature("F-44")
+def test_arrange_agrees_with_what_inspect_reports() -> None:
+    """These two answer the same question and used to disagree."""
+    from psv.inspect import inspect_score
+
+    score = two_part_score()
+    assert inspect_score(score).looks_pre_separated
+    assert looks_arranged(score)
+
+
+@pytest.mark.feature("F-44")
+def test_two_parts_that_cross_registers_are_still_arranged() -> None:
+    """Two parts are not automatically two hands. Parts that run through each
+    other's register are two *voices*, and they need real assignment rather
+    than a label saying the engraver already split them."""
+    tangled = Score(
+        parts=(
+            Part(
+                notes=tuple(
+                    Note(pitch=48 + i, start=i * 0.5, end=i * 0.5 + 0.4)
+                    for i in range(36)  # sweeps up through the other part
+                )
+            ),
+            Part(
+                notes=tuple(
+                    Note(pitch=60, start=i * 0.5, end=i * 0.5 + 0.4) for i in range(36)
+                )
+            ),
+        )
+    )
+    assert not looks_arranged(tangled)
+    assert not arrange(tangled, max_span=12).was_already_arranged

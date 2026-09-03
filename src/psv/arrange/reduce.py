@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from itertools import pairwise
 
 from psv.constraints.salience import contextual_salience
-from psv.model import DEFAULT_OVERLAP_TOLERANCE_S, Hand, Note, Score
+from psv.model import DEFAULT_OVERLAP_TOLERANCE_S, Hand, Note, Part, Score
 
 log = logging.getLogger(__name__)
 
@@ -51,11 +51,33 @@ class ArrangeResult:
         return f"reduced to two hands, {len(self.dropped)} note(s) dropped"
 
 
+#: Event ranks, which are also the tie-break order within one instant.
+#: A release is seen before a press, so a note handed over exactly as another
+#: begins is not counted as two notes held together. LATE_RELEASE exists only
+#: for notes too short to hold; see `_instants`.
+RELEASE, PRESS, LATE_RELEASE = 0, 1, 2
+
+
 def _instants(notes: list[Note], tolerance: float) -> list[tuple[float, int, int]]:
+    """Press and release events in sweep order, one pair per note.
+
+    A release is placed ``tolerance`` early, which is what stops a note let go
+    a few milliseconds late from counting as held against the next one.
+
+    That clamp is why the rank matters. A note shorter than the tolerance would
+    otherwise release at the very moment it presses, and since releases sort
+    before presses it would be taken out of the held set before it was ever put
+    in, and then left in the set forever. Every later note is then judged
+    against a set that only grows. Such a note gets LATE_RELEASE instead, so it
+    is pressed and released within its own instant: still visible to whoever is
+    sweeping, never occupying a voice afterwards.
+    """
     events: list[tuple[float, int, int]] = []
     for index, note in enumerate(notes):
-        events.append((note.start, 1, index))
-        events.append((max(note.start, note.end - tolerance), 0, index))
+        release = max(note.start, note.end - tolerance)
+        rank = LATE_RELEASE if release <= note.start else RELEASE
+        events.append((note.start, PRESS, index))
+        events.append((release, rank, index))
     events.sort()
     return events
 
@@ -78,9 +100,9 @@ def reduce_texture(
     held: list[tuple[int, int]] = []
     dropped: set[int] = set()
 
-    for _time, is_start, index in _instants(notes, tolerance):
+    for _time, rank, index in _instants(notes, tolerance):
         note = notes[index]
-        if not is_start:
+        if rank != PRESS:
             entry = (note.pitch, index)
             if entry in held:
                 held.remove(entry)
@@ -162,9 +184,9 @@ def assign_hands(
         time = events[position][0]
         starting: list[int] = []
         while position < len(events) and events[position][0] == time:
-            _, is_start, index = events[position]
+            _, rank, index = events[position]
             note = notes[index]
-            if is_start:
+            if rank == PRESS:
                 insort(held, (note.pitch, index))
                 starting.append(index)
             else:
@@ -186,14 +208,68 @@ def assign_hands(
     ]
 
 
+#: A part is a hand if everything it plays sits clear of the other part, give
+#: or take an octave of overlap where the thumbs meet.
+HAND_OVERLAP_SEMITONES = 12
+
+
 def looks_arranged(score: Score) -> bool:
     """Whether the score is already two-hand piano writing.
 
     A file that arrived with its hands separated, or one that has been through
     this stage before, must come out untouched.
+
+    Two ways to be sure. Hands may already be assigned, which is the case after
+    this stage has run or when the track names said which was which. Or the
+    file may be two parts in separate registers, which is what a piano score
+    exported from notation software looks like, and which `psv inspect` already
+    reports as "hands look already separated". This function is the decision
+    that report is a hint for, so it has to agree with it: engravers name their
+    tracks anything at all, and one that wrote "track 1" and "track 2" used to
+    fall through to a full reduction that threw away a quarter of the piece.
     """
     hands = {note.hand for note in score.notes}
-    return bool(hands) and hands <= {Hand.LEFT, Hand.RIGHT}
+    if hands and hands <= {Hand.LEFT, Hand.RIGHT}:
+        return True
+    return two_parts_by_register(score) is not None
+
+
+def two_parts_by_register(score: Score) -> tuple[Part, Part] | None:
+    """The lower and upper part of a two-part score, if that is what this is.
+
+    Returns None for anything else, including a two-part score whose parts
+    cross registers, which needs real hand assignment rather than a label.
+    """
+    parts = [part for part in score.parts if part.notes]
+    if len(parts) != 2:
+        return None
+    low, high = sorted(parts, key=lambda part: min(n.pitch for n in part.notes))
+    if max(n.pitch for n in low.notes) > (
+        min(n.pitch for n in high.notes) + HAND_OVERLAP_SEMITONES
+    ):
+        return None
+    return low, high
+
+
+def _label_hands(score: Score) -> Score:
+    """Name the hands of an already-separated score, without moving a note.
+
+    The parts are the hands here, so the split is the one the engraver already
+    made. Deriving it again from register would be second-guessing a decision
+    that has been made properly.
+    """
+    if {note.hand for note in score.notes} <= {Hand.LEFT, Hand.RIGHT}:
+        return score
+    split = two_parts_by_register(score)
+    if split is None:  # pragma: no cover - looks_arranged already said yes
+        return score
+    low, high = split
+    return score.with_parts(
+        [
+            low.with_notes(note.assigned_to(Hand.LEFT) for note in low.notes),
+            high.with_notes(note.assigned_to(Hand.RIGHT) for note in high.notes),
+        ]
+    )
 
 
 def arrange(
@@ -208,7 +284,7 @@ def arrange(
 
     if looks_arranged(score):
         log.info("score already has two hands; leaving it alone")
-        return ArrangeResult(score=score, was_already_arranged=True)
+        return ArrangeResult(score=_label_hands(score), was_already_arranged=True)
 
     notes = list(score.notes)
     kept, dropped = reduce_texture(notes, max_voices, tolerance)

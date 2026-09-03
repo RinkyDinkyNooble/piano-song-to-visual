@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A note shorter than the overlap tolerance permanently consumed a voice.**
+  Its release is clamped to its own start, and releases sort before presses, so
+  it was taken out of the held set before it was put in and then left there for
+  the rest of the piece. After eight such notes the sweep believed the texture
+  was full and dropped everything that followed. `assign_hands` shares that
+  sweep, so hand assignment was being decided against the same phantom set.
+  Releases that would land on their own press now sort after it.
+- **`arrange` and `psv inspect` disagreed about what "already separated" means.**
+  `inspect` calls a two-part score in distinct registers separated, and its own
+  docstring says the arrange stage makes the decision that report is a hint for
+  — but `arrange` only looked at whether hands were already assigned, which the
+  MIDI reader derives from track names. An engraver that wrote "track 1" and
+  "track 2" fell through to a full reduction. On Mozart's Rondo alla Turca that
+  threw away 428 of 1614 notes, 71% of them after 3:12, while `inspect` reported
+  the file as already separated and `--span 0` promised nothing would be
+  touched. `arrange` now applies the same register test and labels the hands
+  without moving a note.
+
 ### Added
 
 - **M8 quality of life.** Everything that stood between the tool working and
