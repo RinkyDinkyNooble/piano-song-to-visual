@@ -14,6 +14,7 @@ from bisect import insort
 from dataclasses import dataclass
 
 from psv.model import DEFAULT_OVERLAP_TOLERANCE_S, Hand, Note, Score
+from psv.sweep import PRESS, note_events
 
 from .salience import contextual_salience
 
@@ -69,20 +70,14 @@ def apply_difficulty(
     if not notes:
         return score, ()
 
-    events: list[tuple[float, int, int]] = []
-    for index, note in enumerate(notes):
-        events.append((note.start, 1, index))
-        events.append((max(note.start, note.end - tolerance), 0, index))
-    events.sort()
-
     active: dict[Hand, list[tuple[int, int]]] = {}
     dropped: set[int] = set()
 
-    for _time, is_start, index in events:
+    for _time, rank, index in note_events(notes, tolerance):
         note = notes[index]
         held = active.setdefault(note.hand, [])
 
-        if not is_start:
+        if rank != PRESS:
             entry = (note.pitch, index)
             if entry in held:
                 held.remove(entry)

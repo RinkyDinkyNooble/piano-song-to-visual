@@ -27,6 +27,7 @@ from itertools import pairwise
 
 from psv.constraints.salience import contextual_salience
 from psv.model import DEFAULT_OVERLAP_TOLERANCE_S, Hand, Note, Part, Score
+from psv.sweep import PRESS, note_events
 
 log = logging.getLogger(__name__)
 
@@ -51,37 +52,6 @@ class ArrangeResult:
         return f"reduced to two hands, {len(self.dropped)} note(s) dropped"
 
 
-#: Event ranks, which are also the tie-break order within one instant.
-#: A release is seen before a press, so a note handed over exactly as another
-#: begins is not counted as two notes held together. LATE_RELEASE exists only
-#: for notes too short to hold; see `_instants`.
-RELEASE, PRESS, LATE_RELEASE = 0, 1, 2
-
-
-def _instants(notes: list[Note], tolerance: float) -> list[tuple[float, int, int]]:
-    """Press and release events in sweep order, one pair per note.
-
-    A release is placed ``tolerance`` early, which is what stops a note let go
-    a few milliseconds late from counting as held against the next one.
-
-    That clamp is why the rank matters. A note shorter than the tolerance would
-    otherwise release at the very moment it presses, and since releases sort
-    before presses it would be taken out of the held set before it was ever put
-    in, and then left in the set forever. Every later note is then judged
-    against a set that only grows. Such a note gets LATE_RELEASE instead, so it
-    is pressed and released within its own instant: still visible to whoever is
-    sweeping, never occupying a voice afterwards.
-    """
-    events: list[tuple[float, int, int]] = []
-    for index, note in enumerate(notes):
-        release = max(note.start, note.end - tolerance)
-        rank = LATE_RELEASE if release <= note.start else RELEASE
-        events.append((note.start, PRESS, index))
-        events.append((release, rank, index))
-    events.sort()
-    return events
-
-
 def reduce_texture(
     notes: list[Note],
     max_voices: int = DEFAULT_MAX_VOICES,
@@ -100,7 +70,7 @@ def reduce_texture(
     held: list[tuple[int, int]] = []
     dropped: set[int] = set()
 
-    for _time, rank, index in _instants(notes, tolerance):
+    for _time, rank, index in note_events(notes, tolerance):
         note = notes[index]
         if rank != PRESS:
             entry = (note.pitch, index)
@@ -178,7 +148,7 @@ def assign_hands(
     held: list[tuple[int, int]] = []
     split = 60  # middle C, until the music says otherwise
 
-    events = _instants(notes, tolerance)
+    events = note_events(notes, tolerance)
     position = 0
     while position < len(events):
         time = events[position][0]

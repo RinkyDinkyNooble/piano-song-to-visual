@@ -21,6 +21,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from psv.model import DEFAULT_OVERLAP_TOLERANCE_S, Hand, Note, Score
+from psv.sweep import PRESS, note_events
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,21 +49,6 @@ class Violation:
         return f"{self.hand.value} hand spans {self.span} semitones at {self.time:.2f}s"
 
 
-def _events(notes: Sequence[Note], tolerance: float) -> list[tuple[float, int, int]]:
-    """Note boundaries as ``(time, is_start, index)``, in sweep order.
-
-    Ends sort before starts at the same instant, so a note that stops exactly
-    where another begins is never counted as held with it.
-    """
-    events: list[tuple[float, int, int]] = []
-    for index, note in enumerate(notes):
-        end = max(note.start, note.end - tolerance)
-        events.append((note.start, 1, index))
-        events.append((end, 0, index))
-    events.sort()
-    return events
-
-
 def detect_violations(
     notes: Sequence[Note],
     max_span: int,
@@ -79,7 +65,7 @@ def detect_violations(
 
     active: dict[Hand, list[tuple[int, int]]] = {}
     violations: list[Violation] = []
-    events = _events(notes, tolerance)
+    events = note_events(notes, tolerance)
 
     position = 0
     while position < len(events):
@@ -90,10 +76,10 @@ def detect_violations(
         time = events[position][0]
         started: set[Hand] = set()
         while position < len(events) and events[position][0] == time:
-            _, is_start, index = events[position]
+            _, rank, index = events[position]
             note = notes[index]
             held = active.setdefault(note.hand, [])
-            if is_start:
+            if rank == PRESS:
                 insort(held, (note.pitch, index))
                 started.add(note.hand)
             else:
@@ -155,11 +141,11 @@ def widest_span_per_hand(
     active: dict[Hand, list[int]] = {}
     widest: dict[Hand, int] = {}
 
-    for time, is_start, index in _events(notes, tolerance):
+    for time, rank, index in note_events(notes, tolerance):
         del time
         note = notes[index]
         held = active.setdefault(note.hand, [])
-        if is_start:
+        if rank == PRESS:
             insort(held, note.pitch)
             if len(held) > 1:
                 span = held[-1] - held[0]

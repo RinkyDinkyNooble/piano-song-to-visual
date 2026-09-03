@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The short-note leak was in five sweeps, not one.** The previous entry fixed
+  the copy in `arrange`; `detect_violations`, `widest_span_per_hand`,
+  `apply_difficulty` and `psv inspect`'s polyphony scan each had their own copy
+  of the same code and the same defect. On one real file that meant 547 span
+  violations that did not exist out of 747 reported, a left hand measured at 21
+  semitones where the truth was 12, and `difficulty = "medium"` removing 273
+  notes when the honest answer was none. The constraint engine was then
+  faithfully repairing damage that was never there. All five now share
+  `psv/sweep.py`, which exists as much to make a sixth copy impossible as to
+  remove the repetition.
 - **A note shorter than the overlap tolerance permanently consumed a voice.**
   Its release is clamped to its own start, and releases sort before presses, so
   it was taken out of the held set before it was put in and then left there for

@@ -15,12 +15,12 @@ import mido
 import pytest
 
 from psv.arrange import arrange, assign_hands, looks_arranged, reduce_texture
-from psv.arrange.reduce import PRESS, _instants
 from psv.config import Config, VisualConfig
 from psv.constraints import constrain, verify_span
 from psv.midi import read_midi
 from psv.model import DEFAULT_OVERLAP_TOLERANCE_S, Hand, Note, Part, Score
 from psv.pipeline import run
+from psv.sweep import PRESS, note_events
 from tests.fixtures.midi_builder import FIXTURES
 from tests.probe import video_meta
 
@@ -318,7 +318,7 @@ def test_the_held_set_empties_again_after_short_notes() -> None:
         for index in range(20)
     ]
     depth = 0
-    for _time, rank, _index in _instants(notes, DEFAULT_OVERLAP_TOLERANCE_S):
+    for _time, rank, _index in note_events(notes, DEFAULT_OVERLAP_TOLERANCE_S):
         depth += 1 if rank == PRESS else -1
         assert depth >= 0, "a release arrived before its own press"
     assert depth == 0, "every press was released"
@@ -420,3 +420,64 @@ def test_two_parts_that_cross_registers_are_still_arranged() -> None:
     )
     assert not looks_arranged(tangled)
     assert not arrange(tangled, max_span=12).was_already_arranged
+
+
+# -- nothing disappears without being reported ---------------------------
+
+
+@pytest.mark.parametrize("fixture", sorted(FIXTURES))
+def test_every_note_removed_is_a_note_reported(fixture: str) -> None:
+    """The invariant behind the whole class of bug this suite now guards.
+
+    Both stages are allowed to remove notes. Neither is allowed to remove one
+    quietly. When the sweep leaked, notes vanished inside `reduce_texture` and
+    `apply_difficulty` and the counts still looked plausible, so the only way to
+    notice was to compare a rendered video against the source by ear.
+    """
+    from psv.constraints import constrain
+
+    config = Config.load(None)
+    score = read_midi(FIXTURES[fixture]())
+    before = len(score.notes)
+
+    arranged = arrange(
+        score,
+        max_span=config.hands.layout_span,
+        tolerance=config.hands.overlap_tolerance_s,
+    )
+    kept = len(arranged.score.notes)
+    assert kept + len(arranged.dropped) == before, "arrange lost notes silently"
+
+    result = constrain(arranged.score, config)
+    reported = sum(1 for r in result.repairs if r.strategy == "drop") + len(
+        result.removed_for_difficulty
+    )
+    assert kept - len(result.score.notes) == reported, "constrain lost notes silently"
+
+
+@pytest.mark.needs_song("toccata")
+def test_a_real_song_loses_nothing_unreported(
+    load_song: Callable[[str], mido.MidiFile],
+) -> None:
+    """The fixtures are small enough to be lucky. This one is 3,651 notes."""
+    from psv.constraints import constrain
+    from psv.midi import read_midi_file
+
+    load_song("toccata")  # skips when absent
+    source = (
+        Path(__file__).resolve().parent
+        / "assets"
+        / "public-domain"
+        / "bach-bwv565-toccata-and-fugue.mid"
+    )
+    config = Config.load(None)
+    score = read_midi_file(source)
+
+    arranged = arrange(score, max_span=config.hands.layout_span)
+    assert len(arranged.score.notes) + len(arranged.dropped) == len(score.notes)
+
+    result = constrain(arranged.score, config)
+    reported = sum(1 for r in result.repairs if r.strategy == "drop") + len(
+        result.removed_for_difficulty
+    )
+    assert len(arranged.score.notes) - len(result.score.notes) == reported

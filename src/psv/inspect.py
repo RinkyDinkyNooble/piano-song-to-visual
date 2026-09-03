@@ -20,6 +20,7 @@ from psv.model import (
     Score,
     pitch_name,
 )
+from psv.sweep import PRESS, note_events
 
 #: A file whose velocities are all the same carries no dynamics. Engraved scores
 #: exported from notation software look like this.
@@ -175,20 +176,12 @@ def _widest_span(
     if not notes:
         return 0, 0.0
 
-    # (time, is_start, pitch): ends sort before starts at the same instant, so a
-    # note that stops exactly where another begins is not counted as held with it.
-    events: list[tuple[float, int, int]] = []
-    for note in notes:
-        end = max(note.start, note.end - tolerance)
-        events.append((note.start, 1, note.pitch))
-        events.append((end, 0, note.pitch))
-    events.sort()
-
     active: list[int] = []
     widest = 0
     at_time = 0.0
-    for time, is_start, pitch in events:
-        if is_start:
+    for time, rank, index in note_events(notes, tolerance):
+        pitch = notes[index].pitch
+        if rank == PRESS:
             insort(active, pitch)
             if len(active) > 1:
                 span = active[-1] - active[0]
