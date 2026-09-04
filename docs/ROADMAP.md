@@ -531,7 +531,8 @@ renderer deliberately loads nothing from the filesystem.
 sample player rather than an instrument in a room, and the room is most of what
 makes a recorded piano sound like one. FluidSynth carries a reverb already, so
 `set_reverb(roomsize, damping, width, level)` is a handful of config keys and no
-new dependency. Doing it anywhere else means writing a convolver.
+new dependency. The other backends would need about sixty lines of Freeverb.
+Planned alongside the visual effects in [EFFECTS.md](EFFECTS.md).
 
 Separately, exporting the soundtrack on its own so it can go through whatever
 you already use. The `mux` backend takes an audio file back, so half of that
@@ -543,9 +544,12 @@ ADSR envelope. One short recorded piano sample per octave, pitch shifted, would
 sound far better for very little code. Lower priority now that FluidSynth works
 and is documented.
 
-**Opt-in visual effects.** Key-strike flashes, glow, particles. Off by default
-and never at the cost of readability; the spec is explicit that effects usually
-hurt.
+**Opt-in visual effects.** Key-strike flashes, glow, particles, trails. Off by
+default, because a practice aid and a piece of spectacle want opposite things
+and both are legitimate. Planned in [EFFECTS.md](EFFECTS.md), which is arranged
+around the fact that the risk here is taste rather than engineering: the effects
+are seen in stills, then in motion, and only what survives both gets a config
+key, a test or a reference image.
 
 **Better salience for arranging.** The current function is velocity, duration,
 and an outer-voice bonus. Real salience needs harmonic analysis: which notes are
