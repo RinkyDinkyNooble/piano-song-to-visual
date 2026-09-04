@@ -11,7 +11,7 @@ requirement.
 **Rendering in parallel.** `render_frame` is a pure function of the score and a
 time, so the timeline can be cut into spans and each span rendered and encoded
 by its own process, then joined with ffmpeg's concat demuxer. Measured at 2.9x
-on twelve logical cores. `docs/RENDER-SPEED.md` has the numbers and the two
+on twelve logical cores. The measurements, and the two
 assumptions that turned out to be wrong on the way there.
 
 The property that makes this safe is in `frame_times`: it computes

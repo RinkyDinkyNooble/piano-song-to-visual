@@ -32,9 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     metronome you can see, and the grid already draws the beat without moving.
   - Every distance is a fraction of the frame rather than a pixel count, so an
     effect is the same effect at 720p and at 1080p.
-  - Planned, judged and recorded in [EFFECTS.md](docs/EFFECTS.md), which is
-    arranged so that nothing got a config key until it had been seen in motion
-    and kept.
+  - Nothing got a config key until it had been seen in motion and kept.
 
 - **Reverb, as one number.** `audio.reverb` from 0 to 1, or `--reverb`, driving
   FluidSynth's room size, damping, width and level together. Exposing all four
@@ -98,9 +96,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     because `frame_times` computes `start + index / fps` rather than adding, so
     a span beginning at frame k produces the timestamps counting from zero
     would.
-  - Written up with every measurement in `docs/RENDER-SPEED.md`, including the
-    two assumptions that were wrong: encoding was never serial, and x264 was
-    already using every core.
+  - Two assumptions turned out wrong when measured: encoding was never serial,
+    and x264 was already using every core.
 
 
 - **MusicXML input.** `psv run sonata.musicxml -o practice.mp4`, and `.mxl`,
@@ -170,7 +167,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Project scaffolding: packaging, linting, type checking, tests, and CI.
 - Architecture decision record covering the interface choice, the pipeline stages,
   and the component selection for each — see `docs/ARCHITECTURE.md`.
-- Milestone-by-milestone build plan — see `docs/ROADMAP.md`.
+- Milestone-by-milestone build plan.
 - CLI skeleton (`psv`) defining the `inspect`, `arrange`, `constrain`, `render`,
   and `run` commands. None are implemented yet.
 - Feature registry (`tests/features.toml`) covering all 50 user-visible features,
@@ -180,7 +177,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Four Mutopia Project test songs. The two public-domain ones are committed so CI
   can run offline; the two CC BY-SA ones are gitignored and fetched by
   `scripts/fetch_test_songs.py` with SHA-256 verification.
-- Test plan explaining the two-tier asset strategy - see `docs/TEST-PLAN.md`.
+- Test plan explaining the two-tier asset strategy.
 
 ### Fixed
 
@@ -358,7 +355,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Deferred
 
 - Everything deliberately left out of the MVP is written up as **M8** in
-  `docs/ROADMAP.md`: practice tempo, section looping, count-in, one-hand
+  the build plan: practice tempo, section looping, count-in, one-hand
   practice, better tone, presets, duet mode, a live player, and more.
 - **M4: the full visual specification.** Everything the M2 renderer left out.
   - `psv.render.color` - hue for the hand, brightness for the velocity. Saturation is

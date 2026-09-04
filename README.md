@@ -8,9 +8,11 @@ actually play it.
 > sound, arranged to fit your hands, at whatever tempo and over whatever bars you
 > want to drill. There is also a showcase mode: colour schemes and optional
 > effects, off by default, for when you want the render to look like something
-> rather than teach you something. What is still missing is listed under
-> [M8 in the roadmap](docs/ROADMAP.md); a better built-in synth tone is the one
-> you will notice first, and only if you have no SoundFont.
+> rather than teach you something.
+>
+> Not done: note names on the bars, exporting the soundtrack on its own, and a
+> better built-in synth tone. That last is the only one you would notice, and
+> only if you have no SoundFont.
 
 ## Why this exists
 
@@ -50,8 +52,7 @@ Audio in is not planned. Transcribing a recording sets a ceiling on quality that
 nothing downstream can raise, and it would drag a machine-learning stack into a
 repo that currently installs in seconds. Public-domain sheet music covers the
 classical repertoire this is aimed at, and it arrives with the hands, the
-dynamics and the pedalling already written down. The reasoning that was going to
-go into it is kept in [docs/COMPOSER.md](docs/COMPOSER.md).
+dynamics and the pedalling already written down.
 
 ## Pipeline
 
@@ -60,8 +61,9 @@ score ──▶ parse ──▶ arrange ──▶ constrain ──▶ render ─
 ```
 
 Any stage runs on its own, so you can hand-fix an intermediate MIDI and pick up from
-there. Full reasoning, including component choices per stage, is in
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+there. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) describes how it fits together,
+and [docs/CONSTRAINT-ENGINE.md](docs/CONSTRAINT-ENGINE.md) covers the part no other
+tool does: how a passage too wide for your hands is rewritten until it fits.
 
 ## Install
 
@@ -160,8 +162,6 @@ that pays. Für Elise at 1080p60, on a six-core machine:
 | the defaults | 0:44 |
 | `--encode fast` | 0:34 |
 
-[docs/RENDER-SPEED.md](docs/RENDER-SPEED.md) has the measurements.
-
 A short render is never split, since a worker costs a Python interpreter and an
 ffmpeg process before it draws anything.
 
@@ -254,8 +254,7 @@ something faint.
 Measured at 1080p, against the 8.5 ms it takes to draw a frame at all:
 `subtle` 1.3 ms, `showcase` 2.3 ms, `maximum` 8.5 ms. `bloom` on its own is
 26.8 ms, which is about three times a whole frame, so it is in none of the
-bundles and you have to name it. What each one costs and why is in
-[EFFECTS.md](docs/EFFECTS.md).
+bundles and you have to name it.
 
 Precedence runs least specific to most: the config file, then the preset, then
 the theme, then the effects, then the individual flags.
@@ -455,7 +454,7 @@ python scripts/fetch_test_songs.py   # optional: the two CC BY-SA test songs
 
 Two public-domain songs are committed, so the suite runs green on a fresh clone with no
 network. Every feature the tool promises is registered in `tests/features.toml` and
-cannot be marked done until a test claims it. See [docs/TEST-PLAN.md](docs/TEST-PLAN.md).
+cannot be marked done until a test claims it.
 
 ```bash
 python scripts/fetch_test_scores.py  # optional: the MusicXML test suite

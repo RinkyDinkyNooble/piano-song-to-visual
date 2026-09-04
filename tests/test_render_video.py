@@ -201,7 +201,7 @@ def test_an_unwritable_destination_fails_before_ffmpeg_starts(
 # -- rendering across processes ------------------------------------------
 #
 # The claim is that splitting the timeline changes how long a render takes and
-# nothing else. Speed is measured in docs/RENDER-SPEED.md rather than asserted
+# nothing else. Speed was measured once by hand rather than being asserted
 # here, because a timing test on a shared CI runner proves nothing. What is
 # asserted is sameness, which is the half that can go wrong quietly.
 

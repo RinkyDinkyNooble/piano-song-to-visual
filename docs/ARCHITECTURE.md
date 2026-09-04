@@ -9,30 +9,27 @@ and only the parse stage knows which one it read.
 that no amount of downstream cleverness raises, and it would pull a
 machine-learning dependency stack into a repo that installs in seconds. It was
 planned once and dropped once MusicXML made it unnecessary for the repertoire
-this is aimed at; [COMPOSER.md](COMPOSER.md) keeps the reasoning.
+this is aimed at.
 
-## Interface decision: a library with a CLI on top
+## A library with a CLI on top, and no GUI
 
-**Recommendation: build a pure-Python core library, expose a CLI over it now,
-and leave room for a TUI later. Do not build a GUI.**
+Every stage is a function on plain data structures. The CLI is a thin shell over
+those functions, and nothing in the core knows it exists, so another shell over the
+same core is possible without touching anything below it.
 
-Reasoning:
+There is no GUI, and that is a decision rather than an omission:
 
 - The pipeline is **batch work**. Rendering is a minutes-long, non-interactive job.
   That fits a command you run and come back to, not a window you sit in front of.
-- The configuration surface is **large and worth versioning**. Hand span, difficulty,
-  colour maps, grid intervals, pedal lanes — these belong in a TOML file you keep and
-  tweak, not in a dialog box whose state lives nowhere.
-- Re-running a stage is the main workflow. `psv render --config mine.toml song.mid`
-  after tweaking one colour is trivial to type and trivial to script over a folder.
-- A GUI's only real advantage is **interactive arrangement editing** — dragging a note
-  to the other hand when the reduction guesses wrong. That is a v2 concern, and it is
-  better served by exporting a MIDI you fix in an existing editor than by writing a
-  piano-roll editor from scratch.
-
-So: every stage is a function on plain data structures, the CLI is a thin shell over
-those functions, and any future TUI is another shell over the same core. Nothing in the
-core knows the CLI exists.
+- The configuration surface is **large and worth keeping**. Hand span, difficulty,
+  colour maps, grid intervals, pedal lanes — these belong in a TOML file you edit and
+  version, not in a dialog box whose state lives nowhere.
+- Re-running a stage is the main workflow. `psv render -c mine.toml song.mid` after
+  tweaking one colour is trivial to type and trivial to script over a folder.
+- The one thing a GUI would genuinely add is **interactive arrangement editing**,
+  dragging a note to the other hand when the reduction guesses wrong. Exporting a MIDI
+  and fixing it in an editor that already exists does the same job without anyone
+  writing a piano roll from scratch.
 
 ## Pipeline
 
@@ -140,8 +137,8 @@ previous frame: state would seam at every span boundary.
 and a piece of spectacle want opposite things and both are legitimate. The theme
 is static, a gradient background and hand colours and a border shade and a ramp
 along each bar, and is judged from a picture. The effects are transient and tied
-to when a note lands. [EFFECTS.md](EFFECTS.md) is both the plan and the record of
-how each one was decided.
+to when a note lands, derive from the score rather than from the previous frame,
+and are listed in config in the order they draw.
 
 **Colour range.** Video is written full range and tagged to say so. h264 defaults
 to the television range, 16-235, which is right for camera footage and wrong for a

@@ -267,7 +267,7 @@ class VisualConfig:
     #: on its own. Splitting is exact rather than approximate: `frame_times`
     #: computes `start + index / fps` rather than adding repeatedly, so a span
     #: beginning at frame k produces the same timestamps counting from zero
-    #: would. See docs/RENDER-SPEED.md.
+    #: would.
     workers: int = 0
     #: One of ENCODE_LEVELS. Trades file size against render time.
     encode: str = "balanced"
