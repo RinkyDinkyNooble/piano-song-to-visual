@@ -4,11 +4,29 @@ Two different videos come out of this tool. One is a practice aid, where every
 pixel that is not telling you which note to play next is in the way. The other is
 the thing a pianist posts: sparks off the strike line, a glow on the keys, the
 piece looking like an event. Both are legitimate and they want opposite things,
-so effects are opt-in, off by default, and bundled into a preset for the people
-who want the second one.
+so none of this is on by default.
 
 **Nothing here is built.** This is the plan, and it is arranged around the fact
 that the risk in this feature is taste rather than engineering.
+
+## Two layers, not one
+
+This started as one list of effects and it should not have been. What makes a
+render look striking splits cleanly in two, and the halves want different
+treatment:
+
+**The theme.** Background, note colours, bar borders, gradients. Static. It is
+the same in every frame, it can be judged from a single picture, and most of it
+is already configurable. There is no motion question to answer, so it does not
+need the motion checkpoint.
+
+**The effects.** Flashes, glows, trails, sparks. Transient, tied to when a note
+lands, and impossible to judge frozen. These are the ones that need to be seen
+moving before anything about them becomes real.
+
+Splitting them matters because the theme is where most of the "make it look
+good" actually lives, it costs almost nothing, and it should not sit behind
+seven taste judgements about particles.
 
 ## The thing this plan is designed to avoid
 
@@ -17,36 +35,49 @@ knowing whether a glow radius of 12 looks good, and that cannot be settled by a
 test, a type or a measurement. It is settled by looking.
 
 So the order is: **look first, build second.** No effect gets a config key, a
-validator, a test or a reference image until it has been seen in motion and
-kept. Reference images in particular are the expensive thing to redo, so they
-come last, only for what survived.
-
-Three checkpoints, each cheaper to fail than the one after it.
+validator, a test or a reference image until it has been seen and kept.
+Reference images in particular are the expensive thing to redo, so they come
+last, only for what survived.
 
 ## What the budget allows
 
-Measured at 1920x1080. Drawing an entire frame costs about 8.5 ms today.
+Measured at 1920x1080 on the machine this is developed on. Drawing an entire
+frame costs 8.5 ms today.
 
 | | cost per frame |
 | --- | --- |
-| Full-frame Gaussian blur | 53 ms |
+| Filling the background, flat | 5.4 ms |
+| Filling the background, vertical gradient | 5.4 ms |
+| Bloom, full resolution | 162 ms |
+| Bloom, at 1/8 resolution | 26.6 ms |
 | Full-frame additive blend | 12 ms |
-| Blur of a strike-line strip only | 7.7 ms |
-| 400 extra shapes, drawn locally | 2.8 ms |
 | 40 local glow regions, blended in place | 0.41 ms |
+| A vertical gradient down every visible bar | 0.69 ms |
 | 300 particle sprites | 0.19 ms |
 
-Local drawing is about a hundred times cheaper than post-processing the finished
-frame, and looks near enough the same for this. So every effect below draws into
-the rectangles it needs and touches nothing else. **The budget is 3 ms of effects
-per frame**, which roughly doubles a busy frame and is worth it for a mode you
-turned on deliberately.
+Two of those are worth reading twice.
 
-No new dependency. Pillow is already here and can blur, but its full-frame filter
-is the 53 ms row. skia-python or OpenCV would make that about 18 ms, still worse
-than drawing the whole frame, for a wheel of 30 MB or more. A GPU path breaks
-determinism, has nothing to run on in CI, and fights the rule that this has to
-stay easy to install.
+**The background fill is already two thirds of a frame**, and putting a gradient
+there costs nothing measurable over the flat colour it replaces. It is the same
+write to the same pixels with a different source. This is the cheapest good
+thing available.
+
+**Bloom has a floor, and it is not the blur.** Doing it at an eighth of the
+resolution takes it from 162 ms to 26.6 ms, but no further: past that point the
+cost is the full-frame composite, which is the 12 ms row, and no amount of
+shrinking the blur touches it. Bloom is the one candidate that cannot be made
+local, because being global is what it is.
+
+**The budget is 3 ms of effects per frame for the shipped preset**, with about
+10 ms as the point where it stops being worth it. Ten milliseconds roughly
+doubles a frame, which takes Fur Elise from 44 seconds to about 1:40 and is a
+fine trade for a mode you turned on deliberately. Bloom at 26.6 ms triples it,
+and that is a different conversation.
+
+No new dependency. Pillow is already here, and skia-python or OpenCV would buy
+about 18 ms on the one operation that is over budget anyway, for a wheel of 30
+MB or more. A GPU path breaks determinism, has nothing to run on in CI, and
+fights the rule that this has to stay easy to install.
 
 ## Two rules that rule out whole categories
 
@@ -64,81 +95,223 @@ function of time. A particle's position comes from seeding the generator with th
 note index and the frame index, so it is deterministic, stateless, and identical
 in every process.
 
-## The catalogue
+---
 
-Ordered by what they are likely to be worth, with a guess at cost. All are
-candidates, not commitments; checkpoint A is where most of them should die.
+# The theme
 
-| Effect | What it does | Cost | Learning value |
-| --- | --- | --- | --- |
-| `strike_flash` | A burst at the line as a note lands, fading over ~120 ms | Low | Real. Confirms hit timing |
-| `key_glow` | The pressed key lit beyond the current highlight | Low | Some |
-| `trail` | A fading afterimage below the line for recently played notes | Low | None |
-| `particles` | Sparks thrown from the strike point | Low | None |
-| `halo` | A soft edge around each falling bar | Medium | Negative. Smears adjacent notes |
-| `beat_pulse` | The background brightening slightly on the beat | Low | Some, for rhythm |
-| `bloom` | Only the brightest pixels blurred and added back | High | Negative |
+Half of this exists already and is not documented anywhere anyone would look.
 
-`bloom` is listed to be honest about it, and is the one most likely to be cut on
-cost alone.
+| | today | wanted |
+| --- | --- | --- |
+| Background | `visual.background`, grayscale only | any hue, and a gradient |
+| Hand colours | `visual.colors.left_hand` / `right_hand`, any hex | nothing, this works |
+| Border width | `visual.note_border`, a fraction of frame width | nothing, this works |
+| Border colour | fixed: 45% darker, same hue | make it yours |
+| Bar fill | flat | an optional vertical gradient |
+
+So `left_hand = "#ff2d95"` already works. Two gaps are real.
+
+## The background, and the rule it has to get past
+
+`visual.background` is validated as grayscale on purpose. Any hue back there
+competes with the hues that carry which-hand information, which is the whole
+readability argument from M4 and is still right for a practice video.
+
+The escape is a separate key rather than a relaxed rule:
+
+```toml
+[visual]
+gradient = ["#140e28", "#46205a"]   # top, bottom
+```
+
+Unset by default, in which case `background` behaves exactly as it does now.
+Set, it overrides `background` and accepts any colour, because setting it is
+itself the opt-in. That keeps the practice default honest without a cross-key
+validation rule that says "colour is allowed if some other thing is on", which
+is the kind of condition nobody can predict from reading the config.
+
+Whether it drifts is one more number. Motion has to be a pure function of time,
+so the phase is `time * speed` and nothing accumulates. Both rules are satisfied
+by construction, and the cost is still the same fill.
+
+## The bar borders
+
+One knob, in the shape the audio section settled on:
+
+```toml
+[visual]
+note_border_shade = -0.45   # -1 black, 0 the bar's own colour, +1 white
+```
+
+`-0.45` is exactly what is drawn today, so the default changes nothing. Positive
+values give the light outline that makes a bar look lit from inside rather than
+cut out of the background, which is what most of the striking renders you have
+seen are actually doing.
+
+A literal border colour was considered and is not the first thing to build. The
+border is drawn inside the bar and eats a few pixels of it, so at speed a short
+note can be mostly border; keeping it a shade of the bar's own hue is what makes
+that survivable, because which hand is playing is still readable at the edge. If
+the shade knob turns out not to be enough once you have seen it, an explicit
+colour is a small addition on top and can be added then.
+
+## Bar gradients
+
+A vertical ramp down each bar instead of a flat fill, at 0.69 ms for a busy
+frame. Cheap enough to be a theme setting rather than an effect, and it makes
+the falling bars read as objects with a light on them.
+
+---
+
+# The effects
+
+## Checkpoint A, which has happened
+
+Seven candidates were drawn into one frame of Fur Elise at two intensities and
+looked at. **Nothing was cut.** That is not the outcome the plan expected, and
+the plan said seven of the eight should die here, so it is worth writing down
+what actually came back:
+
+- All seven read as plausible at some intensity, and the interesting question
+  turned out to be combinations rather than survival.
+- **`trail` and `key_glow` are the same picture in a still.** Every note struck
+  in the last 0.4 seconds was still held, so the trail sat on a key that was
+  already lit in the same colour. Their difference is entirely a motion
+  question.
+- **`beat_pulse` cannot be judged from a still at all.** The chosen frame sat
+  between beats, so the honest still was identical to the one with the effect
+  off, and it had to be drawn at the peak of its pulse to be visible.
+- **`bloom` blows out the white keys**, because they are the brightest thing on
+  screen and bloom finds the brightest thing on screen.
+
+The costs measured at 1080p, at full intensity:
+
+| Effect | cost | verdict |
+| --- | --- | --- |
+| `particles` | 1.1 ms | kept |
+| `trail` | 1.4 ms | kept, but see `key_glow` |
+| `strike_flash` | 1.5 ms | kept |
+| `key_glow` | 5.0 ms | kept |
+| `halo` | 8.1 ms | kept, and the most expensive local one |
+| `pulse` | not measurable yet | reworked, see below |
+| `bloom` | 162 ms, or 26.6 ms done small | on probation |
+
+## The catalogue as it now stands
+
+| Effect | What it does | Learning value |
+| --- | --- | --- |
+| `strike_flash` | A burst at the line as a note lands, fading over ~130 ms | Real. Confirms hit timing |
+| `key_glow` | The pressed key lit beyond the current highlight | Some |
+| `trail` | A fading streak down the key for recently played notes | None |
+| `particles` | Sparks thrown from the strike point | None |
+| `halo` | A soft edge around each falling bar | Negative. Smears adjacent notes |
+| `pulse` | The background lifting when notes land | Some, for rhythm |
+| `bloom` | Only the brightest pixels blurred and added back | Negative |
 
 Every effect takes an `intensity` from 0 to 1 that scales it to nothing at zero.
 That matters for the checkpoints: "right idea, too strong" must be a slider and
 not a rewrite.
 
+They compose in the order they are listed, so a halo under particles is a
+different picture from particles under a halo. The list is the order, and mixing
+them is the point rather than a concession.
+
+### `pulse`, reworked before you judge it
+
+The version in the contact sheet brightened the background on every beat of the
+tempo map. That is a metronome you can see: it fires whether or not anything is
+played, and it is indifferent to how hard.
+
+The version worth judging is driven by the music instead. It lifts on note
+onsets, scaled by velocity and by how many landed at once, and decays over a few
+hundred milliseconds. Same cost, same purity, and it is a pure function of time
+because "which notes started in the last 300 ms" is a query against the score.
+
+The metronome version is not offered as an option. If you want to see the beat,
+the grid already draws it and does so without moving.
+
+### `bloom`, and what it would take
+
+Its problem was never the intensity. At full resolution it costs 162 ms a frame,
+which would take Fur Elise from 44 seconds to about half an hour. Done at an
+eighth of the resolution it costs 26.6 ms, still triple a whole frame, and it
+cannot go lower because the floor is the full-frame composite rather than the
+blur.
+
+So the decision is a straight trade with no cleverness left in it: about 3x the
+render time for a look that nothing local reproduces. It stays in as a candidate
+that has to be turned on by name, is never in a preset, and says what it costs
+when you select it. If the motion checkpoint does not make a case for it, it
+goes.
+
+The cheap approximation of bloom is `halo` plus `strike_flash`, at 9.6 ms
+together, and it may well be that seeing those two in motion is what kills
+bloom.
+
 ---
 
 # The plan
 
-## Step 1: a contact sheet
+## Step 1: the contact sheet (done)
 
-One throwaway script in the scratchpad. It renders **the same frame** of a real
-piece, once per effect, at a couple of intensities, and writes them as PNGs into
-one folder with readable names.
+One throwaway script, one frame, each effect at two intensities. Written,
+looked at, and its findings are the Checkpoint A section above.
 
-No config keys. No validation. No tests. No integration with the renderer beyond
-calling it. Each effect is a function taking the frame and the score and drawing
-into it, in one file, roughly 20 lines each.
+## Step 2: the theme, built for real
 
-Pick a frame worth judging: a dense chord with the pedal down, a note landing,
-and something in both hands. Probably somewhere in the middle of Für Elise.
+The theme layer has no motion question, so it does not wait.
 
-### Checkpoint A: still frames
+- `visual.gradient`, unset by default, overriding `background` when set.
+- `visual.note_border_shade`, defaulting to the -0.45 that is drawn today.
+- A bar gradient setting.
+- A handful of colour palettes as named presets, so "make it look good" does not
+  require picking six hex codes.
 
-You get a folder of PNGs and a note saying which is which. You say which effects
-survive and which are gone.
+### Checkpoint B: theme stills
 
-**What a "no" costs at this point:** one script that was going to be deleted
-anyway. Nothing else exists yet. This is the cheapest possible place to reject
-seven of the eight.
+A grid of stills: a few gradient backgrounds crossed with a few hand palettes
+and border shades, on the same frame. You pick what stays and what the presets
+should contain.
 
-## Step 2: the same effects in motion
+Stills are sufficient here, and that is the point of the split. Nothing in this
+layer changes between frames, so there is nothing a video would tell you that a
+picture does not.
+
+**What a "no" costs:** re-running a script. The config keys are small and
+additive, and the defaults are today's behaviour, so nothing existing can break.
+
+## Step 3: the effects in motion
 
 Still frames lie about anything that moves. A flash that looks harsh frozen can
-read as a tap in motion, and a trail that looks elegant frozen can smear.
+read as a tap in motion, and a trail that looks elegant frozen can smear. Two of
+the seven could not be judged from stills at all.
 
-So the survivors from A get rendered as **ten-second clips at 1280x720**, using
-the parallel renderer, which makes each one about four seconds of waiting. Three
-clips per effect at low, medium and high intensity, plus one clip with everything
-that survived turned on together, since effects interact and a glow under
-particles is not the sum of the two.
+The survivors get rendered as **ten-second clips at 1280x720**, using the
+parallel renderer, which makes each one about four seconds of waiting. Three
+clips per effect at low, medium and high intensity, plus clips with combinations
+turned on together, since effects interact and a glow under particles is not the
+sum of the two.
 
 Sound on, because judging a strike flash without hearing the note is judging the
 wrong thing.
 
-### Checkpoint B: motion and intensity
+`trail` against `key_glow` gets its own pair of clips, since stills could not
+separate them. `pulse` and `bloom` are each answering a specific question:
+whether the reworked pulse tracks the music, and whether bloom is worth 3x.
 
-You get a handful of short clips. You say: which effects stay, and roughly what
-intensity each wants. Approximate is fine, the numbers get tuned later.
+### Checkpoint C: motion and intensity
 
-**What a "no" costs:** still just the throwaway script. There is still no config
-schema, no validator, no test and no reference image. **This is the last point at
-which rejecting an effect costs nothing**, and it is deliberately placed after
-the only question that matters has been answered.
+You say which effects stay and roughly what intensity each wants. Approximate is
+fine, the numbers get tuned later.
 
-## Step 3: make it real
+**What a "no" costs:** still just the throwaway script. There is still no effect
+config schema, no validator, no test and no reference image. **This is the last
+point at which rejecting an effect costs nothing**, and it is deliberately
+placed after the only question that matters has been answered.
 
-Only now, and only for what survived B.
+## Step 4: the effects, built for real
+
+Only for what survived C.
 
 - **Config.** An `[[visual.effects]]` list, each entry naming a `kind` and its
   parameters. The config module rejects unknown keys on purpose, so a list whose
@@ -147,23 +320,23 @@ Only now, and only for what survived B.
 - **The effect functions**, moved from the throwaway script into
   `psv/render/effects.py`, each a pure function of the frame, the score and the
   time, drawing locally.
-- **Ordering.** Effects compose in the order listed, so a halo under particles
-  is a different picture from particles under a halo. The list is the order.
-- **A preset**, bundling the survivors at the intensities from B. Name to be
-  decided; `--preset showcase` or similar. This is the door for anyone who wants
-  it to look good and does not want to read a config reference.
+- **Presets** bundling a theme and a set of effects at the intensities from C.
+  This is the door for anyone who wants it to look good without reading a config
+  reference.
 
-Cost is measured here, not assumed: a frame with the preset on, against a frame
-without, at 1080p. If it is over 3 ms the intensity or the effect gets cut, and
-the number goes in the docs either way.
+Cost is measured here, not assumed: a frame with each preset on, against a frame
+without, at 1080p. The number goes in the docs whatever it turns out to be.
 
-## Step 4: tests, then the documents
+## Step 5: tests, then the documents
 
-- One reference image per effect, at low resolution, pinned the way the existing
-  visual tests are. These come last because they are the thing that would have to
-  be regenerated every time an effect changed, and by now nothing is changing.
-- A test that the default config produces a frame identical to today's. **Effects
-  off must mean literally unchanged**, not visually similar.
+- One reference image per effect and per theme setting, at low resolution,
+  pinned the way the existing visual tests are. These come last because they are
+  the thing that would have to be regenerated every time something changed, and
+  by now nothing is changing.
+- A test that the default config produces a frame identical to today's.
+  **Defaults must mean literally unchanged**, not visually similar. This covers
+  the theme too: `note_border_shade` defaulting to -0.45 has to produce the same
+  pixels as the constant it replaces.
 - A test that every effect at `intensity = 0` is a no-op, which is the property
   that makes the slider trustworthy.
 - Determinism: the same frame twice is byte-identical, including particles.
@@ -171,9 +344,9 @@ the number goes in the docs either way.
   that the stateless rule exists to guarantee.
 - Feature registry entries, README section, CHANGELOG.
 
-### Checkpoint C: a whole piece
+### Checkpoint D: a whole piece
 
-A full render of a real piece with the preset on, at your resolution, with sound.
+A full render of a real piece with a preset on, at your resolution, with sound.
 Ten seconds tells you whether an effect works. Two and a half minutes tells you
 whether it wears well, which is a different question and the one that decides
 whether this is something you would actually post.
@@ -238,17 +411,20 @@ common one.
 
 # What could go wrong
 
-**Everything gets rejected at checkpoint A.** Fine, and cheap: that is a deleted
-script and a day. It is also a real answer, that this tool is a practice aid and
-the spectacle belongs elsewhere.
+**Everything survives every checkpoint.** This is now the likelier failure, not
+the original worry that nothing would. Seven effects and a theme layer all kept
+is a large surface, and the answer is the preset: the full set exists for
+whoever wants to tune it, and the preset is the opinion about which four of them
+belong together.
 
-**The effects look good alone and bad together.** Which is why B includes one
-clip with all of them on rather than only the individual ones.
+**The effects look good alone and bad together.** Which is why the motion
+checkpoint includes combinations rather than only the individual ones.
 
 **Particles look wrong deterministically.** Seeding from the note index and frame
 index gives repeatable randomness, and repeatable randomness can look patterned
-rather than random. If it does, the fix is a better hash rather than real state,
-because state is what the two rules forbid.
+rather than random. It already did once: without a per-spark birth delay, every
+spark of a note was the same age and the spray drew as a clean arc. The fix was
+a better hash rather than real state, because state is what the two rules forbid.
 
-**It costs more than 3 ms.** Then it is cut or turned down, and the measurement
-is in the docs so nobody has to rediscover it.
+**A coloured background makes the piece harder to read.** It will. That is the
+trade, it is opt-in, and the practice default does not move.

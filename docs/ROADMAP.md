@@ -543,12 +543,20 @@ ADSR envelope. One short recorded piano sample per octave, pitch shifted, would
 sound far better for very little code. Lower priority now that FluidSynth works
 and is documented.
 
-**Opt-in visual effects.** Key-strike flashes, glow, particles, trails. Off by
-default, because a practice aid and a piece of spectacle want opposite things
-and both are legitimate. Planned in [EFFECTS.md](EFFECTS.md), which is arranged
-around the fact that the risk here is taste rather than engineering: the effects
-are seen in stills, then in motion, and only what survives both gets a config
-key, a test or a reference image.
+**Opt-in visual effects, and a theme to put them on.** Off by default, because a
+practice aid and a piece of spectacle want opposite things and both are
+legitimate. Planned in [EFFECTS.md](EFFECTS.md), which is arranged around the
+fact that the risk here is taste rather than engineering.
+
+It is two features that were one until the stills came back. The theme is
+static: a gradient background, the hand colours that are already configurable,
+and a border shade that can light a bar from inside instead of cutting it out.
+It costs nothing measurable, since filling the background is two thirds of a
+frame either way, and a picture is enough to judge it. The effects are
+transient, tied to when a note lands, and cannot be judged frozen at all: two of
+the seven candidates looked identical to no effect in a still. Only those wait
+for a video, and only what survives it gets a config key, a test or a reference
+image.
 
 **Better salience for arranging.** The current function is velocity, duration,
 and an outer-voice bonus. Real salience needs harmonic analysis: which notes are
