@@ -6,9 +6,10 @@ the thing a pianist posts: sparks off the strike line, a glow on the keys, the
 piece looking like an event. Both are legitimate and they want opposite things,
 so none of this is on by default.
 
-**The theme layer is built. None of the effects are.** This document is both
-the plan and the record of it, and it is arranged around the fact that the risk
-in this feature is taste rather than engineering.
+**The theme layer is built. The effects have been seen in motion and none of
+them is built.** This document is both the plan and the record of it, and it is
+arranged around the fact that the risk in this feature is taste rather than
+engineering.
 
 ## Two layers, not one
 
@@ -326,29 +327,69 @@ the key colours, the strike line, the lane fills and the grid's own grey. Those
 are structure rather than decoration. The grid's opacity is a setting; its hue
 is not, for the same reason the flat background has to be grayscale.
 
-## Step 3: the effects in motion
+## Step 3: the effects in motion (done)
 
 Still frames lie about anything that moves. A flash that looks harsh frozen can
 read as a tap in motion, and a trail that looks elegant frozen can smear. Two of
 the seven could not be judged from stills at all.
 
-The survivors get rendered as **ten-second clips at 1280x720**, using the
-parallel renderer, which makes each one about four seconds of waiting. Three
-clips per effect at low, medium and high intensity, plus clips with combinations
-turned on together, since effects interact and a glow under particles is not the
-sum of the two.
+Ten clips at 1280x720 and 60fps, with sound. One 24-second passage of Fur Elise
+(from 0:46, the densest stretch in the piece with both hands busy throughout),
+with the intensity stepping up twice, low then medium then high, labelled on
+screen. Seven clips of one effect each, then three of combinations, since
+effects interact and a glow under particles is not the sum of the two.
 
-Sound on, because judging a strike flash without hearing the note is judging the
-wrong thing.
+Continuous music rather than the same eight seconds three times. A strike flash
+is judged against how it feels to hear the note land, and looping a passage to
+line up the intensities makes that harder, not easier.
 
-`trail` against `key_glow` gets its own pair of clips, since stills could not
-separate them. `pulse` and `bloom` are each answering a specific question:
-whether the reworked pulse tracks the music, and whether bloom is worth 3x.
+60fps rather than 30 because that is the question being asked. A flash fading
+over 130 ms is eight frames at 60 and four at 30, and four frames is not enough
+to tell a tap from a flicker.
+
+Rendered serially rather than through the parallel renderer, which the plan
+assumed would be needed. At 720p a clip takes 10 to 30 seconds, so a worker pool
+would have cost more to arrange than it saved. The parallel path also spawns
+processes that would not have the effect functions, since those still live in a
+throwaway script and not in `psv`, which is where the plan says they stay until
+Checkpoint C.
+
+Measured at 1920x1080 on the same frame the still sheet used:
+
+| Clip | cost per frame |
+| --- | --- |
+| `pulse` | 0.04 ms |
+| `particles` | 0.61 ms |
+| `strike_flash` | 0.78 ms |
+| `trail` | 1.24 ms |
+| `key_glow` | 3.48 ms |
+| `halo` | 6.49 ms |
+| `bloom` | 25.83 ms |
+| glow + flash + particles | 5.01 ms |
+| everything but bloom | 12.67 ms |
+| glow + flash + bloom | 31.22 ms |
+
+Two things came out of building it.
+
+**`pulse` costs nothing, once it is written the way it should be.** The first
+version brightened the finished frame, which is a full-frame blend at 6.9 ms and
+also wrong: it lifted the notes and the keyboard along with the background.
+Changing the colour the background is about to be filled with does the same
+thing for 0.04 ms, because the fill happens either way. It is the only one of
+the seven that does not draw.
+
+**The effect sizes are in pixels, and they should not be.** A glow that rises 47
+pixels above the strike line is a different effect at 720p and at 1080p. Every
+one of these numbers has to become a fraction of the frame before it becomes a
+config key, the way `note_border` already is. That is step 4's problem and it is
+written here so it does not get discovered at step 5.
 
 ### Checkpoint C: motion and intensity
 
 You say which effects stay and roughly what intensity each wants. Approximate is
-fine, the numbers get tuned later.
+fine, the numbers get tuned later. `trail` against `key_glow` is the one
+comparison the stills could not make: they were the same picture frozen, because
+every note struck in the last 0.4 seconds was still being held.
 
 **What a "no" costs:** still just the throwaway script. There is still no effect
 config schema, no validator, no test and no reference image. **This is the last
