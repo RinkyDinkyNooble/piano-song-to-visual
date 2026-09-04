@@ -6,9 +6,11 @@ actually play it.
 
 > **Status: working.** One command turns a score into a practice video with
 > sound, arranged to fit your hands, at whatever tempo and over whatever bars you
-> want to drill. What is still missing is listed under
-> [M8 in the roadmap](docs/ROADMAP.md); reverb and a better built-in tone are the
-> two you will notice first.
+> want to drill. There is also a showcase mode: colour schemes and optional
+> effects, off by default, for when you want the render to look like something
+> rather than teach you something. What is still missing is listed under
+> [M8 in the roadmap](docs/ROADMAP.md); a better built-in synth tone is the one
+> you will notice first, and only if you have no SoundFont.
 
 ## Why this exists
 
@@ -25,6 +27,11 @@ someone to make, with three things standard falling-note videos leave out:
   notes do, showing exactly when the sustain pedal goes down and for how long.
 - **An alignment grid.** Faint horizontal and vertical rules, so you can tell that two
   notes an octave and a half apart are actually simultaneous.
+
+Plus a mode that is the opposite of all that, for when the video is the point
+rather than the practice: gradient backgrounds, colour schemes, sparks off the
+strike line. Off by default, because a practice aid and a piece of spectacle
+want opposite things. See [Themes](#themes) and [Effects](#effects).
 
 And one thing no falling-note renderer does at all:
 
@@ -328,24 +335,23 @@ max_span_semitones = 12   # hard limit on simultaneously held notes; 18 = 1.5 oc
                           # 0 means no limit: the piece exactly as written,
                           # which psv then says loudly rather than implying
                           # it checked something
+overlap_tolerance_s = 0.03 # overlaps shorter than this do not count as
+                          # simultaneous. A note released 10 ms after the next
+                          # one starts is sloppy MIDI, not a stretch to make
 
 [difficulty]
-level = "medium"          # note density, ornamentation, harmonic detail
+level = "original"        # note density, ornamentation, harmonic detail
 
 [visual]
-background = "grayscale"
+width = 1920
+height = 1080             # both must be even: h264 encodes in 2x2 blocks, and
+                          # an odd size would be quietly padded
+fps = 60
+lookahead_s = 3.0         # seconds of music visible above the keyboard at once
+background = "#101010"    # grayscale, so nothing back here competes with the
+                          # hues that say which hand is playing
 black_key_bar_width = 0.6 # relative to white-key bars, so black keys read from far away
 black_key_darkening = 0.2 # applied on top of the note's colour
-
-[visual.colors]           # hue = which hand, brightness = how loud
-left_hand  = "#4a90d9"
-right_hand = "#5fb87a"
-unassigned = "#9aa0ac"    # before hand assignment has run
-pedal      = "#c8a44a"
-quiet = 0.35              # brightness at pp
-loud  = 1.0               # brightness at ff
-
-[visual]
 note_border = 0.0016      # outline on each bar, as a fraction of frame width.
                           # This is what separates four fast repeats on one key
                           # from one long block. 0 turns it off
@@ -357,25 +363,39 @@ bar_gradient = 0.0        # brightness ramp along each bar. Positive fades the
 gradient_top = ""         # a vertical gradient behind everything. Set both ends
 gradient_bottom = ""      # to use it; it then replaces `background` and may
                           # have a hue, which `background` may not
-
-[[visual.effects]]        # optional, off by default, drawn in the order listed
-kind = "strike_flash"     # strike_flash | key_glow | trail | particles
-intensity = 0.8           # halo | pulse | bloom. 0 draws nothing at all
 workers = 0               # processes to render with; 0 is one per core,
                           # 1 renders in a single process
 encode = "balanced"       # small | balanced | fast: how long the encoder
                           # spends compressing, against how big the file is
+
+[visual.colors]           # hue = which hand, brightness = how loud
+left_hand  = "#4a90d9"
+right_hand = "#5fb87a"
+unassigned = "#9aa0ac"    # before hand assignment has run
+pedal      = "#c8a44a"
+quiet = 0.35              # brightness at pp
+loud  = 1.0               # brightness at ff
 
 [visual.grid]
 pitch_lines = "octave"    # vertical rules at every C, for finding a key
 beat_lines  = "beat"      # horizontal rules on the beat, for spotting simultaneity
 opacity     = 0.15        # faint: an aid, not decoration
 
+[[visual.effects]]        # optional, off by default, drawn in the order listed.
+kind = "strike_flash"     # strike_flash | key_glow | trail | particles
+intensity = 0.8           # halo | pulse | bloom. 0 draws nothing at all
+
 [pedals]
 lanes = 1                 # up to 3; sustain is the one MIDI reliably carries
+threshold = 1             # controller value at which a pedal counts as engaged.
+                          # 1 shows half-pedalling; 64 is the on/off convention
 
 [audio]
 backend = "builtin"       # builtin | fluidsynth | mux | none
+soundfont = ""            # for backend = "fluidsynth": path to a .sf2
+fluidsynth_bin = ""       # folder holding the native library, so it does not
+                          # have to be on PATH for one optional backend
+program = 0               # which instrument in that SoundFont; `psv instruments`
 reverb = 0.5              # how much room the piano is played in, 0 dry to 1 a
                           # large hall. 0.5 is what it has always sounded like:
                           # FluidSynth's reverb is on unless you turn it off.
@@ -384,11 +404,11 @@ audio_file = ""           # for backend = "mux": your own recording
 offset_s = 0.0            # nudge that recording into sync
 stereo_width = 0.5        # low notes left, high notes right, as at the keyboard
 
-[practice]               # how the finished arrangement is presented
-tempo = 1.0              # 0.75 renders at three-quarters speed
-hands = "both"           # both | left | right
-count_in_bars = 0        # bars of clicks before the music
-metronome = false        # keep clicking through it
+[practice]                # how the finished arrangement is presented
+tempo = 1.0               # 0.75 renders at three-quarters speed
+hands = "both"            # both | left | right
+count_in_bars = 0         # bars of clicks before the music
+metronome = false         # keep clicking through it
 ```
 
 ### A real piano sound
@@ -402,7 +422,16 @@ backend = "fluidsynth"
 soundfont = "~/.local/fluidsynth/GeneralUser-GS.sf2"
 fluidsynth_bin = "~/.local/fluidsynth/bin"      # folder holding the DLL
 program = 0    # 0 grand, 1 bright, 4 Rhodes, 5 FM electric, 6 harpsichord
+reverb = 0.5   # 0 dry, 1 a large hall
 ```
+
+`reverb` is one number driving FluidSynth's room size, damping, width and level
+together, because exposing all four means picking four numbers to find out that
+three of them barely matter. `0.5` is what psv has always sounded like:
+FluidSynth enables its own reverb unless told not to, so this has never been
+dry, and the middle of the range is those settings rather than a new opinion.
+`--reverb 0.8` overrides it for one run. The other backends do not go through
+FluidSynth and say so rather than implying it happened.
 
 You need the [FluidSynth](https://github.com/FluidSynth/fluidsynth/releases)
 binaries matching your Python's architecture, and any `.sf2` SoundFont

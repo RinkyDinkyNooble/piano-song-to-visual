@@ -6,6 +6,7 @@ a colour key should say so, rather than leaving a render quietly wrong.
 
 from __future__ import annotations
 
+from dataclasses import fields
 from pathlib import Path
 
 import pytest
@@ -77,40 +78,48 @@ def test_a_span_outside_human_reach_is_rejected(tmp_path: Path, span: int) -> No
         Config.load(path)
 
 
+#: The config reference in the README, which is the block starting at `[hands]`.
+README = Path(__file__).resolve().parent.parent / "README.md"
+
+
+def readme_config() -> str:
+    """The README's config block, verbatim."""
+    text = README.read_text(encoding="utf-8")
+    start = text.index("```toml\n[hands]") + len("```toml\n")
+    return text[start : text.index("```", start)]
+
+
 @pytest.mark.feature("F-10")
 def test_the_documented_readme_example_is_valid(tmp_path: Path) -> None:
-    """Guards against the README drifting away from what the loader accepts."""
-    path = write(
-        tmp_path,
-        """
-        [hands]
-        max_span_semitones = 12
+    """The README's config block, loaded as written.
 
-        [difficulty]
-        level = "medium"
-
-        [visual]
-        black_key_bar_width = 0.6
-        black_key_darkening = 0.2
-
-        [visual.colors]
-        left_hand = "#4a90d9"
-        right_hand = "#5fb87a"
-        quiet = 0.35
-        loud = 1.0
-
-        [visual.grid]
-        pitch_lines = "octave"
-        beat_lines = "beat"
-
-        [pedals]
-        lanes = 1
-
-        [audio]
-        backend = "none"
-        """,
-    )
+    It used to be a hand-copied subset, which meant the docstring's promise was
+    not true: the README drifted into two `[visual]` headers, which TOML rejects
+    outright, and an `[[visual.effects]]` entry in the middle of the table that
+    would have swallowed the two keys after it. A copy cannot catch that. This
+    reads the file.
+    """
+    path = write(tmp_path, readme_config())
     Config.load(path)
+
+
+@pytest.mark.feature("F-10")
+def test_the_readme_documents_every_config_key() -> None:
+    """A key nobody can find is a key nobody sets.
+
+    Compared against the dataclasses rather than against a list, so adding a
+    setting and forgetting to write it down fails here rather than never.
+    """
+    import tomllib
+
+    documented = tomllib.loads(readme_config())
+    missing = [
+        f"{section.name}.{key.name}"
+        for section in fields(Config)
+        for key in fields(getattr(Config(), section.name))
+        if key.name not in documented.get(section.name, {})
+    ]
+    assert not missing, f"undocumented config keys: {missing}"
 
 
 @pytest.mark.parametrize(

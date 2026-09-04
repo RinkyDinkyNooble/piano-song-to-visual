@@ -74,8 +74,11 @@ separated. This drives every decision about what the later stages need to do.
 Runs only when needed. A two-track solo piano MIDI already *is* the arrangement, and
 the tool should not touch it.
 
-1. **Salience scoring** — rank notes by how much they matter (melodic line, bass root,
-   harmonic function, velocity, register, onset density).
+1. **Salience scoring** — rank notes by how much they matter. Deliberately crude
+   as it stands: velocity, duration, and a large bonus for the top and bottom of a
+   simultaneity, since those are the melody and the bass. Real salience needs
+   harmonic analysis, and this is one function with two call sites so there is one
+   place to replace when it gets one.
 2. **Reduction** — drop low-salience notes until the texture fits two hands.
 3. **Hand assignment** — partition surviving notes into left/right by register and
    continuity, minimising crossings and jumps. Existing track/channel splits are
@@ -89,7 +92,8 @@ publishable one.
 Two orthogonal knobs, deliberately separated:
 
 - **Hand span — a hard, always-enforced invariant.** For every instant, the set of
-  notes held by one hand must fit within `max_span` semitones (default 12, ceiling 18).
+  notes held by one hand must fit within `max_span` semitones (default 12, ceiling
+  36, and 0 means no limit at all rather than a very wide one).
   Enforced by sweeping the timeline, detecting violating instants, and repairing them —
   by moving a note to the other hand, octave-displacing it, shortening it so it no
   longer overlaps, or dropping it, in that order of preference.
@@ -114,16 +118,36 @@ Frames are drawn deterministically (numpy/Pillow) and piped to ffmpeg. Determini
 headless means the renderer is testable in CI: render frame N of a fixed arrangement,
 compare against a reference image.
 
-**Visual encoding.** Hand identity is the hue; dynamics is the brightness/saturation
-within that hue. Left and right hand get distinct colour families, and within each,
-quiet notes read dark and desaturated while loud notes read bright and saturated. Both
-channels stay legible without fighting each other. Black-key bars are drawn thinner than
-white-key bars and darkened further, so they are distinguishable by shape far from the
-keyboard and by tone up close — independent of whatever dynamics colour is applied.
+**Visual encoding.** Hand identity is the hue; loudness is the brightness within
+that hue. Left and right hand get distinct colour families, and hue stays at full
+strength all the way down. Saturation is deliberately unused: washing quiet notes
+toward grey looks better and costs the more important signal, since at pianissimo
+you could no longer tell which hand is playing. Black-key bars are drawn thinner
+than white-key bars and darkened further, so they are distinguishable by shape far
+from the keyboard and by tone up close — independent of whatever dynamics colour
+is applied.
 
 `render_frame(score, config, t)` is a pure function, and stays one. Practising a
 single hand is a keyword on it rather than a filtered score, because the muted
 hand is still drawn: it is the soundtrack that goes quiet, not the picture.
+
+Purity is load-bearing beyond testing. It is what lets the timeline be cut into
+spans and rendered by separate processes, and it is why the optional effects in
+`psv/render/effects.py` may derive from the score and a time but never from the
+previous frame: state would seam at every span boundary.
+
+**Two optional layers sit on top, both off by default**, because a practice aid
+and a piece of spectacle want opposite things and both are legitimate. The theme
+is static, a gradient background and hand colours and a border shade and a ramp
+along each bar, and is judged from a picture. The effects are transient and tied
+to when a note lands. [EFFECTS.md](EFFECTS.md) is both the plan and the record of
+how each one was decided.
+
+**Colour range.** Video is written full range and tagged to say so. h264 defaults
+to the television range, 16-235, which is right for camera footage and wrong for a
+picture drawn in RGB: one grey level in seven has nowhere to land, and consecutive
+levels collapse. Nothing notices until something moves slowly across a large flat
+area, which is exactly what the `pulse` effect does.
 
 ### Audio
 
@@ -131,10 +155,17 @@ Pluggable backends, selected by config, degrading gracefully:
 
 | Backend | Needs | Notes |
 | --- | --- | --- |
-| `fluidsynth` | `pyfluidsynth` + native FluidSynth + a `.sf2` | Best quality; velocity and pedal are actually audible |
+| `fluidsynth` | `pyfluidsynth` + native FluidSynth + a `.sf2` | Best quality; velocity and pedal are actually audible, and `audio.reverb` puts it in a room |
 | `mux` | a user-supplied audio file | For when you have the recording the MIDI came from; configurable offset |
 | `builtin` | nothing beyond numpy | Simple internal synth; cheap-sounding but always works |
 | `none` | nothing | Silent video, for fast iteration on visuals |
+
+`audio.reverb` is one number from dry to a large hall, driving FluidSynth's four
+reverb parameters together. It is the only audio effect there is and the only one
+planned: anything with a threshold and a ratio is done better by software built
+for it, and the `mux` backend already takes a finished audio file back, so the
+professional route stays open as render silent, treat the audio elsewhere, mux it
+in.
 
 The renderer never depends on which backend ran; audio is muxed as a final step.
 

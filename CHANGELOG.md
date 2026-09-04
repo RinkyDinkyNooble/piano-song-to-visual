@@ -76,28 +76,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The keyboard is deliberately not themed. It is a picture of a real
     instrument and it reads as itself under every scheme.
 
-### Fixed
-
-- **Videos are written full range, so grey levels survive the encode.** h264
-  defaults to the television range, 16-235, which is right for camera footage
-  and wrong for a picture drawn in RGB: about one level in seven had nowhere to
-  land and consecutive levels collapsed into one. Invisible until something
-  moved slowly across a large flat area, and then not: the `pulse` effect walks
-  the background up a level at a time, and 18, 19, 20, 21 came back as 17, 18,
-  19, 20 with a level repeated here and two skipped there, so a smooth brighten
-  arrived as an uneven stutter. Mean round-trip error per channel over a real
-  1080p frame drops from 0.441 to 0.319. The stream is tagged bt709 to match
-  what is written, since a half-tagged stream is how this kind of thing starts.
-
-- `bloom` worked on a fixed eighth of the frame, which put a 320x180 render's
-  bloom on a 40x22 image and quietly did nothing. The shrunken copy is now a
-  fixed number of rows instead, so the effect is the same effect at every size.
-
-- The alignment grid is mixed with the background a row at a time, so it stays
-  equally faint down a gradient instead of vanishing into the dark end. It is
-  still drawn rather than composited, which is what keeps a crossing of two grid
-  lines exactly as faint as either line alone.
-
 - **Renders run across processes, and how hard the encoder works is now your
   choice.** Für Elise at 1080p60 took 1:41 and now takes 0:44, or 0:34 asking
   for `--encode fast`.
@@ -204,7 +182,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `scripts/fetch_test_songs.py` with SHA-256 verification.
 - Test plan explaining the two-tier asset strategy - see `docs/TEST-PLAN.md`.
 
+### Fixed
+
+- **Videos are written full range, so grey levels survive the encode.** h264
+  defaults to the television range, 16-235, which is right for camera footage
+  and wrong for a picture drawn in RGB: about one level in seven had nowhere to
+  land and consecutive levels collapsed into one. Invisible until something
+  moved slowly across a large flat area, and then not: the `pulse` effect walks
+  the background up a level at a time, and 18, 19, 20, 21 came back as 17, 18,
+  19, 20 with a level repeated here and two skipped there, so a smooth brighten
+  arrived as an uneven stutter. Mean round-trip error per channel over a real
+  1080p frame drops from 0.441 to 0.319. The stream is tagged bt709 to match
+  what is written, since a half-tagged stream is how this kind of thing starts.
+
+- `bloom` worked on a fixed eighth of the frame, which put a 320x180 render's
+  bloom on a 40x22 image and quietly did nothing. The shrunken copy is now a
+  fixed number of rows instead, so the effect is the same effect at every size.
+
+- The alignment grid is mixed with the background a row at a time, so it stays
+  equally faint down a gradient instead of vanishing into the dark end. It is
+  still drawn rather than composited, which is what keeps a crossing of two grid
+  lines exactly as faint as either line alone.
+
 ### Changed
+
+- The README's config reference is loaded by a test rather than copied into one.
+  It had drifted into two `[visual]` headers, which TOML rejects outright, and an
+  `[[visual.effects]]` entry in the middle of the table that would have swallowed
+  the two keys after it. The test that claimed to guard this was checking a
+  hand-copied subset, so it could not have caught either. It now reads the file,
+  and a second test compares the block against the config dataclasses so a new
+  setting cannot ship undocumented.
 
 - Global flags work on either side of the subcommand. `psv run ... -c x.toml`
   was a usage error while `psv -c x.toml run ...` was not, which nothing about

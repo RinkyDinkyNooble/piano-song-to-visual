@@ -18,9 +18,9 @@ render look striking splits cleanly in two, and the halves want different
 treatment:
 
 **The theme.** Background, note colours, bar borders, gradients. Static. It is
-the same in every frame, it can be judged from a single picture, and most of it
-is already configurable. There is no motion question to answer, so it does not
-need the motion checkpoint.
+the same in every frame, it can be judged from a single picture, and half of it
+was already configurable before any of this. There is no motion question to
+answer, so it does not need the motion checkpoint.
 
 **The effects.** Flashes, glows, trails, sparks. Transient, tied to when a note
 lands, and impossible to judge frozen. These are the ones that need to be seen
@@ -135,7 +135,7 @@ itself the opt-in. That keeps the practice default honest without a cross-key
 validation rule that says "colour is allowed if some other thing is on", which
 is the kind of condition nobody can predict from reading the config.
 
-Two keys rather than the single `gradient = [top, bottom]` this planned. The
+Two keys rather than the single `gradient = [top, bottom]` planned above. The
 config loader coerces scalars and passes anything else through, so a list would
 be the first value in the file whose declared type is not what arrives, and it
 would need a normalising step and a new class of validation error for the sake
@@ -535,9 +535,9 @@ ringing half a second later goes from the noise floor at 0 to 35 times that at
 
 No new dependency, no DSP, and it took about an afternoon.
 
-**Checkpoint:** four short renders of the same passage at 0, 0.5, 0.8 and 1.
-You say which is the default and whether the top of the range is far enough. If
-it needs a second knob after hearing it, that is a finding, not a failure.
+**Checkpoint: passed.** Four short renders of the same passage at 0, 0.5, 0.8
+and 1. The default stayed at 0.5, which is where it has always been, and the top
+of the range was far enough. No second knob was needed.
 
 ## What the other backends get
 
