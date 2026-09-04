@@ -7,7 +7,6 @@ length asked for, not that a four-minute render looks nice.
 
 from __future__ import annotations
 
-from contextlib import closing
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -30,7 +29,7 @@ from psv.render.video import (
     worker_count,
 )
 from tests.fixtures.midi_builder import FIXTURES
-from tests.probe import frame_count, video_meta
+from tests.probe import decoded_frames, frame_count, video_meta
 
 TINY = VisualConfig(width=160, height=120, fps=10, lookahead_s=2.0)
 
@@ -306,26 +305,13 @@ def test_a_parallel_render_draws_the_same_pictures(tmp_path: Path) -> None:
 
 def _mean_error(drawn: list[Frame], path: Path, config: VisualConfig) -> float:
     """Average absolute pixel difference between what was drawn and what the
-    file decodes to."""
-    import imageio_ffmpeg
-
-    total = 0.0
-    count = 0
-    reader = imageio_ffmpeg.read_frames(str(path), pix_fmt="rgb24", bits_per_pixel=24)
-    with closing(reader):
-        next(reader)  # the metadata
-        for index, raw in enumerate(reader):
-            if index >= len(drawn):
-                break
-            decoded = np.frombuffer(raw, dtype=np.uint8).reshape(
-                config.height, config.width, 3
-            )
-            total += float(
-                np.abs(decoded.astype(np.int16) - drawn[index].astype(np.int16)).mean()
-            )
-            count += 1
-    assert count, f"decoded no frames from {path}"
-    return total / count
+    file decodes back to."""
+    decoded = decoded_frames(path, config.width, config.height)
+    assert decoded, f"decoded no frames from {path}"
+    pairs = list(zip(drawn, decoded, strict=False))
+    return sum(
+        float(np.abs(a.astype(np.int16) - b.astype(np.int16)).mean()) for a, b in pairs
+    ) / len(pairs)
 
 
 @pytest.mark.feature("F-69")

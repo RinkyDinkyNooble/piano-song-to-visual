@@ -76,3 +76,49 @@ def frame_count(path: Path | str) -> int:
             f"ffmpeg reported no frame count for {path}:\n{result.stderr[-500:]}"
         )
     return int(matches[-1])
+
+
+def decoded_frames(path: Path | str, width: int, height: int) -> list[Any]:
+    """Every frame of a video, decoded, as arrays.
+
+    Through `subprocess.run` for the same reason `frame_count` is: it owns and
+    closes its own pipes. `imageio_ffmpeg.read_frames` closes ffmpeg's only
+    `if process.poll() is None`, so reading a video to the end - which
+    comparing every frame must - leaves them to the garbage collector, and this
+    project turns the resulting ResourceWarning into a failure charged to
+    whichever test happens to be running.
+
+    Only for small videos: the whole thing is decoded into memory at once.
+    """
+    import numpy as np
+
+    result = subprocess.run(
+        [
+            ffmpeg_exe(),
+            "-nostdin",
+            "-v",
+            "error",
+            "-i",
+            str(path),
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-",
+        ],
+        capture_output=True,
+        check=True,
+    )
+    frame_bytes = width * height * 3
+    raw = result.stdout
+    if len(raw) % frame_bytes:
+        raise AssertionError(
+            f"{path} decoded to {len(raw)} bytes, not a whole number of "
+            f"{width}x{height} frames"
+        )
+    return [
+        np.frombuffer(raw[i : i + frame_bytes], dtype=np.uint8).reshape(
+            height, width, 3
+        )
+        for i in range(0, len(raw), frame_bytes)
+    ]
