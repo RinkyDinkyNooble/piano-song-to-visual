@@ -34,10 +34,15 @@ core knows the CLI exists.
 ## Pipeline
 
 ```
-                                                    ┌── audio backend ──┐
-MIDI ──▶ [1] parse ──▶ [2] arrange ──▶ [3] constrain ──▶ [4] render ──▶ ffmpeg ──▶ video
-         Score          two hands       span + difficulty   frames
+                                                     ┌── audio backend ──┐
+score ──▶ [1] parse ──▶ [2] arrange ──▶ [3] constrain ──▶ [4] render ──▶ ffmpeg ──▶ video
+          Score          two hands       span + difficulty   frames
 ```
+
+Stage [1] reads MIDI or MusicXML, told apart by content rather than by
+extension. Only that stage knows the difference: everything downstream sees a
+`Score`. MusicXML arrives with its repeats already unrolled, since a falling
+note happens at a time and nothing after this point has a notion of going back.
 
 Each stage reads and writes a serialisable intermediate, so any stage can be run,
 inspected, hand-edited, and re-run alone.
@@ -143,6 +148,7 @@ configuration change later rather than a rewrite.
 - **Logging** at every stage boundary, with `-v`/`-vv` controlling depth.
 - **Tests** per stage, plus invariant tests for stage 3 and reference-image tests for
   stage 4.
-- **Security**: input files are untrusted. The MIDI parser is the main attack surface;
-  parsing is bounded and no input-derived string is passed to a shell. `ruff`'s bandit
-  rules and CodeQL run in CI.
+- **Security**: input files are untrusted. The parsers are the main attack surface -
+  MIDI, MusicXML, the zip inside an `.mxl`, and SoundFonts. Parsing is bounded and no
+  input-derived string is passed to a shell. `ruff`'s bandit rules and CodeQL run in
+  CI.

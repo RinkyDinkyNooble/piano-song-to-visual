@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "piano-song-to-visual"
 dynamic = ["version"]
-description = "Turn a MIDI file into a Synthesia-style falling-notes practice video, arranged to be playable by human hands."
+description = "Turn a MIDI or MusicXML score into a Synthesia-style falling-notes practice video, arranged to be playable by human hands."
 readme = "README.md"
 license = "0BSD"
 license-files = ["LICENSE"]

@@ -299,6 +299,93 @@ def test_the_title_comes_from_the_file(score_path: ScorePath) -> None:
     assert read_musicxml_file(score_path("chord")).title == "chord"
 
 
+# -- what the engraving says, where the sound does not -------------------
+
+
+@pytest.mark.feature("F-67")
+def test_a_metronome_mark_sets_the_tempo(score_path: ScorePath) -> None:
+    """Most software writes `<sound tempo>` beside the mark. The software that
+    writes only the mark would otherwise play at the default tempo with nothing
+    to say it had happened.
+
+    Dotted quarter = 80 is 120 quarter notes a minute, so three quarters of
+    music take a second and a half.
+    """
+    read = read_musicxml_file(score_path("metronome-mark"))
+    assert read.duration == pytest.approx(1.5)
+
+
+@pytest.mark.feature("F-67")
+def test_a_note_equals_note_mark_is_not_a_tempo(tmp_path: Path) -> None:
+    """A mark reading "dotted quarter = quarter" changes how the music is
+    written, not how fast it goes. Read as a tempo it would be nonsense."""
+    path = written(
+        tmp_path,
+        "relation",
+        build.score(
+            build.measure(
+                1,
+                build.attributes(meter=(4, 4)),
+                "<direction><direction-type><metronome>"
+                "<beat-unit>quarter</beat-unit><beat-unit-dot/>"
+                "<beat-unit>quarter</beat-unit>"
+                "</metronome></direction-type></direction>",
+                build.note("C4", 4.0),
+            ),
+            title="relation",
+        ),
+    )
+    # Four quarter notes at the default 120 BPM.
+    assert read_musicxml_file(path).duration == pytest.approx(2.0)
+
+
+@pytest.mark.feature("F-67")
+def test_a_stated_tempo_beats_the_engraved_mark(tmp_path: Path) -> None:
+    """Where a file carries both, `<sound tempo>` is what it will sound like."""
+    path = written(
+        tmp_path,
+        "both",
+        build.score(
+            build.measure(
+                1,
+                build.attributes(meter=(4, 4)),
+                build.tempo(60),
+                build.metronome("quarter", 240),
+                build.note("C4", 4.0),
+            ),
+            title="both",
+        ),
+    )
+    assert read_musicxml_file(path).duration == pytest.approx(4.0)
+
+
+@pytest.mark.feature("F-68")
+def test_a_transposing_part_sounds_where_it_sounds(score_path: ScorePath) -> None:
+    """A clarinet in B flat writes a C and sounds the B flat below it. Read at
+    written pitch it would be a tone sharp against everything else."""
+    read = read_musicxml_file(score_path("transposing-part"))
+    assert [note.pitch for note in read.notes] == [58]
+
+
+@pytest.mark.feature("F-68")
+def test_a_transposition_off_the_keyboard_drops_the_note(tmp_path: Path) -> None:
+    """Nothing below A0 can sound. Better gone than wrapped around."""
+    path = written(
+        tmp_path,
+        "off-the-end",
+        build.score(
+            build.measure(
+                1,
+                build.attributes(meter=(4, 4), transpose=(0, -8)),
+                build.tempo(120),
+                build.note("C1", 4.0),
+            ),
+            title="off the end",
+        ),
+    )
+    assert read_musicxml_file(path).notes == ()
+
+
 # -- repeats -------------------------------------------------------------
 
 

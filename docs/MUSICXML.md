@@ -87,6 +87,18 @@ rewinds by that note's length rather than advancing.
 **Divisions** are per quarter note and may change mid-score, so the same
 duration number means different lengths in different bars.
 
+**A metronome mark** is the engraved sign and `<sound tempo="">` is what it
+means. Most software writes both and `<sound>` wins; a file carrying only the
+mark would otherwise play at the default tempo with nothing to say so. A mark
+with two note values and no `per-minute` reads "dotted quarter equals quarter",
+which changes how the music is written rather than how fast it goes, and is not
+a tempo.
+
+**A transposing instrument** writes one pitch and sounds another. A clarinet in
+B flat writes a C for the B flat below it. Read at written pitch it would sit a
+tone sharp against every other part. Irrelevant to a piano, which is why it is
+easy to miss.
+
 **Grace notes** have no duration at all. They are given an eighth of a beat, so
 they can be seen and played, and they do not advance the cursor. A zero-length
 note would land in the sweep path that once cost 428 notes.

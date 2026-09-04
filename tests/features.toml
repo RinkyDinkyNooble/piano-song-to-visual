@@ -571,3 +571,19 @@ uses = [
     "musicxml:da-capo-al-fine",
     "musicxml:dal-segno-al-coda",
 ]
+
+[[feature]]
+id = "F-67"
+name = "Tempo read from an engraved metronome mark where no sound tempo is written"
+milestone = "M10"
+status = "done"
+verify = "unit"
+uses = ["musicxml:metronome-mark"]
+
+[[feature]]
+id = "F-68"
+name = "Transposing instruments read at sounding pitch"
+milestone = "M10"
+status = "done"
+verify = "unit"
+uses = ["musicxml:transposing-part"]

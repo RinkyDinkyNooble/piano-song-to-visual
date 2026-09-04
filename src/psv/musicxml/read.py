@@ -63,6 +63,22 @@ DEFAULT_VELOCITY = 64
 #: converted to this fixed grid on the way in.
 TICKS_PER_BEAT = 480
 
+#: How many quarter notes each `<beat-unit>` is worth, for reading a metronome
+#: mark. `per-minute` counts those units rather than quarters, so a dotted-half
+#: at 60 is 180 quarter notes a minute.
+BEAT_UNITS = {
+    "long": 16.0,
+    "breve": 8.0,
+    "whole": 4.0,
+    "half": 2.0,
+    "quarter": 1.0,
+    "eighth": 0.5,
+    "16th": 0.25,
+    "32nd": 0.125,
+    "64th": 0.0625,
+    "128th": 0.03125,
+}
+
 #: A grace note has no duration of its own. It is given this fraction of a beat
 #: so it can be seen and played, rather than being a zero-length event.
 GRACE_BEATS = 0.125
@@ -87,6 +103,9 @@ class _Cursor:
     measure_start: float = 0.0
     #: Divisions per quarter note, from the most recent `<attributes>`.
     divisions: int = 1
+    #: Semitones from written pitch to sounding pitch, from `<transpose>`. Zero
+    #: for a piano and for anything else written at pitch.
+    transpose: int = 0
 
     def beats(self) -> float:
         return self.measure_start + self.position / self.divisions
@@ -278,6 +297,12 @@ def _read_attributes(
             value = 0
         if value > 0:
             cursor.divisions = value
+    transpose = element.find("transpose")
+    if transpose is not None:
+        chromatic = _int_text(transpose.findtext("chromatic"), 0)
+        octaves = _int_text(transpose.findtext("octave-change"), 0)
+        cursor.transpose = chromatic + 12 * octaves
+
     time = element.find("time")
     if time is not None:
         beats, beat_type = time.findtext("beats"), time.findtext("beat-type")
@@ -296,12 +321,14 @@ def _read_direction(
     pedal_down: float | None,
 ) -> tuple[int, float | None]:
     """Dynamics, pedal, and tempo, all of which arrive as `<direction>`."""
+    stated_tempo = False
     sound = element.find("sound")
     if sound is not None:
         tempo = sound.get("tempo")
         if tempo:
             try:
                 out.tempi.append((cursor.beats(), float(tempo)))
+                stated_tempo = True
             except ValueError:
                 log.debug("unreadable tempo, ignoring")
         loudness = sound.get("dynamics")
@@ -310,6 +337,16 @@ def _read_direction(
                 velocity = _clamp_velocity(float(loudness) * 90 / 100)
             except ValueError:
                 log.debug("unreadable dynamics, ignoring")
+
+    # A `<metronome>` is the engraved mark and `<sound tempo>` is what it means.
+    # Most software writes both; the ones that write only the mark would
+    # otherwise play at the default tempo with nothing to say it had happened.
+    if not stated_tempo:
+        for metronome in element.iter("metronome"):
+            bpm = _metronome_bpm(metronome)
+            if bpm is not None:
+                out.tempi.append((cursor.beats(), bpm))
+                break
 
     for dynamics in element.iter("dynamics"):
         for mark in dynamics:
@@ -328,6 +365,39 @@ def _read_direction(
             pedal_down = cursor.beats()
 
     return velocity, pedal_down
+
+
+def _metronome_bpm(element: ElementTree.Element) -> float | None:
+    """Quarter notes per minute from a `<metronome>`, or None if it states none.
+
+    A mark with two `<beat-unit>` elements and no `<per-minute>` says one note
+    value equals another, which is a change of notation rather than of speed.
+    """
+    per_minute = element.findtext("per-minute")
+    if not per_minute:
+        return None
+    try:
+        rate = float(per_minute)
+    except ValueError:
+        return None
+    if rate <= 0:
+        return None
+
+    unit: str | None = None
+    dots = 0
+    for child in element:
+        if child.tag == "beat-unit":
+            if unit is not None:
+                break  # the second unit is the other side of an equation
+            unit = (child.text or "").strip()
+        elif child.tag == "beat-unit-dot" and unit is not None:
+            dots += 1
+
+    quarters = BEAT_UNITS.get(unit or "quarter")
+    if quarters is None:
+        return None
+    # Each dot adds half of what came before it: one gives 1.5, two give 1.75.
+    return rate * quarters * (2 - 2.0**-dots)
 
 
 def _read_note(
@@ -355,6 +425,8 @@ def _read_note(
         return velocity
 
     pitch = _pitch(element)
+    if pitch is not None and cursor.transpose:
+        pitch = _transposed(pitch, cursor.transpose)
     if pitch is None:
         cursor.position += duration
         return velocity
@@ -389,6 +461,13 @@ def _read_note(
     if not is_grace:
         cursor.position += duration
     return velocity
+
+
+def _transposed(pitch: int, semitones: int) -> int | None:
+    """Sounding pitch for a transposing instrument, or None if it leaves the
+    keyboard entirely."""
+    sounding = pitch + semitones
+    return sounding if 0 <= sounding <= 127 else None
 
 
 def _last_duration(out: _PartRead, cursor: _Cursor) -> int:

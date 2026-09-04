@@ -109,13 +109,38 @@ def tempo(bpm: float) -> str:
     return f'<direction><sound tempo="{bpm}"/></direction>'
 
 
-def attributes(
-    *, divisions: int = DIVISIONS, staves: int = 1, meter: tuple[int, int] | None = None
+def metronome(
+    beat_unit: str = "quarter", per_minute: float = 120, *, dots: int = 0
 ) -> str:
+    """The engraved mark, with no `<sound tempo>` beside it. `per-minute`
+    counts ``beat_unit``s rather than quarter notes."""
+    inner = f"<beat-unit>{beat_unit}</beat-unit>" + "<beat-unit-dot/>" * dots
+    if per_minute:
+        inner += f"<per-minute>{per_minute:g}</per-minute>"
+    return (
+        f"<direction><direction-type><metronome>{inner}</metronome>"
+        f"</direction-type></direction>"
+    )
+
+
+def attributes(
+    *,
+    divisions: int = DIVISIONS,
+    staves: int = 1,
+    meter: tuple[int, int] | None = None,
+    transpose: tuple[int, int] | None = None,
+) -> str:
+    """``transpose`` is (chromatic semitones, octave change), as a clarinet in
+    B flat writes it."""
     out = [f"<attributes><divisions>{divisions}</divisions>"]
     if meter:
         out.append(
             f"<time><beats>{meter[0]}</beats><beat-type>{meter[1]}</beat-type></time>"
+        )
+    if transpose:
+        out.append(
+            f"<transpose><chromatic>{transpose[0]}</chromatic>"
+            f"<octave-change>{transpose[1]}</octave-change></transpose>"
         )
     out.append(f"<staves>{staves}</staves></attributes>")
     return "".join(out)
@@ -381,6 +406,33 @@ def dal_segno_al_coda() -> str:
     )
 
 
+def metronome_mark() -> str:
+    """A tempo written as an engraved mark alone. Dotted quarter = 80 is 120
+    quarter notes a minute, so this bar takes two seconds."""
+    return score(
+        measure(
+            1,
+            attributes(meter=(6, 8)),
+            metronome("quarter", 80, dots=1),
+            note("C4", 3.0),
+        ),
+        title="metronome mark",
+    )
+
+
+def transposing_part() -> str:
+    """A clarinet in B flat: written C sounds B flat, a tone below."""
+    return score(
+        measure(
+            1,
+            attributes(meter=(4, 4), transpose=(-2, 0)),
+            tempo(120),
+            note("C4", 4.0),
+        ),
+        title="transposing part",
+    )
+
+
 def empty_score() -> str:
     return score(measure(1, attributes(meter=(4, 4)), rest(4.0)), title="empty")
 
@@ -398,6 +450,8 @@ FIXTURES = {
     "rests-only": rests_only,
     "forward-gap": forward_gap,
     "ensemble": ensemble,
+    "metronome-mark": metronome_mark,
+    "transposing-part": transposing_part,
     "simple-repeat": simple_repeat,
     "first-and-second-endings": first_and_second_endings,
     "da-capo-al-fine": da_capo_al_fine,

@@ -51,6 +51,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - **Repeats do not nest.** A `|:` inside a first-time bar is flattened, and
       the piece comes out shorter than it is written. That is logged at warning
       level rather than done quietly.
+  - Tempo is read from an engraved `<metronome>` mark where a file writes no
+    `<sound tempo>` beside it, dotted beat units included. A mark reading
+    "dotted quarter equals quarter" is a change of notation rather than of
+    speed, and is not read as one.
+  - Transposing instruments are read at sounding pitch. A clarinet in B flat
+    writes a C for the B flat below it; at written pitch it would sit a tone
+    sharp against every other part.
   - 29 files of the Unofficial MusicXML Test Suite are fetched and
     hash-verified by `scripts/fetch_test_scores.py`. They are MIT and therefore
     gitignored, the same reasoning that keeps the CC BY-SA songs out: this

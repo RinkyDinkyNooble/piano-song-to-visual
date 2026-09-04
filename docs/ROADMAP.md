@@ -504,6 +504,17 @@ renderer deliberately loads nothing from the filesystem.
 bar index exists now, so this is drawing rather than arithmetic, and it wants
 the same bitmap font as the labels above.
 
+**Reverb, and post-processing generally.** A dry sampled piano sounds like a
+sample player rather than an instrument in a room, and the room is most of what
+makes a recorded piano sound like one. FluidSynth carries a reverb already, so
+`set_reverb(roomsize, damping, width, level)` is a handful of config keys and no
+new dependency. Doing it anywhere else means writing a convolver.
+
+Separately, exporting the soundtrack on its own so it can go through whatever
+you already use. The `mux` backend takes an audio file back, so half of that
+round trip exists; what is missing is a way to get the audio out without
+pulling it from the finished mp4 with ffmpeg.
+
 **Better built-in tone.** The current synth is additive sine harmonics with an
 ADSR envelope. One short recorded piano sample per octave, pitch shifted, would
 sound far better for very little code. Lower priority now that FluidSynth works
@@ -576,6 +587,12 @@ building a file to provoke them.
 Repeats do not nest: a `|:` written inside a first-time bar is flattened and
 the piece comes out short. That is logged at warning level rather than done
 quietly, which is the standing rule about music going missing.
+
+**Step 3: the corners.** A tempo written as an engraved `<metronome>` mark with
+no `<sound tempo>` beside it, dotted beat units included, and the "dotted
+quarter equals quarter" form that is a change of notation rather than of speed.
+Transposing instruments read at sounding pitch, since a clarinet in B flat
+written at pitch sits a tone sharp against everything else.
 
 **Exit criteria:** a real score with repeats renders to a video whose structure
 matches the sheet music, checked by ear. Counting bars proves the unrolling is

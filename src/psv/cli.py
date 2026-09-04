@@ -41,9 +41,9 @@ log = logging.getLogger("psv")
 
 #: Pipeline stages, in the order they run, plus the utilities either side.
 PIPELINE_COMMANDS: dict[str, str] = {
-    "inspect": "report what is inside a MIDI file",
+    "inspect": "report what is inside a score",
     "export": "write a parsed score back out as MIDI",
-    "arrange": "multi-instrument MIDI -> two-hand piano MIDI",
+    "arrange": "multi-instrument score -> two-hand piano MIDI",
     "constrain": "enforce hand-span and difficulty limits",
     "render": "arrangement -> falling-notes video",
     "run": "run the full pipeline end to end",
@@ -101,8 +101,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="psv",
         description=(
-            "Turn a MIDI file into a falling-notes piano practice video, "
-            "arranged to be playable by human hands."
+            "Turn a MIDI or MusicXML score into a falling-notes piano "
+            "practice video, arranged to be playable by human hands."
         ),
         parents=[_global_options(suppress=False)],
     )
