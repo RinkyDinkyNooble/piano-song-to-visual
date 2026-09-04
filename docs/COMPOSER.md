@@ -1,5 +1,11 @@
 # M9: the composer
 
+> **Not being built.** This plan is kept as a record of the reasoning, not as
+> work in progress. M10 made it unnecessary: MusicXML states the hands, the
+> dynamics and the pedalling, and public-domain sheet music covers the
+> repertoire this tool is aimed at. Transcription quality would have been a
+> ceiling on everything downstream. See [ROADMAP.md](ROADMAP.md).
+
 Point it at a recording and get back a piano arrangement you can learn.
 
 ```

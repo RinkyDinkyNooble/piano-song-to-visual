@@ -1,12 +1,14 @@
 # piano-song-to-visual
 
-Turn a MIDI file into a Synthesia-style falling-notes practice video — no hands, just
-notes flowing onto a keyboard — arranged so a human can actually play it.
+Turn a MIDI or MusicXML score into a Synthesia-style falling-notes practice
+video — no hands, just notes flowing onto a keyboard — arranged so a human can
+actually play it.
 
-> **Status: working MVP.** One command turns a MIDI into a practice video with
-> sound, arranged to fit your hands. Rough edges and the things deliberately left
-> out are listed as [M8 in the roadmap](docs/ROADMAP.md) — practice tempo and
-> section looping are the two you will miss first.
+> **Status: working.** One command turns a score into a practice video with
+> sound, arranged to fit your hands, at whatever tempo and over whatever bars you
+> want to drill. What is still missing is listed under
+> [M8 in the roadmap](docs/ROADMAP.md); reverb and a better built-in tone are the
+> two you will notice first.
 
 ## Why this exists
 
@@ -14,8 +16,8 @@ If you learn piano by watching and listening rather than by reading sheet music,
 stuck with whatever arrangements happen to exist on YouTube. For a lot of music — game
 soundtracks especially — nothing exists.
 
-This tool takes a MIDI and produces the video you'd have wanted someone to make, with
-three things standard falling-note videos leave out:
+This tool takes a MIDI or a MusicXML score and produces the video you'd have wanted
+someone to make, with three things standard falling-note videos leave out:
 
 - **Dynamics you can see.** Note brightness tracks velocity, so loud and soft are
   visible rather than guessed at.
@@ -33,15 +35,21 @@ And one thing no falling-note renderer does at all:
 
 ## Scope
 
-**MIDI in, video out.** Converting general audio into MIDI is a separate problem with
-separate failure modes, and it will live in its own tool that emits MIDI you feed in
-here. Keeping it out means this repo has no machine-learning dependencies, installs in
-seconds, and doesn't inherit anyone else's transcription errors.
+**A written score in, video out.** MIDI or MusicXML, and MusicXML is the better
+input where you have the choice, because it states which hand plays each note
+instead of leaving it to be guessed.
+
+Audio in is not planned. Transcribing a recording sets a ceiling on quality that
+nothing downstream can raise, and it would drag a machine-learning stack into a
+repo that currently installs in seconds. Public-domain sheet music covers the
+classical repertoire this is aimed at, and it arrives with the hands, the
+dynamics and the pedalling already written down. The reasoning that was going to
+go into it is kept in [docs/COMPOSER.md](docs/COMPOSER.md).
 
 ## Pipeline
 
 ```
-MIDI ──▶ parse ──▶ arrange ──▶ constrain ──▶ render ──▶ video
+score ──▶ parse ──▶ arrange ──▶ constrain ──▶ render ──▶ video
 ```
 
 Any stage runs on its own, so you can hand-fix an intermediate MIDI and pick up from
@@ -350,6 +358,15 @@ python scripts/fetch_test_songs.py   # optional: the two CC BY-SA test songs
 Two public-domain songs are committed, so the suite runs green on a fresh clone with no
 network. Every feature the tool promises is registered in `tests/features.toml` and
 cannot be marked done until a test claims it. See [docs/TEST-PLAN.md](docs/TEST-PLAN.md).
+
+```bash
+python scripts/fetch_test_scores.py  # optional: the MusicXML test suite
+```
+
+That second set is 29 small MusicXML files, each built to break one corner of the
+format. They are MIT and therefore not committed, for the same reason the CC BY-SA
+songs are not: this repository is 0BSD and should not quietly attach a condition
+it says is not there. Tests needing them skip when they are absent.
 
 ## Licence
 

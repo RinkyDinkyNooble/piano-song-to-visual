@@ -1,15 +1,16 @@
 # Build plan
 
-Eight milestones, all done. Then the CI failures, a list of optional
-touches, and the one big thing still ahead. Each one ends with something you can actually run, and each one's
-exit criteria are checkable rather than vibes. Ordering is chosen so that the fuzziest,
-least-certain work happens last, on top of foundations that are already proven.
+Ten milestones, all done, and one dropped. The tool works; what is left is in
+"Still open" under M8. Each ends with something you can
+actually run, and each one's exit criteria are checkable rather than vibes.
+Ordering put the fuzziest, least certain work last, on top of foundations that
+were already proven.
 
 **Decisions this plan assumes** (settled, not open):
 
 | Decision | Choice |
 | --- | --- |
-| Input | MIDI only. Audio to MIDI is a separate future tool. |
+| Input | A written score: MIDI or MusicXML. Not audio; see M9. |
 | Interface | Core library + thin CLI. No GUI. |
 | Note colour | Hue = which hand; brightness/saturation = velocity. |
 | Audio | Four pluggable backends: `fluidsynth`, `mux`, `builtin`, `none`. |
@@ -491,8 +492,8 @@ sets. Precedence runs least specific to most: file, preset, then flags.
 
 **Stereo, panned by register.** Low notes left, high notes right, as they sit
 under your hands. Equal-power law, so a note does not dip in volume crossing the
-middle. Not only prettier: it stops the hands competing for the same place in
-the mix, which is what makes a left-hand line audible under a busy right hand.
+middle. It also stops the hands competing for the same place in the mix, which
+is what makes a left-hand line audible under a busy right hand.
 
 ### Done: rendering across processes
 
@@ -615,66 +616,32 @@ a pair of ears rather than at a test.
 
 ---
 
-## M9 - The composer: audio to playable piano
+## M9 - The composer: audio to playable piano (dropped)
 
-The thing this project was originally for. Point it at a recording of anything,
-get back a piano arrangement you can learn.
+Planned, costed, and then not built. The idea was to point the tool at a
+recording and get a piano arrangement back:
 
-    audio (mp3, mp4, flac, wav) -> transcribe -> MIDI -> arrange -> constrain -> video
+    audio -> transcribe -> MIDI -> arrange -> constrain -> video
 
-**Most of this already exists.** Everything from `arrange` rightwards is built and
-tested: reduction to two hands, the guaranteed hand span, difficulty, the video.
-The only missing stage is the first one, turning audio into note data.
+Everything from `arrange` rightwards already existed. Only the first stage was
+missing, and [COMPOSER.md](COMPOSER.md) plans it in full: ONNX Runtime rather
+than any model author's package, ffmpeg as the audio front end since it ships
+already, weights fetched and hash-verified, and a regression test built by
+synthesising a MIDI fixture and transcribing it back.
 
-Planned in full in [COMPOSER.md](COMPOSER.md). The short version:
+**Why it was dropped.** Transcription quality is the ceiling on the whole thing
+and nothing downstream raises it. A clean solo piano recording transcribes well;
+a dense mix gives you roughly the right notes plus spurious ones and minus quiet
+ones, which is a starting point to correct by hand rather than a score.
 
-**Ease of installation decides the design, above transcription quality.** A tool
-nobody can install transcribes nothing. Measured on this machine, on Python 3.14:
-`onnxruntime` resolves to six wheels with no build step, while the `basic-pitch`
-package has no wheel at all and its sdist build fails outright. So the tool
-depends on ONNX Runtime and on model authors' exported `.onnx` weights, never on
-their packages, which come pinned to a particular TensorFlow or PyTorch and a
-narrow Python range.
+M10 removed the need. Public-domain sheet music covers the classical repertoire
+this tool is aimed at, and MusicXML states the hands, the dynamics and the
+pedalling rather than leaving them to be inferred. Guessing better was a worse
+plan than reading a file that already knows.
 
-**The audio front end is ffmpeg, which ships already.** `imageio-ffmpeg` is
-required for video output and the same binary decodes any container to the exact
-array a model wants, which keeps `librosa` and its numba stack out entirely. Net
-new dependency for the whole feature: `onnxruntime`.
-
-**It lives here, as an optional extra**, rather than in the separate
-`psv-transcribe` package the earlier sketch proposed. Ease of use is the
-governing constraint, and a separate package means two installs and a manual
-hand-off; an extra means `psv run song.mp3` does the whole job. What the split
-was protecting is protected by the extra instead: someone who already has MIDI
-installs nothing new, and the ONNX import stays inside the backend.
-
-**Weights are fetched and hash-verified, never committed and never downloaded
-silently**, reusing the manifest-and-SHA-256 pattern `scripts/fetch_test_songs.py`
-already uses for the CC BY-SA songs.
-
-**Ground truth is free here**, which is unusual for transcription: the tool
-already contains a synthesiser, so a committed MIDI fixture can be rendered to
-audio, transcribed, and scored against the notes that produced it. Synthesised
-audio flatters a model, so that is a regression test rather than a benchmark.
-
-**The one genuine unknown** is whether the CQT and harmonic stacking live inside
-the exported model graph or in the Python that was left behind. It is half an
-hour to answer by loading the weights and printing the input signature, and the
-estimate for the work after it is worthless until it is answered. That spike
-comes before anything is committed to.
-
-### The honest limit
-
-**Transcription quality is the ceiling on the whole thing, and no amount of
-downstream cleverness raises it.** A clean solo piano recording transcribes very
-well. A dense orchestral mix, or anything with drums and distorted guitars, does
-not: you get approximately the right notes, plus spurious ones, minus quiet ones.
-What comes out is a starting point to correct by hand, not a finished score.
-
-Every stage reads and writes MIDI, so correcting it by hand and picking up from
-`arrange` is the intended workflow rather than a consolation. This is why MIDI
-stays the main tool's input, and why transcription is its own command rather than
-being folded silently into `run`.
+The cost of not building it is that a piece has to have been engraved by someone.
+That is the whole classical repertoire and very little else, which is the right
+trade here.
 
 ---
 

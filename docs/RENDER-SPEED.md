@@ -141,6 +141,14 @@ Spawn is used on every platform rather than fork, so what CI tests is what runs,
 and because forking a process that has threads is deprecated in 3.12 and this
 project turns warnings into errors.
 
+---
+
+# The plan, as it was written
+
+Everything below was written before any of the work and is kept unedited. The
+measurements above contradict parts of it, which is the point: the gate in step 0
+is what stopped a plausible design from being built on an assumption.
+
 ## Step 0: measure, before choosing anything
 
 The per-frame drawing cost has been measured once, at 8.6 ms after the

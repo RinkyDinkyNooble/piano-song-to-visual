@@ -2,11 +2,14 @@
 
 ## Scope
 
-**Input is MIDI.** Audio-to-MIDI transcription is explicitly out of scope for this
-project and will live in a separate tool that emits MIDI you feed in here. That
-keeps this repo free of the machine-learning dependency stack, keeps installs and CI
-fast, and — more importantly — keeps the tool's quality independent of transcription
-quality, which was the one thing that could not be engineered around.
+**Input is a written score: MIDI or MusicXML.** Both arrive as the same `Score`,
+and only the parse stage knows which one it read.
+
+**Audio in is not planned.** Transcribing a recording sets a ceiling on quality
+that no amount of downstream cleverness raises, and it would pull a
+machine-learning dependency stack into a repo that installs in seconds. It was
+planned once and dropped once MusicXML made it unnecessary for the repertoire
+this is aimed at; [COMPOSER.md](COMPOSER.md) keeps the reasoning.
 
 ## Interface decision: a library with a CLI on top
 

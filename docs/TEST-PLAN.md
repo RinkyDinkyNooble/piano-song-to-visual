@@ -7,7 +7,7 @@ feature that was wired up wrong, or quietly never wired up at all.
 
 ## How that is enforced
 
-`tests/features.toml` lists all 54 user-visible features. Each entry has an id, the
+`tests/features.toml` lists all 70 user-visible features. Each entry has an id, the
 milestone it belongs to, how it gets verified, a status, and the assets it needs.
 
 Tests claim a feature with a marker:
@@ -48,9 +48,14 @@ pytest -q -s          # the summary line shows total / done / covered
 Span enforcement is `property`, not `unit`, on purpose. The promise is "no input ever
 produces an over-wide chord", and only generated inputs can test a claim of that shape.
 
-## Test assets, and why there are two kinds
+## Test assets, and why there are four kinds
 
-### Synthetic fixtures, in `tests/fixtures/midi_builder.py`
+Two are ours and committed, two are other people's and fetched. The split is
+licensing, not size, and it is the same reasoning every time: this repo is 0BSD
+and imposes no conditions downstream, so it does not carry files that would
+attach one.
+
+### Synthetic MIDI fixtures, in `tests/fixtures/midi_builder.py`
 
 Nineteen small MIDI files built in code. They are the source of truth and are committed
 as Python, not as binary blobs. `scripts/make_fixtures.py` writes them to
@@ -98,6 +103,36 @@ python scripts/fetch_test_songs.py --check   # verify what is present
 Fetches are SHA-256 verified against `tests/assets/songs.toml`, which also records
 attribution for the CC BY-SA entries. Tests needing an unfetched song skip rather than
 fail, so a fresh clone has a green suite.
+
+### Synthetic MusicXML fixtures, in `tests/fixtures/musicxml_builder.py`
+
+Nineteen small scores built in code, for the same reason as the MIDI ones: a
+test that writes its own input says what it is testing. They cover what is
+easiest to get wrong in the format. `<backup>`, which is how a second voice is
+written and therefore where a mistake moves every note of that voice. Ties that
+must fold into one note. Chords, grace notes, mid-score division changes. And
+the repeat structure: `|: :|`, first- and second-time bars, D.C., D.S., segno,
+coda and fine.
+
+### The Unofficial MusicXML Test Suite, in `tests/assets/scores/`
+
+Twenty-nine files, each built to break one corner of the format. Worth more to a
+parser than a real piece is: a real score exercises whatever it happens to
+contain, while these exercise what is known to be hard. They caught a metronome
+mark with no `<sound tempo>` beside it, and they are where the repeat orders are
+checked against someone else's intent rather than our own.
+
+MIT, which is permissive but conditional: it asks that its copyright notice
+travel with the files. So they are fetched rather than committed, like the CC
+BY-SA songs and for the same reason.
+
+```bash
+python scripts/fetch_test_scores.py           # get them
+python scripts/fetch_test_scores.py --check   # verify what is present
+```
+
+CI never sees them. The generated fixtures are what the parser is held to on
+every push, and tests needing a fetched score skip when it is absent.
 
 ## What each milestone must prove before it counts as done
 

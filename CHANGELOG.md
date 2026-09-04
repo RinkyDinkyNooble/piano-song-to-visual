@@ -7,16 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- **`psv inspect` contradicted the arrange stage on a score whose hands
-  cross.** The report asked only whether two parts sit in separate registers,
-  so Für Elise, whose left hand crosses up over the right, was called "not
-  separated; needs the arrange stage" although MusicXML had stated its hands
-  and `arrange` correctly left it alone. The report now answers from the hands
-  themselves where they are known, and falls back to register only where they
-  are not. Third time this particular disagreement has cost something, so it
-  is now asserted by a test.
 
 ### Added
 
@@ -91,38 +81,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     repository is 0BSD and should not quietly attach a condition it says is not
     there. CI runs against the generated fixtures instead.
 
-### Fixed
-
-- **The short-note leak was in five sweeps, not one.** The previous entry fixed
-  the copy in `arrange`; `detect_violations`, `widest_span_per_hand`,
-  `apply_difficulty` and `psv inspect`'s polyphony scan each had their own copy
-  of the same code and the same defect. On one real file that meant 547 span
-  violations that did not exist out of 747 reported, a left hand measured at 21
-  semitones where the truth was 12, and `difficulty = "medium"` removing 273
-  notes when the honest answer was none. The constraint engine was then
-  faithfully repairing damage that was never there. All five now share
-  `psv/sweep.py`, which exists as much to make a sixth copy impossible as to
-  remove the repetition.
-- **A note shorter than the overlap tolerance permanently consumed a voice.**
-  Its release is clamped to its own start, and releases sort before presses, so
-  it was taken out of the held set before it was put in and then left there for
-  the rest of the piece. After eight such notes the sweep believed the texture
-  was full and dropped everything that followed. `assign_hands` shares that
-  sweep, so hand assignment was being decided against the same phantom set.
-  Releases that would land on their own press now sort after it.
-- **`arrange` and `psv inspect` disagreed about what "already separated" means.**
-  `inspect` calls a two-part score in distinct registers separated, and its own
-  docstring says the arrange stage makes the decision that report is a hint for
-  — but `arrange` only looked at whether hands were already assigned, which the
-  MIDI reader derives from track names. An engraver that wrote "track 1" and
-  "track 2" fell through to a full reduction. On Mozart's Rondo alla Turca that
-  threw away 428 of 1614 notes, 71% of them after 3:12, while `inspect` reported
-  the file as already separated and `--span 0` promised nothing would be
-  touched. `arrange` now applies the same register test and labels the hands
-  without moving a note.
-
-### Added
-
 - **M8 quality of life.** Everything that stood between the tool working and
   the tool being pleasant to use.
   - `--preset small-hands|beginner|as-written|draft`, with `psv presets`
@@ -142,6 +100,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     equal-power law. Low notes left, high right, as they sit under your hands.
   - `docs/SOUNDS.md`: where SoundFonts come from, why bigger is usually better,
     and that `program` indexes into the font rather than into General MIDI.
+
+- Project scaffolding: packaging, linting, type checking, tests, and CI.
+- Architecture decision record covering the interface choice, the pipeline stages,
+  and the component selection for each — see `docs/ARCHITECTURE.md`.
+- Milestone-by-milestone build plan — see `docs/ROADMAP.md`.
+- CLI skeleton (`psv`) defining the `inspect`, `arrange`, `constrain`, `render`,
+  and `run` commands. None are implemented yet.
+- Feature registry (`tests/features.toml`) covering all 50 user-visible features,
+  with a coverage gate that blocks marking one done before a test claims it.
+- Nineteen synthetic MIDI fixtures covering dynamics, pedalling, pathological hand
+  spans, and parser edge cases that no real score contains.
+- Four Mutopia Project test songs. The two public-domain ones are committed so CI
+  can run offline; the two CC BY-SA ones are gitignored and fetched by
+  `scripts/fetch_test_songs.py` with SHA-256 verification.
+- Test plan explaining the two-tier asset strategy - see `docs/TEST-PLAN.md`.
 
 ### Changed
 
@@ -178,8 +151,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     silence into the score, so the notes keep the times they already had and
     the picture and the soundtrack cannot disagree about where the music starts.
 
-### Changed
-
 - The CodeQL workflow is back. It was removed because code scanning
   cannot be enabled on a private repository without Advanced Security;
   the repository is public now, so it has somewhere to report to.
@@ -187,7 +158,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was given. Combining `--bars` with `--start` or `--seconds` is an error: they
   are two ways of saying the same thing.
 
+- **Scope narrowed to MIDI input.** Audio-to-MIDI transcription moves to a separate
+  future tool, removing the machine-learning dependency stack from this project and
+  decoupling output quality from transcription quality.
+- Note colour now encodes hand as hue and velocity as brightness, rather than
+  velocity alone, so hand identity and dynamics are both readable at a glance.
+- Audio is produced by one of four pluggable backends (`fluidsynth`, `mux`,
+  `builtin`, `none`) rather than a single fixed path.
+- Minimum Python raised to 3.12; CI covers 3.12 through 3.14.
+- `visual.width` and `visual.height` must be even. imageio otherwise pads the frame to
+  a multiple of 16 and returns a video that is not the size that was requested.
+- **Grid config keys renamed** to `visual.grid.pitch_lines` and
+  `visual.grid.beat_lines`, from `horizontal_every` and `vertical_every`. The old names
+  described orientation and had it crossed: in a falling-notes view a vertical line
+  spans all time, so it cannot be the one that aids timing. The new names say what each
+  line marks and cannot be got backwards.
+- `visual.background` must now be grayscale, as the spec asks. The rest of the non-note
+  palette was made exactly neutral too; the strike line had been faintly blue.
+- `Note` ordering is now total. Two notes alike in pitch and timing but played by
+  different hands used to sort arbitrarily, so regrouping a score by hand could reorder
+  them and `Score.notes` was not deterministic. Found by a property test.
+
 ### Fixed
+
+- **`psv inspect` contradicted the arrange stage on a score whose hands
+  cross.** The report asked only whether two parts sit in separate registers,
+  so Für Elise, whose left hand crosses up over the right, was called "not
+  separated; needs the arrange stage" although MusicXML had stated its hands
+  and `arrange` correctly left it alone. The report now answers from the hands
+  themselves where they are known, and falls back to register only where they
+  are not. Third time this particular disagreement has cost something, so it
+  is now asserted by a test.
+
+- **The short-note leak was in five sweeps, not one.** The previous entry fixed
+  the copy in `arrange`; `detect_violations`, `widest_span_per_hand`,
+  `apply_difficulty` and `psv inspect`'s polyphony scan each had their own copy
+  of the same code and the same defect. On one real file that meant 547 span
+  violations that did not exist out of 747 reported, a left hand measured at 21
+  semitones where the truth was 12, and `difficulty = "medium"` removing 273
+  notes when the honest answer was none. The constraint engine was then
+  faithfully repairing damage that was never there. All five now share
+  `psv/sweep.py`, which exists as much to make a sixth copy impossible as to
+  remove the repetition.
+- **A note shorter than the overlap tolerance permanently consumed a voice.**
+  Its release is clamped to its own start, and releases sort before presses, so
+  it was taken out of the held set before it was put in and then left there for
+  the rest of the piece. After eight such notes the sweep believed the texture
+  was full and dropped everything that followed. `assign_hands` shares that
+  sweep, so hand assignment was being decided against the same phantom set.
+  Releases that would land on their own press now sort after it.
+- **`arrange` and `psv inspect` disagreed about what "already separated" means.**
+  `inspect` calls a two-part score in distinct registers separated, and its own
+  docstring says the arrange stage makes the decision that report is a hint for
+  — but `arrange` only looked at whether hands were already assigned, which the
+  MIDI reader derives from track names. An engraver that wrote "track 1" and
+  "track 2" fell through to a full reduction. On Mozart's Rondo alla Turca that
+  threw away 428 of 1614 notes, 71% of them after 3:12, while `inspect` reported
+  the file as already separated and `--span 0` promised nothing would be
+  touched. `arrange` now applies the same register test and labels the hands
+  without moving a note.
 
 - Config rejects a boolean where a number is wanted. `bool` is a subclass of
   `int` in Python, so `pedals.lanes = true` had been accepted as 1.
@@ -209,8 +238,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     it was in.
   - `psv run` and `psv arrange` commands. Every pipeline command is now real.
 - 508 tests, all 50 features done.
-
-### Fixed
 
 - **CI was red on every push.** Two defects in this repo's own test setup, both
   invisible locally:
@@ -296,43 +323,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 458 tests, 39 of 50 features marked done. Includes a
   `Score -> MIDI -> Score` round trip over all 19 fixtures and both committed songs,
   and hypothesis property tests for render determinism and for the span guarantee.
-
-### Added (scaffolding)
-
-- Project scaffolding: packaging, linting, type checking, tests, and CI.
-- Architecture decision record covering the interface choice, the pipeline stages,
-  and the component selection for each — see `docs/ARCHITECTURE.md`.
-- Milestone-by-milestone build plan — see `docs/ROADMAP.md`.
-- CLI skeleton (`psv`) defining the `inspect`, `arrange`, `constrain`, `render`,
-  and `run` commands. None are implemented yet.
-- Feature registry (`tests/features.toml`) covering all 50 user-visible features,
-  with a coverage gate that blocks marking one done before a test claims it.
-- Nineteen synthetic MIDI fixtures covering dynamics, pedalling, pathological hand
-  spans, and parser edge cases that no real score contains.
-- Four Mutopia Project test songs. The two public-domain ones are committed so CI
-  can run offline; the two CC BY-SA ones are gitignored and fetched by
-  `scripts/fetch_test_songs.py` with SHA-256 verification.
-- Test plan explaining the two-tier asset strategy - see `docs/TEST-PLAN.md`.
-
-### Changed
-
-- **Scope narrowed to MIDI input.** Audio-to-MIDI transcription moves to a separate
-  future tool, removing the machine-learning dependency stack from this project and
-  decoupling output quality from transcription quality.
-- Note colour now encodes hand as hue and velocity as brightness, rather than
-  velocity alone, so hand identity and dynamics are both readable at a glance.
-- Audio is produced by one of four pluggable backends (`fluidsynth`, `mux`,
-  `builtin`, `none`) rather than a single fixed path.
-- Minimum Python raised to 3.12; CI covers 3.12 through 3.14.
-- `visual.width` and `visual.height` must be even. imageio otherwise pads the frame to
-  a multiple of 16 and returns a video that is not the size that was requested.
-- **Grid config keys renamed** to `visual.grid.pitch_lines` and
-  `visual.grid.beat_lines`, from `horizontal_every` and `vertical_every`. The old names
-  described orientation and had it crossed: in a falling-notes view a vertical line
-  spans all time, so it cannot be the one that aids timing. The new names say what each
-  line marks and cannot be got backwards.
-- `visual.background` must now be grayscale, as the spec asks. The rest of the non-note
-  palette was made exactly neutral too; the strike line had been faintly blue.
-- `Note` ordering is now total. Two notes alike in pitch and timing but played by
-  different hands used to sort arbitrarily, so regrouping a score by hand could reorder
-  them and `Score.notes` was not deterministic. Found by a property test.
