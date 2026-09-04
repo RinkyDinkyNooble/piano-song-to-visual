@@ -33,7 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `--theme`, with `midnight`, `ember`, `neon` and `aurora`. A preset changes
     how the piece is played and a theme only how it looks, so they are separate
     flags and compose. `psv presets` now describes both. Every theme is tested
-    to keep the two hands' colours far enough apart to tell apart.
+    to keep the two hands' colours far enough apart to tell apart, and to be
+    writable as a config file: a theme is a shortcut, never a capability.
+  - The keyboard is deliberately not themed. It is a picture of a real
+    instrument and it reads as itself under every scheme.
 
 ### Fixed
 

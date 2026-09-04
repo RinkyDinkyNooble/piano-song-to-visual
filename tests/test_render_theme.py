@@ -9,6 +9,7 @@ still draws exactly what it drew before. The second kind is the important one.
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -264,6 +265,25 @@ def test_every_theme_is_described() -> None:
 def test_an_unknown_theme_lists_the_real_ones() -> None:
     with pytest.raises(ConfigError, match="unknown theme"):
         apply_theme(Config(), "chartreuse")
+
+
+@pytest.mark.feature("F-74")
+def test_every_theme_can_be_written_out_as_a_config_file(tmp_path: Path) -> None:
+    """A theme is a shortcut, not a capability. Anything one of them sets has to
+    be something you could have typed yourself, or `--theme` becomes the only
+    way to reach part of the renderer and the four of them become the whole
+    palette anyone gets."""
+    for name in sorted(THEMES):
+        settings = dict(THEMES[name])
+        colours = settings.pop("colors", {})
+        lines = ["[visual]"]
+        lines += [f"{key} = {value!r}" for key, value in sorted(settings.items())]
+        lines += ["", "[visual.colors]"]
+        lines += [f"{key} = {value!r}" for key, value in sorted(colours.items())]
+
+        path = tmp_path / f"{name}.toml"
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        assert Config.load(path).visual == apply_theme(Config(), name).visual, name
 
 
 @pytest.mark.feature("F-74")

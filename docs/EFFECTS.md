@@ -299,18 +299,32 @@ neon gradient, which looks deliberate on some themes and unfinished on others.
 Left alone for now: the keys are a picture of a real keyboard, and it is not
 obvious that tinting them helps. Worth revisiting after seeing a theme move.
 
-### Checkpoint B: theme stills
+### Checkpoint B: theme stills (passed)
 
 Four strips on the same frame of Fur Elise: the themes side by side, then each
-knob swept on its own so it can be judged apart from the theme wrapped round it.
-You pick what stays and what the themes should contain.
+knob swept on its own so it could be judged apart from the theme wrapped round
+it.
 
-Stills are sufficient here, and that is the point of the split. Nothing in this
-layer changes between frames, so there is nothing a video would tell you that a
-picture does not.
+Stills were sufficient, which is the point of the split. Nothing in this layer
+changes between frames, so there was nothing a video would have said that a
+picture did not.
 
-**What a "no" costs:** re-running a script. The config keys are small and
-additive, and the defaults are today's behaviour, so nothing existing can break.
+**All four themes kept, unchanged.** The condition attached was that everything
+a theme sets has to be settable by hand, which is now a test: each theme is
+written out as a TOML file, loaded, and compared against what `--theme` produces.
+A theme is a shortcut, not a capability. If one could reach something the config
+could not, those four schemes would quietly become the whole palette anyone
+gets.
+
+**The keyboard stays as it is**, decided rather than deferred. It is a picture of
+a real instrument, white keys and black keys, and it reads as itself under every
+theme. Tinting it is one more thing to get right per theme for no gain in either
+looks or clarity.
+
+What is not configurable, and is staying that way: the non-note palette, meaning
+the key colours, the strike line, the lane fills and the grid's own grey. Those
+are structure rather than decoration. The grid's opacity is a setting; its hue
+is not, for the same reason the flat background has to be grayscale.
 
 ## Step 3: the effects in motion
 
