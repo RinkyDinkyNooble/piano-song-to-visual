@@ -216,9 +216,43 @@ of the way while you are learning something.
 Every theme leaves hue carrying which hand and brightness carrying how loud.
 That is the readability rule, and there is a test that no theme spends it.
 
+### Effects
+
+Off unless you ask. Sparks off the strike line, a glow on the pressed key, a
+flash as a note lands:
+
+```bash
+psv run song.mid -o showcase.mp4 --theme neon --effects showcase
+```
+
+`subtle` (a glow and a flash), `showcase` (that plus sparks), `maximum`
+(everything but bloom), `none` (turns off whatever a config file asked for).
+
+Or list them yourself, in the order they draw:
+
+```toml
+[[visual.effects]]
+kind = "key_glow"
+intensity = 0.6
+
+[[visual.effects]]
+kind = "strike_flash"
+intensity = 0.8
+```
+
+The kinds are `strike_flash`, `key_glow`, `trail`, `particles`, `halo`, `pulse`
+and `bloom`. Each takes an `intensity` from 0 to 1, and 0 is a no-op rather than
+something faint.
+
+Measured at 1080p, against the 8.5 ms it takes to draw a frame at all:
+`subtle` 1.3 ms, `showcase` 2.3 ms, `maximum` 8.5 ms. `bloom` on its own is
+26.8 ms, which is about three times a whole frame, so it is in none of the
+bundles and you have to name it. What each one costs and why is in
+[EFFECTS.md](docs/EFFECTS.md).
+
 Precedence runs least specific to most: the config file, then the preset, then
-the theme, then the individual flags. `--preset small-hands --span 14` gives you
-14.
+the theme, then the effects, then the individual flags.
+`--preset small-hands --span 14` gives you 14.
 
 ### Practising with it
 
@@ -323,6 +357,10 @@ bar_gradient = 0.0        # brightness ramp along each bar. Positive fades the
 gradient_top = ""         # a vertical gradient behind everything. Set both ends
 gradient_bottom = ""      # to use it; it then replaces `background` and may
                           # have a hue, which `background` may not
+
+[[visual.effects]]        # optional, off by default, drawn in the order listed
+kind = "strike_flash"     # strike_flash | key_glow | trail | particles
+intensity = 0.8           # halo | pulse | bloom. 0 draws nothing at all
 workers = 0               # processes to render with; 0 is one per core,
                           # 1 renders in a single process
 encode = "balanced"       # small | balanced | fast: how long the encoder

@@ -42,9 +42,12 @@ from psv.pipeline import run as run_pipeline
 from psv.practice import prepare
 from psv.presets import (
     DESCRIPTIONS,
+    EFFECT_DESCRIPTIONS,
+    EFFECT_SETS,
     PRESETS,
     THEME_DESCRIPTIONS,
     THEMES,
+    apply_effect_set,
     apply_preset,
     apply_theme,
 )
@@ -67,7 +70,7 @@ IMPLEMENTED = frozenset({"inspect", "export", "arrange", "constrain", "render", 
 #: Commands that answer a question instead of moving a file through a stage.
 UTILITY_COMMANDS: dict[str, str] = {
     "instruments": "list the instruments audio.program can select",
-    "presets": "describe what --preset and --theme accept",
+    "presets": "describe what --preset, --theme and --effects accept",
 }
 
 
@@ -112,6 +115,12 @@ def _global_options(suppress: bool) -> argparse.ArgumentParser:
         choices=sorted(THEMES),
         default=argparse.SUPPRESS if suppress else None,
         help="a named colour scheme; `psv presets` describes each one",
+    )
+    parent.add_argument(
+        "--effects",
+        choices=sorted(EFFECT_SETS),
+        default=argparse.SUPPRESS if suppress else None,
+        help="a named bundle of optional visual effects; off unless asked for",
     )
     return parent
 
@@ -379,7 +388,7 @@ def _check_window_flags(args: argparse.Namespace) -> None:
 def _cmd_presets(args: argparse.Namespace, config: Config) -> int:
     """What each preset and theme does, without rendering something to find out."""
     del args, config
-    width = max(len(name) for name in (*PRESETS, *THEMES))
+    width = max(len(name) for name in (*PRESETS, *THEMES, *EFFECT_SETS))
 
     print("presets (--preset), which change how the piece is played:")
     for name in sorted(PRESETS):
@@ -394,6 +403,13 @@ def _cmd_presets(args: argparse.Namespace, config: Config) -> int:
         print(f"  {name:{width}}  {THEME_DESCRIPTIONS[name]}")
         for key, value in sorted(THEMES[name].items()):
             print(f"  {'':{width}}    visual.{key} = {value!r}")
+
+    print()
+    print("effects (--effects), drawn in the order listed, off by default:")
+    for name in sorted(EFFECT_SETS):
+        print(f"  {name:{width}}  {EFFECT_DESCRIPTIONS[name]}")
+        for effect in EFFECT_SETS[name]:
+            print(f"  {'':{width}}    {effect.kind} at {effect.intensity}")
     return 0
 
 
@@ -537,6 +553,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             config = apply_preset(config, args.preset)
         if args.theme is not None:
             config = apply_theme(config, args.theme)
+        if args.effects is not None:
+            config = apply_effect_set(config, args.effects)
         config = _hands_with_overrides(config, args)
         return HANDLERS[args.command](args, config)
     except (

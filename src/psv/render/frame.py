@@ -33,6 +33,7 @@ from psv.render.color import (
     pedal_color,
     shaded,
 )
+from psv.render.effects import apply_effects, background_for
 from psv.render.geometry import KeyboardGeometry
 
 #: RGB, uint8. A frame is (height, width, 3).
@@ -179,7 +180,11 @@ def render_frame(
     separately; it is the soundtrack that goes quiet, not the picture.
     """
     gradient = background_column(config, config.height)
-    palette = palette or Palette(background=_nominal_background(config, gradient))
+    # A `pulse` effect moves the background, so it has to be settled before the
+    # fill rather than painted over it afterwards. That is why it is the one
+    # effect that costs nothing: the fill happens either way.
+    lit = background_for(config, score, time)
+    palette = palette or Palette(background=_nominal_background(config, gradient, lit))
     layout = Layout.from_config(config, pedal_lanes)
     geometry = KeyboardGeometry(
         width=layout.keyboard_width,
@@ -200,6 +205,7 @@ def render_frame(
     active_pedals = _draw_pedal_lanes(frame, score, config, layout, palette, time)
     _draw_keyboard(frame, layout, geometry, palette, sounding, config)
     _draw_pedal_indicators(frame, layout, palette, active_pedals, config)
+    apply_effects(frame, score, config, time, layout, geometry)
     return frame
 
 
@@ -219,15 +225,20 @@ def background_column(config: VisualConfig, height: int) -> np.ndarray | None:
     return np.rint(top + (bottom - top) * ramp).astype(np.uint8)
 
 
-def _nominal_background(config: VisualConfig, gradient: np.ndarray | None) -> RGB:
+def _nominal_background(
+    config: VisualConfig, gradient: np.ndarray | None, lit: str | None = None
+) -> RGB:
     """One colour standing for the background, for the things that need one.
 
     The muted hand in practice mode is mixed toward the background, and with a
     gradient there is no single background to mix toward. Its midpoint is close
     enough for a colour that exists to be read past.
+
+    ``lit`` is the background after a `pulse` effect has had its say, which is
+    what actually gets filled.
     """
     if gradient is None:
-        return parse_hex(config.background)
+        return parse_hex(lit if lit is not None else config.background)
     middle = gradient[len(gradient) // 2]
     return (int(middle[0]), int(middle[1]), int(middle[2]))
 

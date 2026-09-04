@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from psv.config import Config, ConfigError
+from psv.config import Config, ConfigError, EffectConfig
 
 #: Overlays, keyed by preset name. Each maps a config section to the fields it
 #: overrides. Only fields named here move; everything else stays as loaded.
@@ -80,12 +80,45 @@ THEMES: dict[str, dict[str, Any]] = {
     },
 }
 
+
+def _effects(*pairs: tuple[str, float]) -> tuple[EffectConfig, ...]:
+    return tuple(EffectConfig(kind=kind, intensity=level) for kind, level in pairs)
+
+
+#: Bundles of optional effects, a third axis alongside presets and themes. The
+#: order inside each is the order they draw in, so a halo under particles is a
+#: different picture from particles under a halo.
+#:
+#: `bloom` is in none of them. It costs about three times a whole frame and it
+#: blows out the white keys, so it is available by name and never by default.
+EFFECT_SETS: dict[str, tuple[EffectConfig, ...]] = {
+    "none": (),
+    "subtle": _effects(("key_glow", 0.4), ("strike_flash", 0.5)),
+    "showcase": _effects(("key_glow", 0.6), ("strike_flash", 0.8), ("particles", 0.6)),
+    "maximum": _effects(
+        ("halo", 0.5),
+        ("pulse", 0.5),
+        ("key_glow", 0.7),
+        ("trail", 0.6),
+        ("strike_flash", 0.9),
+        ("particles", 0.8),
+    ),
+}
+
 #: One line each, for `--preset` in the help text and for `psv presets`.
 DESCRIPTIONS: dict[str, str] = {
     "small-hands": "a 9-semitone reach instead of 12",
     "beginner": "small hands, thinner texture, 0.7x tempo, two bars of count-in",
     "as-written": "no span limit and nothing thinned for difficulty",
     "draft": "640x360 at 24fps with no audio, for iterating on visuals",
+}
+
+#: One line each, for `--effects` in the help text and for `psv presets`.
+EFFECT_DESCRIPTIONS: dict[str, str] = {
+    "none": "no effects, whatever the config file said",
+    "subtle": "a glow on the pressed key and a flash as a note lands",
+    "showcase": "subtle plus sparks off the strike line",
+    "maximum": "everything except bloom, which you have to ask for by name",
 }
 
 #: One line each, for `--theme` in the help text and for `psv presets`.
@@ -116,6 +149,21 @@ def apply_preset(config: Config, name: str) -> Config:
         updated = replace(
             updated, **{section: replace(getattr(updated, section), **fields)}
         )
+    updated.validate()
+    return updated
+
+
+def apply_effect_set(config: Config, name: str) -> Config:
+    """Return ``config`` with ``name``'s bundle of effects applied.
+
+    Replaces whatever effects were configured rather than adding to them, so
+    `--effects none` is a way to turn a config file's effects off for one run.
+    """
+    if name not in EFFECT_SETS:
+        raise ConfigError(
+            f"unknown effect set {name!r}. Available: {', '.join(sorted(EFFECT_SETS))}"
+        )
+    updated = replace(config, visual=replace(config.visual, effects=EFFECT_SETS[name]))
     updated.validate()
     return updated
 

@@ -490,27 +490,38 @@ and it is capped so it can never swallow the bar it outlines.
 Overlays on top of the loaded config, with `psv presets` printing what each one
 sets. Precedence runs least specific to most: file, preset, then flags.
 
-**A theme layer.** A gradient behind everything, a border shade that lights a
-bar from inside instead of cutting it out of the background, a brightness ramp
-along each bar, and four named schemes behind `--theme`. All off by default: the
-plain look is the one that stays out of the way while you are learning
-something, and every theme is tested to keep the two hands far enough apart in
-colour to tell apart, because hue carrying which hand is not a thing a theme may
-spend.
-
-It costs nothing worth measuring. Filling the background is already two thirds
-of a frame, and a gradient is the same write to the same pixels from a different
-source: 5.40 ms against 5.38.
-
-`--theme` is a separate flag from `--preset` because they answer different
-questions. A preset changes how the piece is played; a theme only changes how it
-looks. One list holding both would put "a 9-semitone reach" and "deep blue" side
-by side as if they were the same kind of choice.
-
 **Stereo, panned by register.** Low notes left, high notes right, as they sit
 under your hands. Equal-power law, so a note does not dip in volume crossing the
 middle. It also stops the hands competing for the same place in the mix, which
 is what makes a left-hand line audible under a busy right hand.
+
+### Done: a theme, and effects to put on it
+
+Two features that were one until the stills came back, both off by default,
+because a practice aid and a piece of spectacle want opposite things.
+
+The theme is static: a gradient behind everything, a border shade that lights a
+bar from inside instead of cutting it out, a ramp along each bar, four named
+schemes behind `--theme`. It costs nothing measurable, since filling the
+background is two thirds of a frame either way.
+
+The effects are transient and tied to when a note lands. Seven of them, composed
+in the order listed, each with an intensity where 0 is a no-op rather than
+something faint: `strike_flash`, `key_glow`, `trail`, `particles`, `halo`,
+`pulse` and `bloom`. `--effects subtle`, `showcase` or `maximum` for a bundle,
+or `[[visual.effects]]` to list them yourself.
+
+Nothing reads the previous frame, so `render_frame` stays pure and the spans
+still render across processes without a seam. Sparks are hashed from the note
+and the spark index rather than carried, which is tested across a real spawned
+process.
+
+At 1080p, against the 8.5 ms a frame already costs: `showcase` is 2.3 ms and
+`maximum` 8.5 ms. `bloom` alone is 26.8 ms, about three times a whole frame, so
+it is in no bundle and has to be asked for by name.
+
+The whole thing is planned and recorded in [EFFECTS.md](EFFECTS.md), which is
+arranged so nothing got a config key until it had been seen in motion and kept.
 
 ### Done: rendering across processes
 
@@ -559,18 +570,6 @@ it, and the `mux` backend already takes a finished audio file back.
 ADSR envelope. One short recorded piano sample per octave, pitch shifted, would
 sound far better for very little code. Lower priority now that FluidSynth works
 and is documented.
-
-**Opt-in visual effects.** Off by default, because a practice aid and a piece of
-spectacle want opposite things and both are legitimate. Planned in
-[EFFECTS.md](EFFECTS.md), which is arranged around the fact that the risk here is
-taste rather than engineering.
-
-It was two features pretending to be one until the stills came back. The theme
-half is done and is written up under "Also done" above. What is left is the
-transient half: flashes, glows, trails, sparks, all tied to when a note lands,
-and none of it judgeable frozen. Two of the seven candidates looked identical to
-no effect at all in a still. So those wait for a video, and only what survives
-it gets a config key, a test or a reference image.
 
 **Better salience for arranging.** The current function is velocity, duration,
 and an outer-voice bonus. Real salience needs harmonic analysis: which notes are

@@ -10,6 +10,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Optional visual effects, off by default.** Seven of them, composed in the
+  order listed, each with an `intensity` from 0 to 1 where 0 is a no-op rather
+  than something faint. `strike_flash`, `key_glow`, `trail`, `particles`,
+  `halo`, `pulse` and `bloom`.
+  - `[[visual.effects]]` in the config, or `--effects` for a named bundle:
+    `subtle`, `showcase`, `maximum`, and `none` to turn off what a config file
+    asked for.
+  - Measured at 1080p, against the 8.5 ms a frame already costs: `subtle` 1.3
+    ms, `showcase` 2.3 ms, `maximum` 8.5 ms. `bloom` alone is 26.8 ms, about
+    three times a whole frame, so it is in no bundle and has to be named.
+  - Nothing reads the previous frame, so `render_frame` stays a pure function
+    of the score and a time. Sparks are hashed from the note and the spark
+    index rather than carried between frames, which is also why a frame drawn
+    in a worker process is byte-identical to one drawn in the parent. Tested
+    across a real spawned process, because that is the seam this rule exists
+    to protect.
+  - `pulse` is the one that does not draw. It changes the colour the background
+    is about to be filled with, which is why it costs 0.03 ms. It is driven by
+    note onsets and velocity, not by the tempo map: pulsing on the beat is a
+    metronome you can see, and the grid already draws the beat without moving.
+  - Every distance is a fraction of the frame rather than a pixel count, so an
+    effect is the same effect at 720p and at 1080p.
+  - Planned, judged and recorded in [EFFECTS.md](docs/EFFECTS.md), which is
+    arranged so that nothing got a config key until it had been seen in motion
+    and kept.
+
 - **A theme layer: the picture can be made to look like something now.** All of
   it is off by default, because a practice aid and a piece of spectacle want
   opposite things and the practice aid is the default.
@@ -39,6 +65,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     instrument and it reads as itself under every scheme.
 
 ### Fixed
+
+- `bloom` worked on a fixed eighth of the frame, which put a 320x180 render's
+  bloom on a 40x22 image and quietly did nothing. The shrunken copy is now a
+  fixed number of rows instead, so the effect is the same effect at every size.
 
 - The alignment grid is mixed with the background a row at a time, so it stays
   equally faint down a gradient instead of vanishing into the dark end. It is

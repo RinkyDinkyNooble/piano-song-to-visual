@@ -6,10 +6,10 @@ the thing a pianist posts: sparks off the strike line, a glow on the keys, the
 piece looking like an event. Both are legitimate and they want opposite things,
 so none of this is on by default.
 
-**The theme layer is built. The effects have been seen in motion and none of
-them is built.** This document is both the plan and the record of it, and it is
-arranged around the fact that the risk in this feature is taste rather than
-engineering.
+**All of it is built.** This document is both the plan and the record of it,
+and it is arranged around the fact that the risk in this feature was taste
+rather than engineering. Every effect below was drawn, looked at as a still,
+watched in motion with sound, and only then given a config key.
 
 ## Two layers, not one
 
@@ -396,25 +396,72 @@ config schema, no validator, no test and no reference image. **This is the last
 point at which rejecting an effect costs nothing**, and it is deliberately
 placed after the only question that matters has been answered.
 
-## Step 4: the effects, built for real
+## Step 4: the effects, built for real (done)
 
-Only for what survived C.
+Nothing was cut at C, so all seven landed.
 
-- **Config.** An `[[visual.effects]]` list, each entry naming a `kind` and its
-  parameters. The config module rejects unknown keys on purpose, so a list whose
-  entries have different shapes per kind needs a schema per kind rather than one
-  flat dataclass. This is the only genuine design work in the feature.
-- **The effect functions**, moved from the throwaway script into
-  `psv/render/effects.py`, each a pure function of the frame, the score and the
-  time, drawing locally.
-- **Presets** bundling a theme and a set of effects at the intensities from C.
-  This is the door for anyone who wants it to look good without reading a config
-  reference.
+```toml
+[[visual.effects]]
+kind = "key_glow"
+intensity = 0.6
+```
 
-Cost is measured here, not assumed: a frame with each preset on, against a frame
-without, at 1080p. The number goes in the docs whatever it turns out to be.
+**The per-kind schema was not needed.** The plan called this "the only genuine
+design work in the feature", on the assumption that each effect would carry its
+own parameters and a flat dataclass could not hold them. It turned out every
+effect folds its own numbers into one strength, the way the reverb and the
+border shade do, so `EffectConfig` is a `kind` and an `intensity` and a schema
+per kind would be a mechanism with nothing in it. Worth adding when an effect
+needs a second number, and not before.
 
-## Step 5: tests, then the documents
+What the config loader did need was arrays of tables, which nothing in it had
+handled. That is about thirty lines, and it is the only shape accepted: a tuple
+of one dataclass. A field typed as a tuple of anything else would be a new kind
+of config value with its own error messages.
+
+**Named bundles**, `--effects subtle`, `showcase`, `maximum`, and `none` to turn
+off what a config file asked for. A third flag rather than more entries in
+`--preset` or `--theme`, because the three answer different questions: how the
+piece is played, how it is coloured, and what moves. `bloom` is in none of them.
+
+Measured at 1920x1080, against the 8.53 ms a frame costs with everything off:
+
+| | cost per frame |
+| --- | --- |
+| `pulse` | 0.03 ms |
+| `key_glow` | 0.85 ms |
+| `trail` | 1.08 ms |
+| `particles` | 1.07 ms |
+| `strike_flash` | 1.45 ms |
+| `halo` | 8.16 ms |
+| `bloom` | 26.77 ms |
+| `--effects subtle` | 1.32 ms |
+| `--effects showcase` | 2.25 ms |
+| `--effects maximum` | 8.51 ms |
+
+`showcase` comes in under the 3 ms budget and `maximum` under the 10 ms ceiling.
+
+Three things came out of building it that the motion clips could not show.
+
+**A glow written as a loop of thin rectangles costs the same at every
+intensity.** `key_glow` measured 3.48 ms and barely moved when turned down,
+because the loop ran the same number of times whatever the alpha was. Drawn as
+one array operation with a strength per row it is 0.85 ms, and turning it down
+now makes it cheaper as well as fainter.
+
+**Additive effects commute, so the order usually does not matter.** The plan
+said a halo under particles is a different picture from particles under a halo.
+It is not: both only add light, and addition commutes until something
+saturates. The order matters for `bloom`, which reads the frame it is handed, so
+whether a glow was drawn before or after changes what it finds. That is what
+makes this a list rather than a set, and there is a test for each half of it.
+
+**`bloom` was doing nothing at small frame sizes.** It worked on a fixed eighth
+of the frame, which at 320x180 is a 40x22 image where a glow eleven pixels tall
+does not survive being sampled. The shrunken copy is a fixed number of rows now
+rather than a fixed fraction.
+
+## Step 5: tests, then the documents (done)
 
 - One reference image per effect and per theme setting, at low resolution,
   pinned the way the existing visual tests are. These come last because they are
@@ -512,6 +559,15 @@ index gives repeatable randomness, and repeatable randomness can look patterned
 rather than random. It already did once: without a per-spark birth delay, every
 spark of a note was the same age and the spray drew as a clean arc. The fix was
 a better hash rather than real state, because state is what the two rules forbid.
+
+**A flat dark background is not stored uniformly by every encoder.** x264's
+ultrafast preset, which is `--encode fast`, leaves a faint blocky pattern in
+large flat dark areas and redraws it every frame. On a still background that is
+invisible; with `pulse` moving the background it crawls. The renderer is not
+involved: psv draws a background of exactly one colour, and the blotchiness
+measures 0.0363 out of the encoder at `fast`, 0.0008 at `balanced` and 0.0000 at
+`small`. Nothing to fix in psv, but worth knowing before pairing `pulse` with
+`--encode fast`.
 
 **A coloured background makes the piece harder to read.** It will. That is the
 trade, it is opt-in, and the practice default does not move.

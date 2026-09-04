@@ -633,3 +633,32 @@ name = "Named colour themes, applied separately from the setting presets"
 milestone = "M8"
 status = "done"
 verify = "unit"
+
+# --------------------------------------------------- Optional visual effects
+[[feature]]
+id = "F-75"
+name = "Optional visual effects, off by default, composed in the order listed"
+milestone = "M8"
+status = "done"
+verify = "visual"
+
+[[feature]]
+id = "F-76"
+name = "Every effect scales to nothing at intensity 0"
+milestone = "M8"
+status = "done"
+verify = "unit"
+
+[[feature]]
+id = "F-77"
+name = "Effects are deterministic and identical in every render process"
+milestone = "M8"
+status = "done"
+verify = "unit"
+
+[[feature]]
+id = "F-78"
+name = "Named effect bundles, with bloom in none of them"
+milestone = "M8"
+status = "done"
+verify = "unit"

@@ -21,13 +21,17 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from tests.fixtures.midi_builder import FIXTURES  # noqa: E402
+from tests.test_render_effects import FIXTURE as EFFECT_FIXTURE  # noqa: E402
+from tests.test_render_effects import WHEN, one, with_effects  # noqa: E402
 from tests.test_render_frame import (  # noqa: E402
+    NO_LANES,
     REFERENCE_CASES,
     REFERENCE_LANES,
     SMALL,
 )
 
 from psv.midi import read_midi  # noqa: E402
+from psv.render.effects import KINDS  # noqa: E402
 from psv.render.frame import render_frame  # noqa: E402
 
 OUT_DIR = REPO_ROOT / "tests" / "assets" / "reference"
@@ -70,12 +74,41 @@ def main(argv: list[str] | None = None) -> int:
             Image.fromarray(rendered).save(path)
             print(f"* {path.name:32} written")
 
+    for kind in sorted(KINDS):
+        path = OUT_DIR / f"effect-{kind}.png"
+        rendered = render_frame(
+            read_midi(FIXTURES[EFFECT_FIXTURE]()),
+            with_effects(one(kind, 1.0)),
+            WHEN,
+            pedal_lanes=NO_LANES,
+        )
+
+        if path.exists():
+            expected = np.array(Image.open(path).convert("RGB"))
+            same = rendered.shape == expected.shape and np.array_equal(
+                rendered, expected
+            )
+        else:
+            same = False
+
+        if same:
+            print(f"  {path.name:32} unchanged")
+            continue
+
+        drifted += 1
+        if args.check:
+            print(f"! {path.name:32} DIFFERS")
+        else:
+            Image.fromarray(rendered).save(path)
+            print(f"* {path.name:32} written")
+
     if args.check and drifted:
         print(f"\n{drifted} reference(s) out of date.", file=sys.stderr)
         print("Look at the change, then: python scripts/make_references.py")
         return 1
 
-    print(f"\n{len(REFERENCE_CASES)} reference frame(s) in {OUT_DIR}")
+    total = len(REFERENCE_CASES) + len(KINDS)
+    print(f"\n{total} reference frame(s) in {OUT_DIR}")
     return 0
 
 

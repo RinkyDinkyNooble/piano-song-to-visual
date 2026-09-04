@@ -15,7 +15,7 @@ from __future__ import annotations
 import tomllib
 from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
-from typing import Any, Self, get_type_hints
+from typing import Any, Self, get_args, get_origin, get_type_hints
 
 from psv.model import DEFAULT_OVERLAP_TOLERANCE_S
 
@@ -172,6 +172,38 @@ class GridConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class EffectConfig:
+    """One optional visual effect, and how strongly it is drawn.
+
+    Two fields and no per-effect parameters, which was not the plan. Every
+    effect turned out to fold its own numbers into one strength, the way the
+    reverb and the border shade do, so a schema per kind would be a mechanism
+    with nothing to hold. Add one when an effect needs a second number, not
+    before.
+    """
+
+    kind: str = ""
+    #: 0 draws nothing at all, 1 is as strong as the effect goes.
+    intensity: float = 0.6
+
+    def validate(self) -> None:
+        # Imported here rather than at module scope: the renderer imports this
+        # module, so naming it at the top would be a cycle.
+        from psv.render.effects import KINDS
+
+        if self.kind not in KINDS:
+            raise ConfigError(
+                f"unknown visual effect {self.kind!r}. "
+                f"Available: {', '.join(sorted(KINDS))}"
+            )
+        if not 0.0 <= self.intensity <= 1.0:
+            raise ConfigError(
+                f"visual effect {self.kind!r} needs an intensity between 0 and "
+                f"1, got {self.intensity}"
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class VisualConfig:
     width: int = 1920
     height: int = 1080
@@ -216,6 +248,12 @@ class VisualConfig:
     #: the hues that say which hand is playing.
     gradient_top: str = ""
     gradient_bottom: str = ""
+    #: Optional effects, drawn in the order they are listed. Empty by default,
+    #: because a practice aid and a piece of spectacle want opposite things.
+    #:
+    #: The order is the composition order: a halo under particles is a different
+    #: picture from particles under a halo.
+    effects: tuple[EffectConfig, ...] = ()
     #: How many processes draw and encode the video at once. 0 asks for one
     #: per core, 1 renders in a single process the way this always did.
     #:
@@ -309,6 +347,8 @@ class VisualConfig:
                 "visual.background must be grayscale so it cannot compete with "
                 f"the note colours, got {self.background!r}"
             )
+        for effect in self.effects:
+            effect.validate()
         self.colors.validate()
         self.grid.validate()
 
@@ -496,9 +536,47 @@ def _build(target: type[Any], raw: dict[str, Any], prefix: str) -> Any:
                     f"{prefix}{name} must be a table, got {type(value).__name__}"
                 )
             values[name] = _build(hint, value, prefix=f"{prefix}{name}.")
+        elif (item := _element_of(hint)) is not None:
+            values[name] = _build_list(item, value, f"{prefix}{name}")
         else:
             values[name] = _coerce(value, hint, f"{prefix}{name}")
     return target(**values)
+
+
+def _element_of(hint: Any) -> type[Any] | None:
+    """The dataclass a ``tuple[Thing, ...]`` field holds, if it is one.
+
+    Only this shape. A field typed as a tuple of anything else would be a new
+    kind of config value with its own error messages, and there is one list in
+    this config: the effects.
+    """
+    if get_origin(hint) is not tuple:
+        return None
+    args = get_args(hint)
+    if (
+        len(args) == 2
+        and args[1] is Ellipsis
+        and isinstance(args[0], type)
+        and is_dataclass(args[0])
+    ):
+        return args[0]
+    return None
+
+
+def _build_list(element: type[Any], value: Any, location: str) -> tuple[Any, ...]:
+    """Build an array of tables, such as ``[[visual.effects]]``."""
+    if not isinstance(value, list):
+        raise ConfigError(
+            f"{location} must be a list of tables, got {type(value).__name__}"
+        )
+    built = []
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ConfigError(
+                f"{location}[{index}] must be a table, got {type(item).__name__}"
+            )
+        built.append(_build(element, item, prefix=f"{location}[{index}]."))
+    return tuple(built)
 
 
 def _coerce(value: Any, expected: Any, location: str) -> Any:
