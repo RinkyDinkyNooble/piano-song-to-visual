@@ -126,7 +126,7 @@ def test_a_grid_crossing_is_no_brighter_than_the_lines_that_cross() -> None:
     "body",
     ["[visual]\ngradient_top = '#101010'\n", "[visual]\ngradient_bottom = '#101010'\n"],
 )
-def test_half_a_gradient_is_an_error(tmp_path, body: str) -> None:
+def test_half_a_gradient_is_an_error(tmp_path: Path, body: str) -> None:
     path = tmp_path / "psv.toml"
     path.write_text(body, encoding="utf-8")
     with pytest.raises(ConfigError, match="go together"):

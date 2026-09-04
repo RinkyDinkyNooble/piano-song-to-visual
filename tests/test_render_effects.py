@@ -22,6 +22,7 @@ import pytest
 
 from psv.config import Config, ConfigError, EffectConfig, VisualConfig
 from psv.midi import read_midi
+from psv.model import Note, Part, Score
 from psv.presets import (
     EFFECT_DESCRIPTIONS,
     EFFECT_SETS,
@@ -45,7 +46,9 @@ EFFECT_SIZE = VisualConfig(width=320, height=180, fps=10, lookahead_s=3.0)
 EFFECT_REFERENCE_CASES = [(kind,) for kind in sorted(KINDS)]
 
 
-def with_effects(*effects: EffectConfig, base: VisualConfig | None = None):
+def with_effects(
+    *effects: EffectConfig, base: VisualConfig | None = None
+) -> VisualConfig:
     config = replace(base or EFFECT_SIZE, effects=effects)
     config.validate()
     return config
@@ -55,7 +58,7 @@ def one(kind: str, intensity: float = 1.0) -> EffectConfig:
     return EffectConfig(kind=kind, intensity=intensity)
 
 
-def score():
+def score() -> Score:
     return read_midi(FIXTURES[FIXTURE]())
 
 
@@ -194,7 +197,6 @@ def test_the_pulse_fades_back_to_the_configured_background() -> None:
 def test_a_louder_note_pulses_harder() -> None:
     """Driven by what was played, not by the tempo map. Pulsing on the beat is
     a metronome you can see: it fires whether or not anything was played."""
-    from psv.model import Note, Part, Score
 
     def at(velocity: int) -> float:
         one_note = Score(
