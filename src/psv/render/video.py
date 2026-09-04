@@ -69,10 +69,19 @@ MAX_WORKERS = 8
 #: what was actually written. bt709 primaries are sRGB primaries, which is what
 #: the colours in the config are.
 #:
+#: The scale filter is not redundant with `-color_range`. That option sets the
+#: tag, and whether the conversion follows is up to the build: on Windows it
+#: did, and on Linux it wrote television-range samples and labelled them full,
+#: so a decoder handed the levels back offset by sixteen and squeezed. Naming
+#: the range in the filter is what actually performs the conversion. Only CI
+#: could catch that, and it did.
+#:
 #: Measured over a 1080p render of real output: mean round-trip error per
 #: channel falls from 0.441 to 0.319, and every background level the pulse walks
 #: through comes back as itself instead of collapsing into its neighbour.
 COLOUR_PARAMS = [
+    "-vf",
+    "scale=in_range=full:out_range=full",
     "-color_range",
     "pc",
     "-colorspace",
