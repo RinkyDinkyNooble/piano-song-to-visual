@@ -532,10 +532,11 @@ two call sites, and the largest single lever on arrangement quality.
 **Speed, generally.** A 1080p60 render of a long piece takes minutes, and that
 is the single biggest thing standing between a change and seeing it. Frames are
 independent and `render_frame` is pure, so parallel rendering is the obvious
-first move; profile before anything else, because the per-frame cost is
-currently assumed rather than measured. Whatever it turns out to be, keep
-`render_frame` a pure function of the score and the time: the reference images
-and the determinism guarantee both rest on it.
+first move. Planned in [RENDER-SPEED.md](RENDER-SPEED.md), which starts by
+measuring rather than by building: the encoder's share of the wall time has
+never been measured, and it sets the ceiling on what parallel drawing can buy.
+Whatever comes of it, `render_frame` stays a pure function of the score and the
+time, since the reference images and the determinism guarantee both rest on it.
 
 ### Explicitly not planned
 
