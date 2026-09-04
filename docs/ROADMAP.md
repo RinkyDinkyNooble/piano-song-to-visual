@@ -527,17 +527,16 @@ determinism guarantee rest on, and it is what made this possible at all.
 clutter when not, so strictly opt-in. Needs a small bitmap font, since the
 renderer deliberately loads nothing from the filesystem.
 
-**Reverb, and post-processing generally.** A dry sampled piano sounds like a
-sample player rather than an instrument in a room, and the room is most of what
-makes a recorded piano sound like one. FluidSynth carries a reverb already, so
-`set_reverb(roomsize, damping, width, level)` is a handful of config keys and no
-new dependency. The other backends would need about sixty lines of Freeverb.
-Planned alongside the visual effects in [EFFECTS.md](EFFECTS.md).
+**Reverb.** A dry sampled piano sounds like a sample player. Put it in a room
+and it sounds like an instrument, and that is most of the gap between this tool
+and a recording. FluidSynth carries the reverb already, so it is one config key,
+`audio.reverb` from 0 to 1, driving its four parameters along a curve picked once
+by ear. The other backends get nothing and say so. Planned alongside the visual
+effects in [EFFECTS.md](EFFECTS.md).
 
-Separately, exporting the soundtrack on its own so it can go through whatever
-you already use. The `mux` backend takes an audio file back, so half of that
-round trip exists; what is missing is a way to get the audio out without
-pulling it from the finished mp4 with ffmpeg.
+Separately, exporting the soundtrack on its own so it can go through whatever you
+already use. Anything more elaborate than a room belongs in software built for
+it, and the `mux` backend already takes a finished audio file back.
 
 **Better built-in tone.** The current synth is additive sine harmonics with an
 ADSR envelope. One short recorded piano sample per octave, pitch shifted, would

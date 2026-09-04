@@ -185,38 +185,56 @@ numbers change. That is why the intensity slider is in from step 1.
 
 # Audio
 
-Separate from the visuals and simpler. It can be done at any point, including
-first.
+One setting, and it is the only one worth having.
 
-## Reverb, for FluidSynth
+## Reverb, and nothing else
 
-The synth already has one. `set_reverb(roomsize, damping, width, level)` exists
-in the installed build, so this is config keys, validation and a test, with no
-new dependency and no DSP.
+A dry sampled piano sounds like a sample player. Put it in a room and it sounds
+like an instrument. That is nearly the whole gap between what comes out of this
+tool and what a recording sounds like, and FluidSynth already carries the reverb
+to close it.
+
+```toml
+[audio]
+reverb = 0.35    # 0 is dry, 1 is a large hall
+```
+
+**One number, not four.** FluidSynth's reverb takes room size, damping, width and
+level. Exposing all four means picking four numbers to find out that three of
+them barely matter. A single amount drives all four along a curve chosen once by
+ear, which is the difference between a setting you use and a setting you read
+about and skip.
+
+No new dependency, no DSP, and roughly an afternoon.
 
 **Checkpoint:** three short renders of the same passage, dry, moderate and
-generous. You say which is the default and whether the range is wide enough. A
-dry piano sounds like a sample player rather than an instrument in a room, and
-the room is most of what makes a recording sound like a piano.
+generous. You say which is the default and whether the top of the range is far
+enough. If it needs a second knob after hearing it, that is a finding, not a
+failure.
 
-## Reverb, for the other backends
+## What the other backends get
 
-`builtin` and `mux` get nothing from the above. A Freeverb-style network of comb
-and allpass filters in numpy is about sixty lines and is the only real DSP in the
-feature. Testable without ears: an impulse in gives a decaying response out, the
-decay length tracks the room size, and silence in gives silence out.
+Nothing, and they say so. `builtin` and `mux` do not go through FluidSynth, so
+selecting a reverb with either of them logs that it was ignored rather than
+implying it happened.
 
-Worth doing only if you use the built-in synth. If FluidSynth is what you always
-reach for, this is the piece to skip.
+A Freeverb network in numpy would give `builtin` a reverb for about sixty lines,
+and it is deliberately not planned. It is the most complicated thing in this
+document and it would improve a synth that exists so the video is not silent when
+FluidSynth is missing. If the built-in tone matters enough to want reverb on it,
+the fix is a better tone, which is a separate item on the roadmap.
 
-## Audio effects worth saying no to
+## Deliberately not planned
 
-Compression, EQ and stereo widening beyond the existing register pan. Each is a
-knob that makes a recording sound more produced and a practice aid no more
-useful, and each is better done in whatever you would master with anyway. The
-`mux` backend already takes an audio file back, so that route stays open.
+Compression, EQ, stereo widening beyond the register pan that already exists,
+limiting, tape saturation, and anything else with a threshold and a ratio.
 
----
+Each is a knob that makes a recording sound more produced and a practice aid no
+more useful, and each is done better by software built for it. The `mux` backend
+already takes a finished audio file back, so the whole professional route stays
+open: render silent, treat the audio wherever you like, mux it in. That is one
+extra command for the rare case, against a permanent pile of settings for the
+common one.
 
 # What could go wrong
 
