@@ -66,21 +66,34 @@ jobs:
       # because they are visible to different readers: the step summary renders
       # on the run page for a person, and the error annotation is served by the
       # public checks API for anything reading the repository over HTTP.
+      #
+      # What goes in them is chosen rather than tailed. An annotation is capped
+      # at about 4kB, and a coverage table is 3kB of it, so tailing the output
+      # once produced a red build reporting only how well covered the code was.
+      # The failures come first now, and the coverage table is dropped.
       - name: Publish the failure
         if: failure()
         shell: bash
         run: |
+          # The names of what broke, then the traceback for the first few.
+          grep -E '^(FAILED|ERROR) ' pytest-output.txt > failed.txt || true
+          sed -n '/^=* FAILURES =*$/,/^=* \(warnings summary\|short test\)/p' \
+            pytest-output.txt > tracebacks.txt || true
+
           {
             echo "### ${{ matrix.os }}, Python ${{ matrix.python-version }}"
             echo
             echo '```'
-            tail -n 150 pytest-output.txt
+            cat failed.txt
+            echo
+            tail -n 200 tracebacks.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
           # One annotation, not sixty: a step is allowed ten, and the newlines
           # have to be escaped as %0A to survive inside a workflow command.
-          body=$(tail -n 60 pytest-output.txt \
+          body=$( { cat failed.txt; echo; tail -n 40 tracebacks.txt; } \
+            | head -c 3500 \
             | sed -e 's/%/%25/g' -e 's/\r//g' \
             | awk '{printf "%s%%0A", $0}')
           echo "::error title=pytest ${{ matrix.os }} py${{ matrix.python-version }}::${body}"
