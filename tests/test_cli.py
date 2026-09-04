@@ -599,3 +599,93 @@ def test_control_characters_are_stripped_from_preset_names(tmp_path: Path) -> No
     assert "\x1b" not in name
     assert "\r" not in name
     assert "RED" in name
+
+
+@pytest.mark.feature("F-70")
+def test_render_honours_the_encode_override(
+    midi_path: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """`fast` spends less time compressing, so it writes a bigger file for the
+    same pictures. That is the only way to see from outside that the flag
+    arrived."""
+    sizes = {}
+    for level in ("small", "fast"):
+        output = tmp_path / f"{level}.mp4"
+        assert (
+            main(
+                [
+                    "render",
+                    str(midi_path("two-hands")),
+                    "-o",
+                    str(output),
+                    "--seconds",
+                    "2",
+                    "--width",
+                    "160",
+                    "--height",
+                    "120",
+                    "--fps",
+                    "20",
+                    "--encode",
+                    level,
+                    "--workers",
+                    "1",
+                ]
+            )
+            == 0
+        )
+        sizes[level] = output.stat().st_size
+    assert sizes["fast"] > sizes["small"]
+
+
+@pytest.mark.feature("F-69")
+def test_render_honours_the_worker_override(
+    midi_path: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """Two workers must produce a video of the same shape as one."""
+    outputs = {}
+    for workers in (1, 2):
+        output = tmp_path / f"w{workers}.mp4"
+        assert (
+            main(
+                [
+                    "render",
+                    str(midi_path("two-hands")),
+                    "-o",
+                    str(output),
+                    "--seconds",
+                    "24",
+                    "--width",
+                    "64",
+                    "--height",
+                    "48",
+                    "--fps",
+                    "10",
+                    "--workers",
+                    str(workers),
+                ]
+            )
+            == 0
+        )
+        outputs[workers] = output
+    assert video_meta(outputs[2])["size"] == video_meta(outputs[1])["size"]
+    assert video_meta(outputs[2])["duration"] == pytest.approx(
+        video_meta(outputs[1])["duration"], abs=0.05
+    )
+
+
+@pytest.mark.feature("F-70")
+def test_an_unknown_encode_level_is_refused_at_the_command_line(
+    midi_path: Callable[[str], Path], tmp_path: Path
+) -> None:
+    with pytest.raises(SystemExit):
+        main(
+            [
+                "render",
+                str(midi_path("single-note")),
+                "-o",
+                str(tmp_path / "x.mp4"),
+                "--encode",
+                "tiny",
+            ]
+        )

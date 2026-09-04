@@ -188,3 +188,24 @@ def test_hand_assignment_still_has_a_span_to_lay_out_against(tmp_path: Path) -> 
     limited = Config.load(write(tmp_path, "[hands]\nmax_span_semitones = 14\n"))
     assert limited.hands.layout_span == 14
     assert limited.hands.is_limited
+
+
+@pytest.mark.feature("F-70")
+def test_an_unknown_encode_level_says_which_ones_exist(tmp_path: Path) -> None:
+    path = write(tmp_path, '[visual]\nencode = "tiny"\n')
+    with pytest.raises(ConfigError, match=r"visual\.encode must be one of"):
+        Config.load(path)
+
+
+@pytest.mark.feature("F-69")
+def test_a_negative_worker_count_is_refused(tmp_path: Path) -> None:
+    path = write(tmp_path, "[visual]\nworkers = -1\n")
+    with pytest.raises(ConfigError, match=r"visual\.workers"):
+        Config.load(path)
+
+
+@pytest.mark.feature("F-69")
+def test_the_render_settings_have_working_defaults() -> None:
+    visual = Config.load(None).visual
+    assert visual.workers == 0, "0 means one process per core"
+    assert visual.encode == "balanced"

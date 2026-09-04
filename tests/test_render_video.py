@@ -7,21 +7,27 @@ length asked for, not that a four-minute render looks nice.
 
 from __future__ import annotations
 
+from contextlib import closing
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
 
 from psv.config import VisualConfig
 from psv.midi import read_midi
-from psv.model import Note, Part, Score
+from psv.model import Hand, Note, Part, Score
+from psv.render.frame import Frame
 from psv.render.video import (
+    MAX_WORKERS,
+    MIN_FRAMES_TO_SPLIT,
     TAIL_S,
     VideoWriteError,
     frame_times,
     iter_frames,
     render_video,
+    worker_count,
 )
 from tests.fixtures.midi_builder import FIXTURES
 from tests.probe import frame_count, video_meta
@@ -191,3 +197,209 @@ def test_an_unwritable_destination_fails_before_ffmpeg_starts(
     score = read_midi(FIXTURES["single-note"]())
     with pytest.raises(VideoWriteError, match="could not write"):
         render_video(score, TINY, blocked, duration=0.5)
+
+
+# -- rendering across processes ------------------------------------------
+#
+# The claim is that splitting the timeline changes how long a render takes and
+# nothing else. Speed is measured in docs/RENDER-SPEED.md rather than asserted
+# here, because a timing test on a shared CI runner proves nothing. What is
+# asserted is sameness, which is the half that can go wrong quietly.
+
+
+def long_enough() -> tuple[Score, VisualConfig, float]:
+    """A render with enough frames to be worth splitting, and small enough to
+    run on every push."""
+    config = replace(TINY, width=64, height=48)
+    seconds = MIN_FRAMES_TO_SPLIT / config.fps
+    notes = tuple(
+        Note(pitch=60 + (i % 13), start=i * 0.5, end=i * 0.5 + 0.4)
+        for i in range(int(seconds * 2))
+    )
+    return (
+        Score(parts=(Part(notes=notes, name="right", hand=Hand.RIGHT),)),
+        config,
+        (seconds),
+    )
+
+
+@pytest.mark.feature("F-69")
+def test_worker_count_leaves_short_renders_alone() -> None:
+    """A worker pays for an interpreter and an ffmpeg process before it draws
+    anything. Below a few hundred frames that costs more than it saves."""
+    assert worker_count(0, MIN_FRAMES_TO_SPLIT - 1) == 1
+    assert worker_count(8, MIN_FRAMES_TO_SPLIT - 1) == 1
+
+
+@pytest.mark.feature("F-69")
+def test_worker_count_honours_one_and_caps_the_rest() -> None:
+    assert worker_count(1, 100_000) == 1, "1 must mean the single-process path"
+    assert worker_count(0, 100_000) >= 1
+    assert worker_count(64, 100_000) == MAX_WORKERS
+    # Never more workers than there is work to give them.
+    assert worker_count(64, MIN_FRAMES_TO_SPLIT) == 2
+
+
+@pytest.mark.feature("F-69")
+def test_every_split_covers_the_frames_exactly_once() -> None:
+    """The arithmetic behind the whole feature. A span beginning at frame k
+    must produce the same timestamps as counting from zero, including when the
+    frames do not divide evenly by the number of workers."""
+    for total in (240, 1000, 9410):
+        for workers in (2, 3, 7, 8):
+            covered: list[int] = []
+            for index in range(workers):
+                first = index * total // workers
+                last = (index + 1) * total // workers
+                covered.extend(range(first, last))
+            assert covered == list(range(total)), f"{total} frames, {workers} workers"
+
+
+@pytest.mark.feature("F-69")
+def test_a_parallel_render_is_the_same_video(tmp_path: Path) -> None:
+    """Same length, same size, same number of frames. Run with two workers
+    rather than one per core, since CI machines vary and the property does
+    not."""
+    score, config, seconds = long_enough()
+
+    serial = render_video(
+        score, replace(config, workers=1), tmp_path / "serial.mp4", duration=seconds
+    )
+    parallel = render_video(
+        score, replace(config, workers=2), tmp_path / "parallel.mp4", duration=seconds
+    )
+
+    assert frame_count(parallel) == frame_count(serial)
+    assert video_meta(parallel)["size"] == video_meta(serial)["size"]
+    assert video_meta(parallel)["duration"] == pytest.approx(
+        video_meta(serial)["duration"], abs=0.05
+    )
+
+
+@pytest.mark.feature("F-69")
+def test_a_parallel_render_draws_the_same_pictures(tmp_path: Path) -> None:
+    """Sameness where it actually matters.
+
+    The files cannot be compared byte for byte: each span is an independent
+    h264 encode with its own keyframes. So they are compared against the
+    frames `render_frame` drew, and the parallel render has to be no further
+    from those than the serial one is. h264 is lossy, and that loss is the
+    scale everything else is measured against.
+    """
+    score, config, seconds = long_enough()
+    serial = render_video(
+        score, replace(config, workers=1), tmp_path / "serial.mp4", duration=seconds
+    )
+    parallel = render_video(
+        score, replace(config, workers=2), tmp_path / "parallel.mp4", duration=seconds
+    )
+
+    drawn = list(iter_frames(score, config, duration=seconds))
+    serial_error = _mean_error(drawn, serial, config)
+    parallel_error = _mean_error(drawn, parallel, config)
+
+    assert parallel_error <= serial_error * 1.5, (
+        f"parallel render is further from what was drawn ({parallel_error:.3f}) "
+        f"than the serial one is ({serial_error:.3f})"
+    )
+
+
+def _mean_error(drawn: list[Frame], path: Path, config: VisualConfig) -> float:
+    """Average absolute pixel difference between what was drawn and what the
+    file decodes to."""
+    import imageio_ffmpeg
+
+    total = 0.0
+    count = 0
+    reader = imageio_ffmpeg.read_frames(str(path), pix_fmt="rgb24", bits_per_pixel=24)
+    with closing(reader):
+        next(reader)  # the metadata
+        for index, raw in enumerate(reader):
+            if index >= len(drawn):
+                break
+            decoded = np.frombuffer(raw, dtype=np.uint8).reshape(
+                config.height, config.width, 3
+            )
+            total += float(
+                np.abs(decoded.astype(np.int16) - drawn[index].astype(np.int16)).mean()
+            )
+            count += 1
+    assert count, f"decoded no frames from {path}"
+    return total / count
+
+
+@pytest.mark.feature("F-69")
+def test_a_render_that_loses_frames_refuses_to_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A silently short video is the worst outcome available here, so the
+    parallel path counts the frames its workers report and refuses the file if
+    they do not add up.
+
+    Provoked by handing it one span short, since nothing reachable from outside
+    can make a worker come back with the wrong number. The guard is a belt: the
+    point of the test is that the belt is fastened.
+    """
+    from psv.render import video as video_module
+
+    score, config, seconds = long_enough()
+    real_spans = video_module._spans
+
+    def one_short(*args: Any, **kwargs: Any) -> Any:
+        return real_spans(*args, **kwargs)[:-1]
+
+    monkeypatch.setattr(video_module, "_spans", one_short)
+
+    with pytest.raises(VideoWriteError, match="quietly short"):
+        render_video(
+            score,
+            replace(config, workers=2),
+            tmp_path / "short.mp4",
+            duration=seconds,
+        )
+
+
+@pytest.mark.feature("F-69")
+def test_an_unwritable_destination_fails_before_any_work(tmp_path: Path) -> None:
+    """Both paths check the output first, so a bad path says so instead of
+    arriving as a page of ffmpeg stderr after a minute of rendering."""
+    score, config, seconds = long_enough()
+    blocked = tmp_path / "in-the-way"
+    blocked.mkdir()
+
+    for workers in (1, 2):
+        with pytest.raises(VideoWriteError, match="could not write"):
+            render_video(
+                score, replace(config, workers=workers), blocked, duration=seconds
+            )
+
+
+@pytest.mark.feature("F-70")
+def test_the_encode_setting_reaches_the_encoder(tmp_path: Path) -> None:
+    """`fast` spends less time compressing, so it writes a bigger file for the
+    same pictures. That is the whole trade, and it is the only way to see from
+    outside that the setting arrived."""
+    score, config, seconds = long_enough()
+
+    small = render_video(
+        score,
+        replace(config, workers=1, encode="small"),
+        tmp_path / "small.mp4",
+        duration=seconds,
+    )
+    fast = render_video(
+        score,
+        replace(config, workers=1, encode="fast"),
+        tmp_path / "fast.mp4",
+        duration=seconds,
+    )
+
+    assert frame_count(fast) == frame_count(small)
+    assert fast.stat().st_size > small.stat().st_size
+
+
+@pytest.mark.feature("F-70")
+def test_encode_names_map_to_x264_presets() -> None:
+    assert VisualConfig(encode="small").encoder_preset == "medium"
+    assert VisualConfig(encode="balanced").encoder_preset == "veryfast"
+    assert VisualConfig(encode="fast").encoder_preset == "ultrafast"

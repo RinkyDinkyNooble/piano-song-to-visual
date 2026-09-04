@@ -494,15 +494,37 @@ under your hands. Equal-power law, so a note does not dip in volume crossing the
 middle. Not only prettier: it stops the hands competing for the same place in
 the mix, which is what makes a left-hand line audible under a busy right hand.
 
+### Done: rendering across processes
+
+A 1080p60 render of a short piece is thousands of frames, and that wait sits
+between making a change and seeing whether it worked. Für Elise took 1:41 and
+now takes 0:44, or 0:34 asking for `--encode fast`.
+
+`render_frame` is a pure function of the score and a time, so the timeline is
+cut into spans, each span is rendered and encoded by its own process, and the
+parts are joined afterwards with ffmpeg's concat demuxer. `visual.workers`
+chooses how many; `1` is the old single-process path, unchanged.
+
+The other half is `visual.encode`, which is how long the encoder spends
+compressing. `small`, `balanced` and `fast` trade file size against waiting, and
+that choice belongs to whoever is doing the waiting.
+
+Two things only measuring could have told us, both written up in
+[RENDER-SPEED.md](RENDER-SPEED.md). Encoding was never serial: ffmpeg is a
+separate process consuming the pipe while Python draws the next frame, so the
+two already overlapped. And x264 already used every core, so splitting the
+encode divides the same work rather than adding to it. That is why the workers
+alone stop at 2.03x, and why the encoder setting - worth 4% on its own - takes
+it to 2.30x alongside them, or 2.93x at `fast`.
+
+`render_frame` is untouched. Its purity is what the reference images and the
+determinism guarantee rest on, and it is what made this possible at all.
+
 ### Still open
 
 **Note name labels.** Optional letters on the bars, useful when learning and
 clutter when not, so strictly opt-in. Needs a small bitmap font, since the
 renderer deliberately loads nothing from the filesystem.
-
-**Bar numbers down the side.** Makes it possible to say "the bit at bar 31". The
-bar index exists now, so this is drawing rather than arithmetic, and it wants
-the same bitmap font as the labels above.
 
 **Reverb, and post-processing generally.** A dry sampled piano sounds like a
 sample player rather than an instrument in a room, and the room is most of what
@@ -528,15 +550,6 @@ hurt.
 and an outer-voice bonus. Real salience needs harmonic analysis: which notes are
 chord tones, which are passing, which carry the line. It is one function with
 two call sites, and the largest single lever on arrangement quality.
-
-**Speed, generally.** A 1080p60 render of a long piece takes minutes, and that
-is the single biggest thing standing between a change and seeing it. Frames are
-independent and `render_frame` is pure, so parallel rendering is the obvious
-first move. Planned in [RENDER-SPEED.md](RENDER-SPEED.md), which starts by
-measuring rather than by building: the encoder's share of the wall time has
-never been measured, and it sets the ceiling on what parallel drawing can buy.
-Whatever comes of it, `render_frame` stays a pure function of the score and the
-time, since the reference images and the determinism guarantee both rest on it.
 
 ### Explicitly not planned
 

@@ -32,6 +32,21 @@ UNLIMITED_SPAN = 0
 #: nothing; it only decides where the split between the hands sits.
 NOMINAL_SPAN = 12
 
+#: How hard the encoder works to make the file small, and what that costs in
+#: render time. Named after the choice rather than after x264's preset names,
+#: since the thing being traded is file size against waiting.
+#:
+#: Measured on a 40-second 1080p60 render: `small` is x264's default and is the
+#: slowest, `balanced` encodes about 1.4x faster for about 1.3x the file, and
+#: `fast` about 2.1x faster for about 2.8x the file. None of them changes the
+#: picture in a way anyone can see; they change how long the encoder spends
+#: looking for things to compress.
+ENCODE_LEVELS = {
+    "small": "medium",
+    "balanced": "veryfast",
+    "fast": "ultrafast",
+}
+
 DIFFICULTY_LEVELS = ("beginner", "easy", "medium", "hard", "original")
 AUDIO_BACKENDS = ("fluidsynth", "mux", "builtin", "none")
 PRACTICE_HANDS = ("both", "left", "right")
@@ -178,8 +193,25 @@ class VisualConfig:
     #: resolution. At 320 wide, a border that looks right at 1080p swallows the
     #: bar. 0 turns it off.
     note_border: float = 0.0016
+    #: How many processes draw and encode the video at once. 0 asks for one
+    #: per core, 1 renders in a single process the way this always did.
+    #:
+    #: Frames are independent and `render_frame` is a pure function of the score
+    #: and a time, so the timeline can be cut into spans and each span rendered
+    #: on its own. Splitting is exact rather than approximate: `frame_times`
+    #: computes `start + index / fps` rather than adding repeatedly, so a span
+    #: beginning at frame k produces the same timestamps counting from zero
+    #: would. See docs/RENDER-SPEED.md.
+    workers: int = 0
+    #: One of ENCODE_LEVELS. Trades file size against render time.
+    encode: str = "balanced"
     colors: ColorConfig = field(default_factory=ColorConfig)
     grid: GridConfig = field(default_factory=GridConfig)
+
+    @property
+    def encoder_preset(self) -> str:
+        """The x264 preset `encode` names."""
+        return ENCODE_LEVELS[self.encode]
 
     def validate(self) -> None:
         for name in ("width", "height", "fps"):
@@ -207,6 +239,13 @@ class VisualConfig:
             raise ConfigError(
                 "visual.black_key_darkening must be between 0 and 1, "
                 f"got {self.black_key_darkening}"
+            )
+        if self.workers < 0:
+            raise ConfigError(f"visual.workers must be 0 or more, got {self.workers}")
+        if self.encode not in ENCODE_LEVELS:
+            raise ConfigError(
+                f"visual.encode must be one of {', '.join(ENCODE_LEVELS)}, "
+                f"got {self.encode!r}"
             )
         if not _is_hex_colour(self.background):
             raise ConfigError(

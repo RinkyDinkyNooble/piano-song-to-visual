@@ -19,7 +19,13 @@ from pathlib import Path
 from psv import __version__
 from psv.arrange import arrange as arrange_score
 from psv.audio.backends import AudioError
-from psv.config import Config, ConfigError, PracticeConfig, VisualConfig
+from psv.config import (
+    ENCODE_LEVELS,
+    Config,
+    ConfigError,
+    PracticeConfig,
+    VisualConfig,
+)
 from psv.constraints import ConstraintError
 from psv.constraints import constrain as constrain_score
 from psv.inspect import format_report, inspect_score
@@ -167,6 +173,25 @@ def _add_render_options(parser: argparse.ArgumentParser) -> None:
         "--height", type=int, default=None, help="override frame height"
     )
     parser.add_argument("--fps", type=int, default=None, help="override frame rate")
+    parser.add_argument(
+        "--encode",
+        choices=sorted(ENCODE_LEVELS),
+        default=None,
+        help=(
+            "how hard the encoder works: `small` is slowest and smallest, "
+            "`fast` is quickest and about three times the file "
+            "(default: balanced)"
+        ),
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help=(
+            "processes to render with; 0 picks one per core, 1 renders in "
+            "a single process (default: 0)"
+        ),
+    )
     _add_practice_options(parser)
 
 
@@ -256,7 +281,7 @@ def _visual_with_overrides(
 ) -> VisualConfig:
     overrides = {
         name: getattr(args, name)
-        for name in ("width", "height", "fps")
+        for name in ("width", "height", "fps", "encode", "workers")
         if getattr(args, name, None) is not None
     }
     if not overrides:

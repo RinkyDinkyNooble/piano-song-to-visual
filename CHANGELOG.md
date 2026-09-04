@@ -20,6 +20,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Renders run across processes, and how hard the encoder works is now your
+  choice.** Für Elise at 1080p60 took 1:41 and now takes 0:44, or 0:34 asking
+  for `--encode fast`.
+  - `visual.workers`, or `--workers`. `0` uses one process per core, capped at
+    eight; `1` is the previous single-process path, unchanged. A render under
+    240 frames is never split, since a worker costs an interpreter and an ffmpeg
+    process before it draws anything.
+  - `visual.encode`, or `--encode`: `small`, `balanced` or `fast`. This is how
+    long the encoder spends looking for things to compress. It changes the file
+    size, not the picture: `balanced` is about 1.3x the file of `small` and
+    `fast` about 2.8x. Default is `balanced`.
+  - The two are worth 2.03x and 1.04x separately, and 2.30x together, because a
+    single-process render was never waiting on the encoder. Both were needed and
+    neither was obvious without measuring.
+  - The timeline is cut into spans, each rendered and encoded by its own
+    process, and joined with ffmpeg's concat demuxer without re-encoding. The
+    parent counts what its workers report and refuses to write a video whose
+    frames do not add up.
+  - `render_frame` is untouched. Splitting is exact rather than approximate
+    because `frame_times` computes `start + index / fps` rather than adding, so
+    a span beginning at frame k produces the timestamps counting from zero
+    would.
+  - Written up with every measurement in `docs/RENDER-SPEED.md`, including the
+    two assumptions that were wrong: encoding was never serial, and x264 was
+    already using every core.
+
+
 - **MusicXML input.** `psv run sonata.musicxml -o practice.mp4`, and `.mxl`,
   and `.xml`. Any command that reads a file now takes either format, told apart
   by content rather than by extension, since notation software exports `.xml`

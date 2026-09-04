@@ -9,10 +9,31 @@ Frames are independent and `render_frame` is a pure function of the score and a
 timestamp, so the work parallelises in principle. This is the plan for finding
 out whether it does in practice, and what to build if it does.
 
-**Measured, prototyped and verified; not yet in the tool.** The numbers are in
-"What the measurements said" below, and two of the plan's assumptions turned out
-to be wrong. Machine throughout: Windows 11, 12 logical cores, Für Elise at
-1920x1080 60fps.
+**Built.** `visual.workers` and `visual.encode`, or `--workers` and
+`--encode`. Two of the plan's assumptions turned out to be wrong on the way,
+which is written up below along with every measurement. Machine throughout:
+Windows 11, six cores and twelve threads, Für Elise at 1920x1080 60fps.
+
+## What shipped
+
+```
+2400 frames at 1920x1080 60fps
+  workers  encode      time     speedup   file
+  1        small      25.89s     1.00x    1195 KiB   the old behaviour
+  1        balanced   25.02s     1.04x    1533 KiB
+  1        fast       24.12s     1.07x    3351 KiB
+  auto     small      12.79s     2.03x    1242 KiB
+  auto     balanced   11.25s     2.30x    1569 KiB   the default
+  auto     fast        8.83s     2.93x    3477 KiB
+```
+
+The whole 2:35 Für Elise, 9410 frames: **1:41 as it was, 0:44 by default, 0:34
+asking for `fast`.**
+
+`balanced` is the default because 2.30x for a quarter more file is the better
+trade for most renders, and `fast` is there for when the wait is what matters.
+Neither changes the picture; they change how long the encoder spends looking
+for things to compress.
 
 ## What the measurements said
 
@@ -101,6 +122,24 @@ noise the codec already adds:
 The difference between a parallel render and a serial one is **smaller than the
 difference h264 already puts between the serial render and the pixels
 `render_frame` drew**. There is no picture to lose here.
+
+## How it works
+
+`worker_count` decides how many processes to use. `visual.workers = 0` asks for
+one per core, capped at eight because nine and up measured slower. `1` keeps the
+single-process path exactly as it was, and a render under 240 frames is never
+split at all: a worker costs a Python interpreter and an ffmpeg process before
+it draws anything.
+
+Each worker gets a `_Span`, draws its frames and encodes them to its own file.
+The parent counts the frames the workers report and **refuses to write the video
+if they do not add up**, because a silently short file is the worst outcome
+available here. ffmpeg's concat demuxer joins the parts with `-c copy`, so
+nothing is re-encoded.
+
+Spawn is used on every platform rather than fork, so what CI tests is what runs,
+and because forking a process that has threads is deprecated in 3.12 and this
+project turns warnings into errors.
 
 ## Step 0: measure, before choosing anything
 
@@ -223,3 +262,6 @@ file with the machine and core count beside them.
 installation problems, debugging difficulty and platform-specific failure, and
 it has to buy something worth that. Reverting after measuring is not a wasted
 step; it is the measurement doing its job.
+
+It came out at 2.30x by default and 2.93x asking for `fast`, so it stayed. The
+numbers are at the top of this file.

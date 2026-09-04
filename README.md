@@ -114,6 +114,42 @@ twice: `|: :|`, first- and second-time bars, D.C., D.S., segno, coda and fine.
 [docs/MUSICXML.md](docs/MUSICXML.md) covers what the reader handles and where
 it stops.
 
+### How long a render takes
+
+Frames are drawn independently, so the timeline is cut into spans and each span
+is rendered and encoded by its own process. Two settings control it, and they
+matter far more together than apart:
+
+```bash
+psv run song.mid -o out.mp4                   # both defaults
+psv run song.mid -o out.mp4 --encode fast     # quickest, biggest file
+psv run song.mid -o out.mp4 --workers 1       # one process, as it used to be
+```
+
+`--encode` chooses how long the encoder spends looking for things to compress.
+It changes the file size, not the picture:
+
+| | render time | file size |
+| --- | --- | --- |
+| `small` | slowest | smallest |
+| `balanced` | encodes about 1.4x quicker | about 1.3x |
+| `fast` | encodes about 2.1x quicker | about 2.8x |
+
+On its own a faster encoder buys almost nothing, because a single-process
+render waits on the drawing rather than on the encoder. It is the combination
+that pays. Für Elise at 1080p60, on a six-core machine:
+
+| | time |
+| --- | --- |
+| one process, `small` | 1:41 |
+| the defaults | 0:44 |
+| `--encode fast` | 0:34 |
+
+[docs/RENDER-SPEED.md](docs/RENDER-SPEED.md) has the measurements.
+
+A short render is never split, since a worker costs a Python interpreter and an
+ffmpeg process before it draws anything.
+
 Before committing to a file, it is worth asking what is actually in it:
 
 ```bash
@@ -252,6 +288,10 @@ loud  = 1.0               # brightness at ff
 note_border = 0.0016      # outline on each bar, as a fraction of frame width.
                           # This is what separates four fast repeats on one key
                           # from one long block. 0 turns it off
+workers = 0               # processes to render with; 0 is one per core,
+                          # 1 renders in a single process
+encode = "balanced"       # small | balanced | fast: how long the encoder
+                          # spends compressing, against how big the file is
 
 [visual.grid]
 pitch_lines = "octave"    # vertical rules at every C, for finding a key

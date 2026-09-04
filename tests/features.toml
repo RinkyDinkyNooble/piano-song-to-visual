@@ -587,3 +587,20 @@ milestone = "M10"
 status = "done"
 verify = "unit"
 uses = ["musicxml:transposing-part"]
+
+# --------------------------------------------------- Render speed
+[[feature]]
+id = "F-69"
+name = "Rendering split across processes, producing the same video"
+milestone = "M8"
+status = "done"
+verify = "e2e"
+uses = ["fixture:single-note"]
+
+[[feature]]
+id = "F-70"
+name = "Encoder effort is the user's choice: file size against render time"
+milestone = "M8"
+status = "done"
+verify = "e2e"
+uses = ["fixture:single-note"]
