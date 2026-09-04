@@ -303,6 +303,46 @@ def test_a_parallel_render_draws_the_same_pictures(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.feature("F-79")
+def test_consecutive_grey_levels_survive_the_round_trip(tmp_path: Path) -> None:
+    """The bug this exists to prevent, at the level it happens.
+
+    h264 defaults to the television range, 16-235, so about one grey level in
+    seven has nowhere to land and consecutive levels collapse into one. Nothing
+    notices until something moves slowly across a large flat area: the `pulse`
+    effect walks the background up a level at a time, and a smooth brighten came
+    back as an uneven stutter with a level repeated here and two skipped there.
+
+    Written as a sequence of flat frames rather than as a render, because the
+    property belongs to the writer and this way the expected answer is exact.
+    """
+    from psv.render.video import _open_writer
+
+    levels = list(range(16, 40))
+    config = VisualConfig(width=160, height=90, fps=10, encode="small")
+    path = tmp_path / "greys.mp4"
+
+    writer = _open_writer(config, path)
+    try:
+        for level in levels:
+            frame = np.full((config.height, config.width, 3), level, dtype=np.uint8)
+            writer.send(np.ascontiguousarray(frame))
+    finally:
+        writer.close()
+
+    decoded = decoded_frames(path, config.width, config.height)
+    assert len(decoded) == len(levels)
+
+    # The middle of each frame, away from any edge the encoder might ring at.
+    middle = [
+        int(np.median(frame[20:70, 30:130, 0].astype(np.int16))) for frame in decoded
+    ]
+    assert len(set(middle)) == len(levels), (
+        f"levels collapsed: {levels} came back as {middle}"
+    )
+    assert middle == sorted(middle), f"levels came back out of order: {middle}"
+
+
 def _mean_error(drawn: list[Frame], path: Path, config: VisualConfig) -> float:
     """Average absolute pixel difference between what was drawn and what the
     file decodes back to."""

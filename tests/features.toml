@@ -662,3 +662,10 @@ name = "Named effect bundles, with bloom in none of them"
 milestone = "M8"
 status = "done"
 verify = "unit"
+
+[[feature]]
+id = "F-79"
+name = "Full-range colour, so grey levels survive the encode"
+milestone = "M8"
+status = "done"
+verify = "e2e"

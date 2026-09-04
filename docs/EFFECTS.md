@@ -560,14 +560,35 @@ rather than random. It already did once: without a per-spark birth delay, every
 spark of a note was the same age and the spray drew as a clean arc. The fix was
 a better hash rather than real state, because state is what the two rules forbid.
 
-**A flat dark background is not stored uniformly by every encoder.** x264's
-ultrafast preset, which is `--encode fast`, leaves a faint blocky pattern in
-large flat dark areas and redraws it every frame. On a still background that is
-invisible; with `pulse` moving the background it crawls. The renderer is not
-involved: psv draws a background of exactly one colour, and the blotchiness
-measures 0.0363 out of the encoder at `fast`, 0.0008 at `balanced` and 0.0000 at
-`small`. Nothing to fix in psv, but worth knowing before pairing `pulse` with
-`--encode fast`.
+**The background stuttered while it pulsed, and it was psv's fault after all.**
+Worth writing up in full, because the first two answers were both wrong.
+
+The first was that it must be the encoder preset, since `--encode fast` measured
+blotchier than `balanced` on a flat dark patch. It is blotchier, and that was
+not what anyone was looking at.
+
+The second was that it was a bitrate problem. It is not: crf 10 changes almost
+nothing.
+
+The real cause was found by measuring the one thing that had not been measured,
+which is what a level is worth after the round trip. h264 writes the television
+range by default, where 0-255 is squeezed into 16-235. That is right for camera
+footage and wrong for a picture drawn in RGB: about one grey level in seven has
+nowhere to land. The background walking 17, 18, 19, 20, 21 came back as 17, 17,
+18, 19, 20, with one level repeated and, further up, two skipped at once. Every
+frame was perfectly uniform, spatial variation 0.05 of a level; what was wrong
+was that a smooth brighten arrived as an uneven stutter, over the largest flat
+area in the picture.
+
+Writing full range fixes it exactly: every level comes back as itself, and the
+mean round-trip error over a real 1080p frame drops from 0.441 to 0.319. There
+is a test that walks 24 consecutive greys through the writer and fails if any
+two arrive as the same value.
+
+The lesson is about the measurement rather than the encoder. "Blotchiness"
+averaged over a patch was the wrong number for a fault that was uniform within
+each frame and wrong between frames, and it kept confirming an answer that was
+not the problem.
 
 **A coloured background makes the piece harder to read.** It will. That is the
 trade, it is opt-in, and the practice default does not move.

@@ -54,6 +54,35 @@ MIN_FRAMES_TO_SPLIT = 240
 #: slightly worse.
 MAX_WORKERS = 8
 
+#: Write full-range colour, and say so in the stream.
+#:
+#: h264 defaults to the television range, where 0-255 is squeezed into 16-235.
+#: That is right for camera footage and wrong for a picture drawn in RGB: about
+#: one grey level in seven has nowhere to land, so consecutive levels collapse
+#: into one. Nothing notices until something moves slowly across a large flat
+#: area, and then it does. The `pulse` effect walks the background up a level at
+#: a time, and 18, 19, 20, 21 came back as 17, 18, 19, 20, with a level repeated
+#: here and two skipped there: a smooth brighten arriving as an uneven stutter.
+#:
+#: `pc` keeps 0-255. The colourspace is named alongside it because a stream
+#: tagged half way is how this class of bug happens; the tags have to describe
+#: what was actually written. bt709 primaries are sRGB primaries, which is what
+#: the colours in the config are.
+#:
+#: Measured over a 1080p render of real output: mean round-trip error per
+#: channel falls from 0.441 to 0.319, and every background level the pulse walks
+#: through comes back as itself instead of collapsing into its neighbour.
+COLOUR_PARAMS = [
+    "-color_range",
+    "pc",
+    "-colorspace",
+    "bt709",
+    "-color_primaries",
+    "bt709",
+    "-color_trc",
+    "bt709",
+]
+
 
 class VideoWriteError(RuntimeError):
     """Encoding failed, or the encoder was unavailable."""
@@ -130,7 +159,7 @@ def _open_writer(config: VisualConfig, output: Path) -> Any:
         # already requires even dimensions, which is what h264 actually needs.
         macro_block_size=1,
         ffmpeg_log_level="error",
-        output_params=["-preset", config.encoder_preset],
+        output_params=["-preset", config.encoder_preset, *COLOUR_PARAMS],
     )
     writer.send(None)
     return writer

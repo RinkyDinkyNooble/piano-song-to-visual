@@ -66,6 +66,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Videos are written full range, so grey levels survive the encode.** h264
+  defaults to the television range, 16-235, which is right for camera footage
+  and wrong for a picture drawn in RGB: about one level in seven had nowhere to
+  land and consecutive levels collapsed into one. Invisible until something
+  moved slowly across a large flat area, and then not: the `pulse` effect walks
+  the background up a level at a time, and 18, 19, 20, 21 came back as 17, 18,
+  19, 20 with a level repeated here and two skipped there, so a smooth brighten
+  arrived as an uneven stutter. Mean round-trip error per channel over a real
+  1080p frame drops from 0.441 to 0.319. The stream is tagged bt709 to match
+  what is written, since a half-tagged stream is how this kind of thing starts.
+
 - `bloom` worked on a fixed eighth of the frame, which put a 320x180 render's
   bloom on a 40x22 image and quietly did nothing. The shrunken copy is now a
   fixed number of rows instead, so the effect is the same effect at every size.
