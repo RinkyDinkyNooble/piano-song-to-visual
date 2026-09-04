@@ -129,6 +129,7 @@ def test_the_documented_readme_example_is_valid(tmp_path: Path) -> None:
         ("[visual]\nblack_key_bar_width = 1.5\n", "black_key_bar_width"),
         ("[pedals]\nlanes = 4\n", "pedals.lanes"),
         ("[pedals]\nthreshold = 0\n", "pedals.threshold"),
+        ("[audio]\nreverb = 2\n", "audio.reverb"),
         ("[audio]\nbackend = 'winamp'\n", "audio.backend"),
         ("[audio]\nbackend = 'fluidsynth'\n", "requires audio.soundfont"),
         ("[audio]\nbackend = 'mux'\n", "requires audio.audio_file"),

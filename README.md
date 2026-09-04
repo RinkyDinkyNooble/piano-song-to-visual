@@ -376,6 +376,10 @@ lanes = 1                 # up to 3; sustain is the one MIDI reliably carries
 
 [audio]
 backend = "builtin"       # builtin | fluidsynth | mux | none
+reverb = 0.5              # how much room the piano is played in, 0 dry to 1 a
+                          # large hall. 0.5 is what it has always sounded like:
+                          # FluidSynth's reverb is on unless you turn it off.
+                          # fluidsynth backend only, and the others say so
 audio_file = ""           # for backend = "mux": your own recording
 offset_s = 0.0            # nudge that recording into sync
 stereo_width = 0.5        # low notes left, high notes right, as at the keyboard

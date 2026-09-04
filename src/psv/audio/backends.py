@@ -26,7 +26,7 @@ from pathlib import Path
 import numpy as np
 
 from psv.audio.click import mix_clicks
-from psv.config import AudioConfig
+from psv.config import DEFAULT_REVERB, AudioConfig
 from psv.model import HIGHEST_KEY, LOWEST_KEY, Pedal, Score
 from psv.practice import Click
 
@@ -258,6 +258,37 @@ def fluidsynth_available(soundfont: str, bin_dir: str = "") -> tuple[bool, str]:
     return True, ""
 
 
+#: What one reverb amount means, as FluidSynth's four parameters.
+#:
+#: Anchored at three points and interpolated between them. The middle anchor is
+#: FluidSynth's own defaults, which is what every psv render has sounded like:
+#: its reverb is on unless you turn it off, so 0.5 changes nothing and this is
+#: not a new opinion about how wet a piano should be.
+#:
+#: Room size is how long the tail is, damping is how fast the top end of it
+#: disappears, width is how far it spreads across the stereo field, and level is
+#: how much of it you hear. At 0 the level is 0 and the reverb is switched off
+#: outright, so it costs nothing rather than being computed and mixed at zero.
+REVERB_ANCHORS: dict[str, tuple[float, float, float]] = {
+    "roomsize": (0.20, 0.50, 0.85),
+    "damping": (0.05, 0.20, 0.45),
+    "width": (0.60, 0.80, 1.00),
+    "level": (0.00, 0.70, 1.00),
+}
+
+
+def reverb_settings(amount: float) -> dict[str, float]:
+    """FluidSynth's four reverb numbers, from one amount between 0 and 1."""
+    amount = min(max(amount, 0.0), 1.0)
+    settings = {}
+    for name, (dry, middle, wet) in REVERB_ANCHORS.items():
+        if amount <= 0.5:
+            settings[name] = dry + (middle - dry) * (amount / 0.5)
+        else:
+            settings[name] = middle + (wet - middle) * ((amount - 0.5) / 0.5)
+    return settings
+
+
 def synthesise_fluidsynth(
     score: Score,
     soundfont: str,
@@ -265,6 +296,7 @@ def synthesise_fluidsynth(
     program: int = 0,
     start: float = 0.0,
     duration: float | None = None,
+    reverb: float = DEFAULT_REVERB,
 ) -> np.ndarray:
     """Render through FluidSynth, returning interleaved stereo float32.
 
@@ -280,6 +312,11 @@ def synthesise_fluidsynth(
 
     synth = fluidsynth.Synth(samplerate=float(SAMPLE_RATE))
     try:
+        if reverb <= 0.0:
+            synth.setting("synth.reverb.active", 0)
+        else:
+            synth.set_reverb(**reverb_settings(reverb))
+
         preset = synth.sfload(str(Path(soundfont).expanduser()))
         if preset == -1:
             raise AudioError(f"FluidSynth could not load {soundfont}")
@@ -399,6 +436,15 @@ def render_audio(
     backend = config.backend
     width = config.stereo_width
 
+    if backend != "fluidsynth" and config.reverb != DEFAULT_REVERB:
+        # Say so rather than implying it happened. Only FluidSynth carries a
+        # reverb; adding one to the built-in synth would be sixty lines of
+        # Freeverb improving a tone that exists so the video is not silent.
+        log.warning(
+            "audio.reverb only applies to the fluidsynth backend; %r ignores it",
+            backend,
+        )
+
     if backend == "none":
         return AudioResult(path=None, backend="none")
 
@@ -426,6 +472,7 @@ def render_audio(
                 program=config.program,
                 start=start,
                 duration=duration,
+                reverb=config.reverb,
             )
         except (AudioError, OSError, RuntimeError) as exc:
             log.warning("fluidsynth failed: %s; using the built-in synth", exc)

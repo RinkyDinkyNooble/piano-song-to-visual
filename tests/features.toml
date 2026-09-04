@@ -669,3 +669,11 @@ name = "Full-range colour, so grey levels survive the encode"
 milestone = "M8"
 status = "done"
 verify = "e2e"
+
+# --------------------------------------------------- Audio effects
+[[feature]]
+id = "F-80"
+name = "Reverb, as one amount from dry to a large hall"
+milestone = "M8"
+status = "done"
+verify = "unit"

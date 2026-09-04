@@ -495,6 +495,26 @@ under your hands. Equal-power law, so a note does not dip in volume crossing the
 middle. It also stops the hands competing for the same place in the mix, which
 is what makes a left-hand line audible under a busy right hand.
 
+### Done: reverb, as one number
+
+`audio.reverb` from 0 to 1, or `--reverb`, driving FluidSynth's room size,
+damping, width and level together. A dry sampled piano sounds like a sample
+player; put it in a room and it sounds like an instrument.
+
+Building it turned up something the plan had wrong. FluidSynth enables its own
+reverb unless you turn it off, so psv was never dry: every render it has made
+already had a room on it, at room 0.5, damp 0.2, width 0.8, level 0.7. The curve
+is anchored so that `0.5` is exactly those numbers, which makes the default a
+name for what was already happening rather than a change to how anything sounds.
+`0` switches the reverb off outright. What is still ringing half a second after a
+short note goes from the noise floor at 0 to 35 times that at 1.
+
+The other backends do not go through FluidSynth and say so rather than implying
+it happened. A Freeverb network in numpy would give `builtin` a reverb for about
+sixty lines, and is deliberately not planned: it is the most complicated thing in
+[EFFECTS.md](EFFECTS.md) and it would improve a synth that exists so the video is
+not silent when FluidSynth is missing.
+
 ### Done: a theme, and effects to put on it
 
 Two features that were one until the stills came back, both off by default,
@@ -555,14 +575,7 @@ determinism guarantee rest on, and it is what made this possible at all.
 clutter when not, so strictly opt-in. Needs a small bitmap font, since the
 renderer deliberately loads nothing from the filesystem.
 
-**Reverb.** A dry sampled piano sounds like a sample player. Put it in a room
-and it sounds like an instrument, and that is most of the gap between this tool
-and a recording. FluidSynth carries the reverb already, so it is one config key,
-`audio.reverb` from 0 to 1, driving its four parameters along a curve picked once
-by ear. The other backends get nothing and say so. Planned alongside the visual
-effects in [EFFECTS.md](EFFECTS.md).
-
-Separately, exporting the soundtrack on its own so it can go through whatever you
+**Exporting the soundtrack on its own**, so it can go through whatever you
 already use. Anything more elaborate than a room belongs in software built for
 it, and the `mux` backend already takes a finished audio file back.
 

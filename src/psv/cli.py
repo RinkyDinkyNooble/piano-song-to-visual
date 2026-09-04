@@ -21,6 +21,7 @@ from psv.arrange import arrange as arrange_score
 from psv.audio.backends import AudioError
 from psv.config import (
     ENCODE_LEVELS,
+    AudioConfig,
     Config,
     ConfigError,
     PracticeConfig,
@@ -214,6 +215,17 @@ def _add_render_options(parser: argparse.ArgumentParser) -> None:
             "a single process (default: 0)"
         ),
     )
+    parser.add_argument(
+        "--reverb",
+        type=float,
+        default=None,
+        metavar="AMOUNT",
+        help=(
+            "how much room the piano is played in, 0 dry to 1 a large hall "
+            "(default: 0.5, which is what it has always sounded like). "
+            "fluidsynth backend only"
+        ),
+    )
     _add_practice_options(parser)
 
 
@@ -309,6 +321,16 @@ def _visual_with_overrides(
     if not overrides:
         return visual
     updated = replace(visual, **overrides)
+    updated.validate()
+    return updated
+
+
+def _audio_with_overrides(audio: AudioConfig, args: argparse.Namespace) -> AudioConfig:
+    """`--reverb` beats audio.reverb, as the size overrides do."""
+    reverb = getattr(args, "reverb", None)
+    if reverb is None:
+        return audio
+    updated = replace(audio, reverb=reverb)
     updated.validate()
     return updated
 
@@ -504,11 +526,12 @@ def _progress(args: argparse.Namespace) -> Callable[[int, int], None]:
 def _cmd_run(args: argparse.Namespace, config: Config) -> int:
     visual = _visual_with_overrides(config.visual, args)
     practice = _practice_with_overrides(config.practice, args)
+    audio = _audio_with_overrides(config.audio, args)
     _check_window_flags(args)
     result = run_pipeline(
         args.input,
         args.output,
-        replace(config, visual=visual, practice=practice),
+        replace(config, visual=visual, practice=practice, audio=audio),
         start=args.start or 0.0,
         duration=args.seconds,
         bars=args.bars,

@@ -492,7 +492,7 @@ numbers change. That is why the intensity slider is in from step 1.
 
 # Audio
 
-One setting, and it is the only one worth having.
+One setting, and it is the only one worth having. Built.
 
 ## Reverb, and nothing else
 
@@ -503,21 +503,41 @@ to close it.
 
 ```toml
 [audio]
-reverb = 0.35    # 0 is dry, 1 is a large hall
+reverb = 0.5     # 0 is dry, 1 is a large hall
 ```
+
+Or `--reverb 0.8` for one run.
 
 **One number, not four.** FluidSynth's reverb takes room size, damping, width and
 level. Exposing all four means picking four numbers to find out that three of
-them barely matter. A single amount drives all four along a curve chosen once by
-ear, which is the difference between a setting you use and a setting you read
-about and skip.
+them barely matter. A single amount drives all four, which is the difference
+between a setting you use and a setting you read about and skip.
 
-No new dependency, no DSP, and roughly an afternoon.
+**And psv was never dry.** This is the thing the plan did not know. FluidSynth
+enables its own reverb unless you turn it off, at room 0.5, damp 0.2, width 0.8,
+level 0.7, so every render this tool has ever made already had a room on it. The
+curve is anchored at three points and interpolated between them, and the middle
+anchor is exactly those numbers. So `0.5` is not a new opinion about how wet a
+piano should be. It is the setting that was already there, given a name and a
+way to move.
 
-**Checkpoint:** three short renders of the same passage, dry, moderate and
-generous. You say which is the default and whether the top of the range is far
-enough. If it needs a second knob after hearing it, that is a finding, not a
-failure.
+| | 0.0 | 0.5 | 1.0 |
+| --- | --- | --- | --- |
+| room size | 0.20 | 0.50 | 0.85 |
+| damping | 0.05 | 0.20 | 0.45 |
+| width | 0.60 | 0.80 | 1.00 |
+| level | 0.00 | 0.70 | 1.00 |
+
+At 0 the reverb is switched off outright rather than mixed in at zero, so dry
+costs nothing. Measured on one short note followed by silence, what is still
+ringing half a second later goes from the noise floor at 0 to 35 times that at
+1, which is a wide enough range to be worth a knob.
+
+No new dependency, no DSP, and it took about an afternoon.
+
+**Checkpoint:** four short renders of the same passage at 0, 0.5, 0.8 and 1.
+You say which is the default and whether the top of the range is far enough. If
+it needs a second knob after hearing it, that is a finding, not a failure.
 
 ## What the other backends get
 

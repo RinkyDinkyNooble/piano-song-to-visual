@@ -55,6 +55,11 @@ PRACTICE_HANDS = ("both", "left", "right")
 MIN_TEMPO = 0.1
 MAX_TEMPO = 4.0
 
+#: The middle of the reverb range, and what psv has always sounded like:
+#: FluidSynth turns its own reverb on by default, so this is not a new opinion
+#: about how wet a piano should be, it is the setting that was already there.
+DEFAULT_REVERB = 0.5
+
 #: A count-in longer than this is waiting, not counting.
 MAX_COUNT_IN_BARS = 8
 
@@ -388,8 +393,25 @@ class AudioConfig:
     #: mono; 1 puts the extremes hard left and hard right, wider than any real
     #: piano and mostly useful for hearing that it works.
     stereo_width: float = 0.5
+    #: How much room the piano is played in. 0 is dry, 1 is a large hall.
+    #:
+    #: One number rather than FluidSynth's four. Exposing room size, damping,
+    #: width and level means picking four numbers to find out that three of them
+    #: barely matter, which is the difference between a setting you use and a
+    #: setting you read about and skip.
+    #:
+    #: 0.5 is exactly what this always sounded like. FluidSynth enables its own
+    #: reverb by default, so psv has never been dry, and the middle of this
+    #: range is those defaults rather than a new opinion.
+    #:
+    #: fluidsynth only. The other backends do not go through it and say so.
+    reverb: float = DEFAULT_REVERB
 
     def validate(self) -> None:
+        if not 0.0 <= self.reverb <= 1.0:
+            raise ConfigError(
+                f"audio.reverb must be between 0 and 1, got {self.reverb}"
+            )
         if not 0.0 <= self.stereo_width <= 1.0:
             raise ConfigError(
                 f"audio.stereo_width must be between 0 and 1, got {self.stereo_width}"

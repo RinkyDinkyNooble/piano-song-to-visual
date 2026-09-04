@@ -22,9 +22,16 @@ from psv.audio import (
     synthesise,
     write_wav,
 )
-from psv.audio.backends import AudioError, mux_into_video, pan_gains
+from psv.audio.backends import (
+    REVERB_ANCHORS,
+    AudioError,
+    mux_into_video,
+    pan_gains,
+    reverb_settings,
+    synthesise_fluidsynth,
+)
 from psv.audio.click import click_wave, mix_clicks
-from psv.config import AudioConfig
+from psv.config import DEFAULT_REVERB, AudioConfig
 from psv.midi import read_midi
 from psv.model import Hand, Note, Part, Pedal, PedalEvent, Score
 from psv.practice import Click
@@ -500,3 +507,85 @@ def test_mono_stays_reachable(tmp_path: Path) -> None:
     assert result.path is not None
     with wave.open(str(result.path)) as handle:
         assert handle.getnchannels() == 1
+
+
+# -- reverb --------------------------------------------------------------
+
+
+@pytest.mark.feature("F-80")
+def test_the_middle_of_the_reverb_range_is_what_it_always_was() -> None:
+    """FluidSynth turns its own reverb on by default, so psv has never been dry.
+    0.5 is those defaults, which is why the default changes nothing."""
+    middle = reverb_settings(DEFAULT_REVERB)
+    assert middle == {
+        "roomsize": 0.5,
+        "damping": 0.2,
+        "width": 0.8,
+        "level": 0.7,
+    }
+
+
+@pytest.mark.feature("F-80")
+def test_zero_reverb_asks_for_no_reverb_at_all() -> None:
+    assert reverb_settings(0.0)["level"] == 0.0
+
+
+@pytest.mark.feature("F-80")
+@pytest.mark.parametrize("name", sorted(REVERB_ANCHORS))
+def test_every_reverb_parameter_only_goes_one_way(name: str) -> None:
+    """One number drives four, so all four have to move together. A parameter
+    that dipped in the middle would make the knob feel broken."""
+    amounts = [index / 20 for index in range(21)]
+    values = [reverb_settings(amount)[name] for amount in amounts]
+    assert values == sorted(values)
+    assert values[0] < values[-1]
+
+
+@pytest.mark.feature("F-80")
+def test_a_reverb_outside_the_range_is_clamped_not_passed_on() -> None:
+    """Config validates this, but the settings are also reachable directly and
+    FluidSynth would take an out-of-range level without complaining."""
+    assert reverb_settings(-5.0) == reverb_settings(0.0)
+    assert reverb_settings(5.0) == reverb_settings(1.0)
+
+
+@pytest.mark.feature("F-80")
+def test_a_backend_without_reverb_says_so_rather_than_ignoring_it(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    score = Score(parts=(Part(notes=(Note(pitch=60, start=0.0, end=0.5),)),))
+    config = AudioConfig(backend="builtin", reverb=0.9)
+    with caplog.at_level("WARNING"):
+        render_audio(score, config, tmp_path)
+    assert "reverb" in caplog.text
+    assert "fluidsynth" in caplog.text
+
+
+@pytest.mark.feature("F-80")
+def test_the_default_reverb_is_quiet_about_backends_that_lack_it(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Nobody chose the default, so warning about it would be noise."""
+    score = Score(parts=(Part(notes=(Note(pitch=60, start=0.0, end=0.5),)),))
+    with caplog.at_level("WARNING"):
+        render_audio(score, AudioConfig(backend="builtin"), tmp_path)
+    assert "reverb" not in caplog.text
+
+
+@needs_fluidsynth
+@pytest.mark.feature("F-80")
+def test_more_reverb_means_a_longer_tail() -> None:
+    """The thing the number is for. One short note, then silence: what is left
+    ringing a second later is the room."""
+    score = Score(parts=(Part(notes=(Note(pitch=60, start=0.1, end=0.4),)),))
+
+    def tail(amount: float) -> float:
+        samples = synthesise_fluidsynth(
+            score, str(_SOUNDFONT), start=0.0, duration=4.0, reverb=amount
+        ).reshape(-1, 2)
+        window = samples[int(1.0 * SAMPLE_RATE) : int(1.5 * SAMPLE_RATE)]
+        return float(np.sqrt((window**2).mean()))
+
+    dry, middle, wet = tail(0.0), tail(DEFAULT_REVERB), tail(1.0)
+    assert dry < middle < wet
+    assert wet > dry * 10, f"the range is too narrow to be worth a knob: {dry} to {wet}"

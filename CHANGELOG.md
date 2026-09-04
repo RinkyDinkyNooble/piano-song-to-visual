@@ -36,6 +36,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     arranged so that nothing got a config key until it had been seen in motion
     and kept.
 
+- **Reverb, as one number.** `audio.reverb` from 0 to 1, or `--reverb`, driving
+  FluidSynth's room size, damping, width and level together. Exposing all four
+  means picking four numbers to find out that three of them barely matter.
+  - `0.5` is the default and changes nothing: FluidSynth enables its own reverb
+    unless told not to, so psv has never been dry, and the middle of the range
+    is exactly the numbers that were already in use.
+  - `0` switches the reverb off outright rather than mixing it in at zero. What
+    is still ringing half a second after a short note goes from the noise floor
+    at 0 to 35 times that at 1.
+  - `builtin` and `mux` do not go through FluidSynth, so choosing a reverb with
+    either of them says it was ignored instead of implying it happened.
+
 - **A theme layer: the picture can be made to look like something now.** All of
   it is off by default, because a practice aid and a piece of spectacle want
   opposite things and the practice aid is the default.

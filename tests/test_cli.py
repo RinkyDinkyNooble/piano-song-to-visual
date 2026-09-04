@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from argparse import Namespace
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -502,6 +503,25 @@ def test_presets_describes_what_each_one_changes(
     out = capsys.readouterr().out
     assert "small-hands" in out
     assert "hands.max_span_semitones = 9" in out
+
+
+@pytest.mark.feature("F-80")
+def test_the_reverb_flag_beats_the_config_file() -> None:
+    """A flag beats the file, as every other override does."""
+    from psv.cli import _audio_with_overrides
+    from psv.config import Config
+
+    config = Config.load(None)
+    assert _audio_with_overrides(config.audio, Namespace(reverb=0.9)).reverb == 0.9
+    assert _audio_with_overrides(config.audio, Namespace(reverb=None)) is config.audio
+
+
+@pytest.mark.feature("F-80")
+def test_an_out_of_range_reverb_flag_is_refused(
+    midi_path: Callable[[str], Path], tmp_path: Path
+) -> None:
+    argv = ["run", str(midi_path("single-note")), "-o", str(tmp_path / "out.mp4")]
+    assert main([*argv, "--reverb", "3"]) == 1
 
 
 @pytest.mark.feature("F-74")
