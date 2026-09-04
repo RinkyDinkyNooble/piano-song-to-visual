@@ -27,6 +27,8 @@ RGB = tuple[int, int, int]
 #: MIDI velocity runs 1 to 127, so there are 126 steps between the extremes.
 _VELOCITY_RANGE = 126.0
 
+WHITE: RGB = (255, 255, 255)
+
 
 def parse_hex(colour: str) -> RGB:
     """``#4a90d9`` or ``#abc`` to an RGB triple."""
@@ -51,6 +53,18 @@ def scale(colour: RGB, factor: float) -> RGB:
         round(colour[1] * factor),
         round(colour[2] * factor),
     )
+
+
+def shaded(colour: RGB, shade: float) -> RGB:
+    """Move a colour toward black or toward white, keeping its hue.
+
+    Negative darkens, positive lightens, zero leaves it alone. Used for the
+    note-bar outline, where staying a shade of the bar's own colour is what
+    keeps which hand is playing readable at the border.
+    """
+    if shade < 0:
+        return scale(colour, 1.0 + shade)
+    return blend(colour, WHITE, shade)
 
 
 def velocity_brightness(velocity: int, config: ColorConfig) -> float:

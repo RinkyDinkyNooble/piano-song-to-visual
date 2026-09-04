@@ -42,12 +42,58 @@ PRESETS: dict[str, dict[str, dict[str, Any]]] = {
     },
 }
 
+#: Colour schemes, kept apart from the presets above because they answer a
+#: different question. A preset changes what the video *is*: how wide a reach,
+#: how thin the texture, how fast. A theme only changes how it looks, so the
+#: two compose and neither has to know about the other.
+#:
+#: Every one of these leaves hue carrying which hand and brightness carrying how
+#: loud. That is the readability rule, and a theme may not spend it.
+THEMES: dict[str, dict[str, Any]] = {
+    "midnight": {
+        "gradient_top": "#0b1026",
+        "gradient_bottom": "#1b2350",
+        "note_border_shade": 0.35,
+        "bar_gradient": 0.5,
+        "colors": {"left_hand": "#4f9dff", "right_hand": "#ffcf5c"},
+    },
+    "ember": {
+        "gradient_top": "#160b0b",
+        "gradient_bottom": "#4a1524",
+        "note_border_shade": 0.25,
+        "bar_gradient": -0.4,
+        "colors": {"left_hand": "#ff9b3d", "right_hand": "#3fd0c9"},
+    },
+    "neon": {
+        "gradient_top": "#07040f",
+        "gradient_bottom": "#2a0a45",
+        "note_border_shade": 0.7,
+        "bar_gradient": 0.6,
+        "colors": {"left_hand": "#ff3ea5", "right_hand": "#31e7ff"},
+    },
+    "aurora": {
+        "gradient_top": "#04121a",
+        "gradient_bottom": "#0d3a34",
+        "note_border_shade": 0.2,
+        "bar_gradient": 0.35,
+        "colors": {"left_hand": "#7c6cff", "right_hand": "#4fe08a"},
+    },
+}
+
 #: One line each, for `--preset` in the help text and for `psv presets`.
 DESCRIPTIONS: dict[str, str] = {
     "small-hands": "a 9-semitone reach instead of 12",
     "beginner": "small hands, thinner texture, 0.7x tempo, two bars of count-in",
     "as-written": "no span limit and nothing thinned for difficulty",
     "draft": "640x360 at 24fps with no audio, for iterating on visuals",
+}
+
+#: One line each, for `--theme` in the help text and for `psv presets`.
+THEME_DESCRIPTIONS: dict[str, str] = {
+    "midnight": "deep blue, lit edges, blue against amber",
+    "ember": "warm dark red, amber against teal",
+    "neon": "violet and hard white edges, the loudest one",
+    "aurora": "deep teal, violet against green",
 }
 
 
@@ -70,5 +116,28 @@ def apply_preset(config: Config, name: str) -> Config:
         updated = replace(
             updated, **{section: replace(getattr(updated, section), **fields)}
         )
+    updated.validate()
+    return updated
+
+
+def apply_theme(config: Config, name: str) -> Config:
+    """Return ``config`` with ``name``'s colour scheme applied.
+
+    A theme sits between the preset and the flags: more specific than a bundle
+    that also changes how the piece is played, less specific than something you
+    typed for this run.
+    """
+    theme = THEMES.get(name)
+    if theme is None:
+        raise ConfigError(
+            f"unknown theme {name!r}. Available: {', '.join(sorted(THEMES))}"
+        )
+
+    overrides = dict(theme)
+    colours = overrides.pop("colors", None)
+    visual = replace(config.visual, **overrides)
+    if colours is not None:
+        visual = replace(visual, colors=replace(visual.colors, **colours))
+    updated = replace(config, visual=visual)
     updated.validate()
     return updated

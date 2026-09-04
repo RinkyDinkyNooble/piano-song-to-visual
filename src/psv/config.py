@@ -193,6 +193,29 @@ class VisualConfig:
     #: resolution. At 320 wide, a border that looks right at 1080p swallows the
     #: bar. 0 turns it off.
     note_border: float = 0.0016
+    #: How the outline is shaded away from the bar's own colour. -1 is black,
+    #: 0 is the bar's colour and no visible outline, +1 is white. The default
+    #: is the dark edge this always drew; positive values light a bar from
+    #: inside instead of cutting it out of the background.
+    #:
+    #: A shade rather than a colour of its own. The outline is drawn inside the
+    #: bar and eats a few pixels of it, so at speed a short note is mostly
+    #: outline, and keeping it a shade of the bar's hue is what leaves which
+    #: hand is playing readable at the edge.
+    note_border_shade: float = -0.45
+    #: A vertical brightness ramp down each bar. 0 is the flat fill. Positive
+    #: fades the top of the bar, negative fades the bottom, so which end looks
+    #: lit is a choice rather than a fixed opinion.
+    bar_gradient: float = 0.0
+    #: A vertical gradient behind everything, top colour and bottom colour.
+    #: Both empty leaves `background` in charge.
+    #:
+    #: Separate keys rather than a relaxed rule on `background`, and any hue is
+    #: allowed here because setting them is itself the opt-in. `background`
+    #: stays grayscale so the practice default cannot drift into competing with
+    #: the hues that say which hand is playing.
+    gradient_top: str = ""
+    gradient_bottom: str = ""
     #: How many processes draw and encode the video at once. 0 asks for one
     #: per core, 1 renders in a single process the way this always did.
     #:
@@ -212,6 +235,13 @@ class VisualConfig:
     def encoder_preset(self) -> str:
         """The x264 preset `encode` names."""
         return ENCODE_LEVELS[self.encode]
+
+    @property
+    def gradient(self) -> tuple[str, str] | None:
+        """The background gradient's two colours, or None for a flat fill."""
+        if self.gradient_top and self.gradient_bottom:
+            return self.gradient_top, self.gradient_bottom
+        return None
 
     def validate(self) -> None:
         for name in ("width", "height", "fps"):
@@ -235,6 +265,26 @@ class VisualConfig:
             raise ConfigError(
                 f"visual.note_border must be between 0 and 0.02, got {self.note_border}"
             )
+        if not -1.0 <= self.note_border_shade <= 1.0:
+            raise ConfigError(
+                "visual.note_border_shade must be between -1 and 1, got "
+                f"{self.note_border_shade}"
+            )
+        if not -1.0 <= self.bar_gradient <= 1.0:
+            raise ConfigError(
+                f"visual.bar_gradient must be between -1 and 1, got {self.bar_gradient}"
+            )
+        if bool(self.gradient_top) != bool(self.gradient_bottom):
+            raise ConfigError(
+                "visual.gradient_top and visual.gradient_bottom go together: "
+                "set both for a gradient background, or neither for a flat one"
+            )
+        for name in ("gradient_top", "gradient_bottom"):
+            value = getattr(self, name)
+            if value and not _is_hex_colour(value):
+                raise ConfigError(
+                    f"visual.{name} must be a hex colour like '#140e28', got {value!r}"
+                )
         if not 0.0 <= self.black_key_darkening <= 1.0:
             raise ConfigError(
                 "visual.black_key_darkening must be between 0 and 1, "

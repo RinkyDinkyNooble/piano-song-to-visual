@@ -40,7 +40,14 @@ from psv.midi import write_midi_file
 from psv.midi.read import MidiReadError
 from psv.pipeline import run as run_pipeline
 from psv.practice import prepare
-from psv.presets import DESCRIPTIONS, PRESETS, apply_preset
+from psv.presets import (
+    DESCRIPTIONS,
+    PRESETS,
+    THEME_DESCRIPTIONS,
+    THEMES,
+    apply_preset,
+    apply_theme,
+)
 from psv.render.video import TAIL_S, VideoWriteError, render_video
 
 log = logging.getLogger("psv")
@@ -60,7 +67,7 @@ IMPLEMENTED = frozenset({"inspect", "export", "arrange", "constrain", "render", 
 #: Commands that answer a question instead of moving a file through a stage.
 UTILITY_COMMANDS: dict[str, str] = {
     "instruments": "list the instruments audio.program can select",
-    "presets": "describe the named setting bundles --preset accepts",
+    "presets": "describe what --preset and --theme accept",
 }
 
 
@@ -99,6 +106,12 @@ def _global_options(suppress: bool) -> argparse.ArgumentParser:
         choices=sorted(PRESETS),
         default=argparse.SUPPRESS if suppress else None,
         help="a named bundle of settings; `psv presets` describes each one",
+    )
+    parent.add_argument(
+        "--theme",
+        choices=sorted(THEMES),
+        default=argparse.SUPPRESS if suppress else None,
+        help="a named colour scheme; `psv presets` describes each one",
     )
     return parent
 
@@ -364,14 +377,23 @@ def _check_window_flags(args: argparse.Namespace) -> None:
 
 
 def _cmd_presets(args: argparse.Namespace, config: Config) -> int:
-    """What each preset does, without having to render something to find out."""
+    """What each preset and theme does, without rendering something to find out."""
     del args, config
-    width = max(len(name) for name in PRESETS)
+    width = max(len(name) for name in (*PRESETS, *THEMES))
+
+    print("presets (--preset), which change how the piece is played:")
     for name in sorted(PRESETS):
         print(f"  {name:{width}}  {DESCRIPTIONS[name]}")
         for section, fields in sorted(PRESETS[name].items()):
             for key, value in sorted(fields.items()):
                 print(f"  {'':{width}}    {section}.{key} = {value!r}")
+
+    print()
+    print("themes (--theme), which only change how it looks:")
+    for name in sorted(THEMES):
+        print(f"  {name:{width}}  {THEME_DESCRIPTIONS[name]}")
+        for key, value in sorted(THEMES[name].items()):
+            print(f"  {'':{width}}    visual.{key} = {value!r}")
     return 0
 
 
@@ -513,6 +535,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         config = Config.load(args.config)
         if args.preset is not None:
             config = apply_preset(config, args.preset)
+        if args.theme is not None:
+            config = apply_theme(config, args.theme)
         config = _hands_with_overrides(config, args)
         return HANDLERS[args.command](args, config)
     except (

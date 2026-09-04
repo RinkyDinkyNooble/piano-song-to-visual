@@ -504,6 +504,34 @@ def test_presets_describes_what_each_one_changes(
     assert "hands.max_span_semitones = 9" in out
 
 
+@pytest.mark.feature("F-74")
+def test_presets_describes_the_themes_too(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """One command for both, since the question is the same: what does this do
+    to my render, without rendering something to find out."""
+    assert main(["presets"]) == 0
+    out = capsys.readouterr().out
+    assert "themes (--theme)" in out
+    assert "neon" in out
+    assert "visual.gradient_top" in out
+
+
+@pytest.mark.feature("F-74")
+def test_a_theme_is_accepted_on_either_side_of_the_subcommand(
+    midi_path: Callable[[str], Path],
+) -> None:
+    path = str(midi_path("single-note"))
+    assert main(["--theme", "neon", "inspect", path]) == 0
+    assert main(["inspect", path, "--theme", "neon"]) == 0
+
+
+@pytest.mark.feature("F-74")
+def test_an_unknown_theme_is_a_usage_error(midi_path: Callable[[str], Path]) -> None:
+    with pytest.raises(SystemExit):
+        main(["--theme", "chartreuse", "inspect", str(midi_path("single-note"))])
+
+
 @pytest.mark.feature("F-59")
 def test_a_preset_changes_the_settings_it_names(
     midi_path: Callable[[str], Path], tmp_path: Path

@@ -10,6 +10,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A theme layer: the picture can be made to look like something now.** All of
+  it is off by default, because a practice aid and a piece of spectacle want
+  opposite things and the practice aid is the default.
+  - `visual.gradient_top` and `visual.gradient_bottom`, a vertical gradient
+    behind everything. Both or neither, and setting them replaces
+    `visual.background`. They may have a hue, which `background` may not: the
+    grayscale rule exists so a practice render cannot drift into competing with
+    the colours that say which hand is playing, and setting a gradient is itself
+    the opt-in. Measured at 5.40 ms against the flat fill's 5.38, which is to
+    say free: it is the same write to the same pixels from a different source.
+  - `visual.note_border_shade`, from -1 (black) through 0 (the bar's own colour)
+    to +1 (white). The default -0.45 is exactly the dark edge that was drawn
+    before. Positive lights a bar from inside rather than cutting it out of the
+    background. A shade rather than a colour of its own, because the border is
+    drawn inside the bar and a short note is mostly border, so keeping the bar's
+    hue is what leaves which hand readable at the edge.
+  - `visual.bar_gradient`, a brightness ramp along each bar. Positive fades the
+    top, negative fades the bottom, 0 is the flat fill. 0.69 ms for a busy 1080p
+    frame. The ramp is worked out over the bar's whole length and then clipped,
+    so a bar leaving the top of the screen does not have its shading slide.
+  - `--theme`, with `midnight`, `ember`, `neon` and `aurora`. A preset changes
+    how the piece is played and a theme only how it looks, so they are separate
+    flags and compose. `psv presets` now describes both. Every theme is tested
+    to keep the two hands' colours far enough apart to tell apart.
+
+### Fixed
+
+- The alignment grid is mixed with the background a row at a time, so it stays
+  equally faint down a gradient instead of vanishing into the dark end. It is
+  still drawn rather than composited, which is what keeps a crossing of two grid
+  lines exactly as faint as either line alone.
+
 - **Renders run across processes, and how hard the encoder works is now your
   choice.** Für Elise at 1080p60 took 1:41 and now takes 0:44, or 0:34 asking
   for `--encode fast`.

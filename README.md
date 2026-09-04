@@ -198,8 +198,27 @@ thinned for difficulty), and `draft` (640x360, no audio, for iterating).
 hands is the premise. What it turns off is the span limit and difficulty
 thinning.
 
+### Themes
+
+A preset changes how the piece is played. A theme only changes how it looks, so
+the two compose:
+
+```bash
+psv run song.mid -o practice.mp4 --theme midnight
+psv presets                                  # lists themes as well as presets
+```
+
+`midnight` (deep blue, blue against amber), `ember` (warm dark red, amber
+against teal), `neon` (violet and hard white edges), `aurora` (deep teal, violet
+against green). None is on by default: the plain look is the one that stays out
+of the way while you are learning something.
+
+Every theme leaves hue carrying which hand and brightness carrying how loud.
+That is the readability rule, and there is a test that no theme spends it.
+
 Precedence runs least specific to most: the config file, then the preset, then
-the individual flags. `--preset small-hands --span 14` gives you 14.
+the theme, then the individual flags. `--preset small-hands --span 14` gives you
+14.
 
 ### Practising with it
 
@@ -296,6 +315,14 @@ loud  = 1.0               # brightness at ff
 note_border = 0.0016      # outline on each bar, as a fraction of frame width.
                           # This is what separates four fast repeats on one key
                           # from one long block. 0 turns it off
+note_border_shade = -0.45 # -1 black, 0 the bar's own colour, +1 white. Negative
+                          # cuts the bar out of the background, positive lights
+                          # it from inside
+bar_gradient = 0.0        # brightness ramp along each bar. Positive fades the
+                          # top, negative fades the bottom
+gradient_top = ""         # a vertical gradient behind everything. Set both ends
+gradient_bottom = ""      # to use it; it then replaces `background` and may
+                          # have a hue, which `background` may not
 workers = 0               # processes to render with; 0 is one per core,
                           # 1 renders in a single process
 encode = "balanced"       # small | balanced | fast: how long the encoder

@@ -31,7 +31,7 @@ from psv.render.color import (
     note_color,
     parse_hex,
     pedal_color,
-    scale,
+    shaded,
 )
 from psv.render.geometry import KeyboardGeometry
 
@@ -47,9 +47,10 @@ PEDAL_LANE_FRACTION = 0.028
 #: Gap between the keyboard and the pedal lanes, as a fraction of the frame.
 PEDAL_GUTTER_FRACTION = 0.008
 
-#: How much darker a note bar's outline is than the bar itself. Dark enough to
-#: read as an edge, still the bar's own hue, so which hand is playing survives.
-BORDER_DARKENING = 0.45
+#: How far a bar gradient may take the faded end of a bar from its own colour,
+#: at full strength. Short of black, because a bar has to stay readable as one
+#: colour at both ends.
+BAR_GRADIENT_DEPTH = 0.6
 
 #: A border may take at most this fraction of a bar's width or height. A short
 #: note at speed is only a few pixels tall, and an outline that swallowed it
@@ -177,7 +178,8 @@ def render_frame(
     faintly, because knowing where it is is half the reason to practise hands
     separately; it is the soundtrack that goes quiet, not the picture.
     """
-    palette = palette or Palette(background=parse_hex(config.background))
+    gradient = background_column(config, config.height)
+    palette = palette or Palette(background=_nominal_background(config, gradient))
     layout = Layout.from_config(config, pedal_lanes)
     geometry = KeyboardGeometry(
         width=layout.keyboard_width,
@@ -186,9 +188,12 @@ def render_frame(
     )
 
     frame = np.empty((layout.height, layout.width, 3), dtype=np.uint8)
-    frame[:, :] = palette.background
+    if gradient is None:
+        frame[:, :] = palette.background
+    else:
+        frame[:, :] = gradient[:, None, :]
 
-    _draw_grid(frame, score, config, layout, geometry, palette, time)
+    _draw_grid(frame, score, config, layout, geometry, palette, time, gradient)
     sounding = _draw_falling_notes(
         frame, score, config, layout, geometry, palette, time, focus
     )
@@ -196,6 +201,35 @@ def render_frame(
     _draw_keyboard(frame, layout, geometry, palette, sounding, config)
     _draw_pedal_indicators(frame, layout, palette, active_pedals, config)
     return frame
+
+
+def background_column(config: VisualConfig, height: int) -> np.ndarray | None:
+    """One colour per row for a gradient background, or None for a flat fill.
+
+    Costs nothing worth measuring over the flat fill it replaces: it is the
+    same write to the same pixels from a different source, and filling the
+    background is already most of what a frame costs.
+    """
+    pair = config.gradient
+    if pair is None:
+        return None
+    top = np.array(parse_hex(pair[0]), dtype=np.float64)
+    bottom = np.array(parse_hex(pair[1]), dtype=np.float64)
+    ramp = np.linspace(0.0, 1.0, height, dtype=np.float64)[:, None]
+    return np.rint(top + (bottom - top) * ramp).astype(np.uint8)
+
+
+def _nominal_background(config: VisualConfig, gradient: np.ndarray | None) -> RGB:
+    """One colour standing for the background, for the things that need one.
+
+    The muted hand in practice mode is mixed toward the background, and with a
+    gradient there is no single background to mix toward. Its midpoint is close
+    enough for a colour that exists to be read past.
+    """
+    if gradient is None:
+        return parse_hex(config.background)
+    middle = gradient[len(gradient) // 2]
+    return (int(middle[0]), int(middle[1]), int(middle[2]))
 
 
 def _fill(
@@ -221,6 +255,61 @@ def _fill(
     frame[y0:y1, x0:x1] = colour
 
 
+def _fill_bar(
+    frame: Frame,
+    left: float,
+    top: float,
+    right: float,
+    bottom: float,
+    colour: RGB,
+    gradient: float,
+) -> None:
+    """A bar's fill: flat, or ramped along its length.
+
+    The ramp is worked out over the bar's whole extent and then clipped, so a
+    bar half off the top of the screen shows the part of the gradient it has
+    reached rather than squeezing the whole thing into what is visible.
+    """
+    if gradient == 0.0:
+        _fill(frame, left, top, right, bottom, colour)
+        return
+
+    height, width = frame.shape[:2]
+    full_top, full_bottom = round(top), round(bottom)
+    x0 = max(0, round(left))
+    x1 = min(width, round(right))
+    y0 = max(0, full_top)
+    y1 = min(height, full_bottom)
+    if x1 <= x0 or y1 <= y0:
+        return
+
+    faded = 1.0 - BAR_GRADIENT_DEPTH * abs(gradient)
+    first, last = (faded, 1.0) if gradient > 0 else (1.0, faded)
+    factors = np.linspace(first, last, full_bottom - full_top, dtype=np.float64)
+    visible = factors[y0 - full_top : y1 - full_top, None]
+    ramp = np.rint(np.array(colour, dtype=np.float64) * visible)
+    frame[y0:y1, x0:x1] = ramp[:, None, :].astype(np.uint8)
+
+
+def _fill_rows(
+    frame: Frame,
+    left: float,
+    top: float,
+    right: float,
+    bottom: float,
+    column: np.ndarray,
+) -> None:
+    """Fill a rectangle from a colour per row of the frame."""
+    height, width = frame.shape[:2]
+    x0 = max(0, round(left))
+    x1 = min(width, round(right))
+    y0 = max(0, round(top))
+    y1 = min(height, round(bottom))
+    if x1 <= x0 or y1 <= y0:
+        return
+    frame[y0:y1, x0:x1] = column[y0:y1, None, :]
+
+
 # -- the alignment grid --------------------------------------------------
 
 
@@ -232,6 +321,7 @@ def _draw_grid(
     geometry: KeyboardGeometry,
     palette: Palette,
     time: float,
+    gradient: np.ndarray | None,
 ) -> None:
     """Faint rules for reading the picture, drawn under everything else.
 
@@ -242,7 +332,7 @@ def _draw_grid(
     grid = config.grid
     if grid.opacity <= 0:
         return
-    colour = blend(palette.background, palette.grid, grid.opacity)
+    column = _grid_colours(palette, gradient, layout.height, grid.opacity)
 
     if grid.pitch_lines != "none":
         step = 12 if grid.pitch_lines == "octave" else 7
@@ -250,12 +340,35 @@ def _draw_grid(
             if not geometry.contains(pitch):
                 continue
             left, _ = geometry.key_span(pitch)
-            _fill(frame, left, 0, left + 1, layout.keyboard_top, colour)
+            _fill_rows(frame, left, 0, left + 1, layout.keyboard_top, column)
 
     if grid.beat_lines != "none":
         for line_time in _beat_line_times(score, grid.beat_lines, time, layout):
             y = layout.time_to_y(line_time, time)
-            _fill(frame, 0, y, layout.width, y + 1, colour)
+            _fill_rows(frame, 0, y, layout.width, y + 1, column)
+
+
+def _grid_colours(
+    palette: Palette,
+    gradient: np.ndarray | None,
+    height: int,
+    opacity: float,
+) -> np.ndarray:
+    """What colour the grid is on each row of the frame.
+
+    Mixed with the background a row at a time, so the grid stays equally faint
+    all the way down a gradient instead of disappearing into its dark end.
+
+    The colour is drawn rather than composited, which is what keeps a crossing
+    of two lines exactly as faint as either line alone. Compositing blends twice
+    where they meet and leaves a brighter dot at every intersection.
+    """
+    if gradient is None:
+        flat = blend(palette.background, palette.grid, opacity)
+        return np.tile(np.array(flat, dtype=np.uint8), (height, 1))
+    over = np.array(palette.grid, dtype=np.float64)
+    under = gradient.astype(np.float64)
+    return np.rint(under + (over - under) * opacity).astype(np.uint8)
 
 
 def _beat_line_times(
@@ -327,6 +440,8 @@ def _draw_falling_notes(
             min(bottom, layout.keyboard_top),
             colour,
             border=border,
+            shade=config.note_border_shade,
+            gradient=config.bar_gradient,
         )
 
     return sounding
@@ -340,16 +455,21 @@ def _draw_bar(
     bottom: float,
     colour: RGB,
     border: int,
+    shade: float,
+    gradient: float,
 ) -> None:
-    """One note bar, outlined in a darker shade of its own colour.
+    """One note bar, outlined in a shade of its own colour.
 
     The outline is what separates consecutive notes on the same key. Drawn
     inside the bar rather than around it, so a note still occupies exactly the
     pixels its timing says it does and the bar's bottom edge stays on the
     keyboard at the moment the note starts.
+
+    ``shade`` decides which way the outline goes: darker cuts the bar out of
+    the background, lighter makes it look lit from inside.
     """
     if border <= 0:
-        _fill(frame, left, top, right, bottom, colour)
+        _fill_bar(frame, left, top, right, bottom, colour, gradient)
         return
 
     # Never let the outline eat the bar it is outlining.
@@ -359,17 +479,18 @@ def _draw_bar(
         int((bottom - top) * BORDER_MAX_SHARE),
     )
     if thickness <= 0:
-        _fill(frame, left, top, right, bottom, colour)
+        _fill_bar(frame, left, top, right, bottom, colour, gradient)
         return
 
-    _fill(frame, left, top, right, bottom, scale(colour, 1.0 - BORDER_DARKENING))
-    _fill(
+    _fill(frame, left, top, right, bottom, shaded(colour, shade))
+    _fill_bar(
         frame,
         left + thickness,
         top + thickness,
         right - thickness,
         bottom - thickness,
         colour,
+        gradient,
     )
 
 

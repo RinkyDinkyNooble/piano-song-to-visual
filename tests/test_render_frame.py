@@ -18,7 +18,7 @@ from hypothesis import strategies as st
 from psv.config import Config, GridConfig, VisualConfig
 from psv.midi import read_midi
 from psv.model import Hand, Note, Part, Score
-from psv.render.color import parse_hex
+from psv.render.color import parse_hex, shaded
 from psv.render.frame import Layout, Palette, render_frame, visible_notes
 from psv.render.geometry import KeyboardGeometry
 from tests.fixtures.midi_builder import FIXTURES
@@ -460,11 +460,8 @@ def test_a_border_never_swallows_a_short_bar() -> None:
 
 @pytest.mark.feature("F-58")
 def test_the_border_keeps_the_hand_hue() -> None:
-    """A darker shade of the bar's own colour, not a neutral outline: which hand
-    is playing has to survive being drawn at the edge."""
-    from psv.render.color import scale
-    from psv.render.frame import BORDER_DARKENING
-
+    """A shade of the bar's own colour, not a neutral outline: which hand is
+    playing has to survive being drawn at the edge."""
     score = repeated_note_score()
     config = small_config(width=560, height=360, note_border=0.0016, grid=NO_GRID)
     column = _bar_column(render_frame(score, config, 0.0, pedal_lanes=0), 60, config)
@@ -472,4 +469,4 @@ def test_the_border_keeps_the_hand_hue() -> None:
     background = tuple(parse_hex(config.background))
     lit = [tuple(p) for p in column if tuple(p) != background]
     brightest = max(lit, key=lambda pixel: sum(int(c) for c in pixel))
-    assert scale(brightest, 1.0 - BORDER_DARKENING) in lit
+    assert shaded(brightest, config.note_border_shade) in lit

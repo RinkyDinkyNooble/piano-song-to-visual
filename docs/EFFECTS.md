@@ -6,8 +6,9 @@ the thing a pianist posts: sparks off the strike line, a glow on the keys, the
 piece looking like an event. Both are legitimate and they want opposite things,
 so none of this is on by default.
 
-**Nothing here is built.** This is the plan, and it is arranged around the fact
-that the risk in this feature is taste rather than engineering.
+**The theme layer is built. None of the effects are.** This document is both
+the plan and the record of it, and it is arranged around the fact that the risk
+in this feature is taste rather than engineering.
 
 ## Two layers, not one
 
@@ -99,17 +100,19 @@ in every process.
 
 # The theme
 
-Half of this exists already and is not documented anywhere anyone would look.
+Half of it already existed and was not documented anywhere anyone would look.
+The other half is step 2 below, and is built.
 
-| | today | wanted |
+| | before | now |
 | --- | --- | --- |
-| Background | `visual.background`, grayscale only | any hue, and a gradient |
-| Hand colours | `visual.colors.left_hand` / `right_hand`, any hex | nothing, this works |
-| Border width | `visual.note_border`, a fraction of frame width | nothing, this works |
-| Border colour | fixed: 45% darker, same hue | make it yours |
-| Bar fill | flat | an optional vertical gradient |
+| Background | `visual.background`, grayscale only | `gradient_top` / `gradient_bottom`, any hue |
+| Hand colours | `visual.colors.left_hand` / `right_hand`, any hex | unchanged, this already worked |
+| Border width | `visual.note_border`, a fraction of frame width | unchanged, this already worked |
+| Border colour | fixed: 45% darker, same hue | `note_border_shade`, -1 to +1 |
+| Bar fill | flat | `bar_gradient`, -1 to +1 |
+| Whole schemes | none | `--theme`, four of them |
 
-So `left_hand = "#ff2d95"` already works. Two gaps are real.
+`left_hand = "#ff2d95"` already worked before any of this. Two gaps were real.
 
 ## The background, and the rule it has to get past
 
@@ -121,14 +124,22 @@ The escape is a separate key rather than a relaxed rule:
 
 ```toml
 [visual]
-gradient = ["#140e28", "#46205a"]   # top, bottom
+gradient_top = "#140e28"
+gradient_bottom = "#46205a"
 ```
 
 Unset by default, in which case `background` behaves exactly as it does now.
-Set, it overrides `background` and accepts any colour, because setting it is
+Set, they override `background` and accept any colour, because setting them is
 itself the opt-in. That keeps the practice default honest without a cross-key
 validation rule that says "colour is allowed if some other thing is on", which
 is the kind of condition nobody can predict from reading the config.
+
+Two keys rather than the single `gradient = [top, bottom]` this planned. The
+config loader coerces scalars and passes anything else through, so a list would
+be the first value in the file whose declared type is not what arrives, and it
+would need a normalising step and a new class of validation error for the sake
+of one line. Two plain strings need neither. "Set both or neither" is the only
+rule, and the error says so.
 
 Whether it drifts is one more number. Motion has to be a pure function of time,
 so the phase is `time * speed` and nothing accumulates. Both rules are satisfied
@@ -257,21 +268,42 @@ bloom.
 One throwaway script, one frame, each effect at two intensities. Written,
 looked at, and its findings are the Checkpoint A section above.
 
-## Step 2: the theme, built for real
+## Step 2: the theme, built for real (done)
 
-The theme layer has no motion question, so it does not wait.
+The theme layer has no motion question, so it did not wait.
 
-- `visual.gradient`, unset by default, overriding `background` when set.
-- `visual.note_border_shade`, defaulting to the -0.45 that is drawn today.
-- A bar gradient setting.
-- A handful of colour palettes as named presets, so "make it look good" does not
-  require picking six hex codes.
+- `visual.gradient_top` and `visual.gradient_bottom`, unset by default,
+  replacing `background` when set and free to have a hue.
+- `visual.note_border_shade`, defaulting to the -0.45 that was drawn before.
+- `visual.bar_gradient`, defaulting to 0, the flat fill.
+- `--theme`, with `midnight`, `ember`, `neon` and `aurora`. A separate flag from
+  `--preset` rather than more entries in it: a preset changes how the piece is
+  played and a theme only how it looks, and one list holding both would make
+  "a 9-semitone reach" and "deep blue" look like the same kind of thing.
+
+Three things came out of building it that the plan did not have.
+
+**The grid had to learn about the background.** It was mixed with a nominal
+background colour once and drawn as a flat line, which on a gradient would have
+meant a grid that vanishes into the dark end. It is now mixed a row at a time.
+
+**Compositing the grid instead was wrong, and the reference images caught it.**
+Blending each line over whatever was underneath is the obvious way to do that,
+and it blends twice where a beat line crosses a pitch line, leaving a brighter
+dot at every intersection. Six committed frames failed on 40 pixels each. The
+grid is worked out per row and then drawn, not composited, and there is now a
+test naming the intersections.
+
+**The keyboard is not themed.** It is still white keys and black keys under a
+neon gradient, which looks deliberate on some themes and unfinished on others.
+Left alone for now: the keys are a picture of a real keyboard, and it is not
+obvious that tinting them helps. Worth revisiting after seeing a theme move.
 
 ### Checkpoint B: theme stills
 
-A grid of stills: a few gradient backgrounds crossed with a few hand palettes
-and border shades, on the same frame. You pick what stays and what the presets
-should contain.
+Four strips on the same frame of Fur Elise: the themes side by side, then each
+knob swept on its own so it can be judged apart from the theme wrapped round it.
+You pick what stays and what the themes should contain.
 
 Stills are sufficient here, and that is the point of the split. Nothing in this
 layer changes between frames, so there is nothing a video would tell you that a

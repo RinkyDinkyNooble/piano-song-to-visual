@@ -490,6 +490,23 @@ and it is capped so it can never swallow the bar it outlines.
 Overlays on top of the loaded config, with `psv presets` printing what each one
 sets. Precedence runs least specific to most: file, preset, then flags.
 
+**A theme layer.** A gradient behind everything, a border shade that lights a
+bar from inside instead of cutting it out of the background, a brightness ramp
+along each bar, and four named schemes behind `--theme`. All off by default: the
+plain look is the one that stays out of the way while you are learning
+something, and every theme is tested to keep the two hands far enough apart in
+colour to tell apart, because hue carrying which hand is not a thing a theme may
+spend.
+
+It costs nothing worth measuring. Filling the background is already two thirds
+of a frame, and a gradient is the same write to the same pixels from a different
+source: 5.40 ms against 5.38.
+
+`--theme` is a separate flag from `--preset` because they answer different
+questions. A preset changes how the piece is played; a theme only changes how it
+looks. One list holding both would put "a 9-semitone reach" and "deep blue" side
+by side as if they were the same kind of choice.
+
 **Stereo, panned by register.** Low notes left, high notes right, as they sit
 under your hands. Equal-power law, so a note does not dip in volume crossing the
 middle. It also stops the hands competing for the same place in the mix, which
@@ -543,20 +560,17 @@ ADSR envelope. One short recorded piano sample per octave, pitch shifted, would
 sound far better for very little code. Lower priority now that FluidSynth works
 and is documented.
 
-**Opt-in visual effects, and a theme to put them on.** Off by default, because a
-practice aid and a piece of spectacle want opposite things and both are
-legitimate. Planned in [EFFECTS.md](EFFECTS.md), which is arranged around the
-fact that the risk here is taste rather than engineering.
+**Opt-in visual effects.** Off by default, because a practice aid and a piece of
+spectacle want opposite things and both are legitimate. Planned in
+[EFFECTS.md](EFFECTS.md), which is arranged around the fact that the risk here is
+taste rather than engineering.
 
-It is two features that were one until the stills came back. The theme is
-static: a gradient background, the hand colours that are already configurable,
-and a border shade that can light a bar from inside instead of cutting it out.
-It costs nothing measurable, since filling the background is two thirds of a
-frame either way, and a picture is enough to judge it. The effects are
-transient, tied to when a note lands, and cannot be judged frozen at all: two of
-the seven candidates looked identical to no effect in a still. Only those wait
-for a video, and only what survives it gets a config key, a test or a reference
-image.
+It was two features pretending to be one until the stills came back. The theme
+half is done and is written up under "Also done" above. What is left is the
+transient half: flashes, glows, trails, sparks, all tied to when a note lands,
+and none of it judgeable frozen. Two of the seven candidates looked identical to
+no effect at all in a still. So those wait for a video, and only what survives
+it gets a config key, a test or a reference image.
 
 **Better salience for arranging.** The current function is velocity, duration,
 and an outer-voice bonus. Real salience needs harmonic analysis: which notes are

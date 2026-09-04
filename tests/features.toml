@@ -604,3 +604,32 @@ milestone = "M8"
 status = "done"
 verify = "e2e"
 uses = ["fixture:single-note"]
+
+# --------------------------------------------------- The theme layer
+[[feature]]
+id = "F-71"
+name = "A vertical gradient behind everything, in any hue"
+milestone = "M8"
+status = "done"
+verify = "unit"
+
+[[feature]]
+id = "F-72"
+name = "Note-bar outlines shaded either way, dark edge or lit edge"
+milestone = "M8"
+status = "done"
+verify = "unit"
+
+[[feature]]
+id = "F-73"
+name = "A brightness ramp along each note bar"
+milestone = "M8"
+status = "done"
+verify = "unit"
+
+[[feature]]
+id = "F-74"
+name = "Named colour themes, applied separately from the setting presets"
+milestone = "M8"
+status = "done"
+verify = "unit"
