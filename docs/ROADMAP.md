@@ -596,8 +596,8 @@ YouTube upload, or any distribution automation. This is a local tool.
 Duet and multi-part mode is parked rather than planned. The data model is already
 shaped for it, but a third and fourth hand colour would eat the margin that makes
 hue-for-hand and brightness-for-velocity readable, and nothing else in the tool
-needs it. Written up in , alongside fingering, the live
-player, and harmonic salience.
+needs it. Written up in the local research notes, alongside fingering, the live
+player, harmonic salience, and a generated settings reference.
 
 ---
 
