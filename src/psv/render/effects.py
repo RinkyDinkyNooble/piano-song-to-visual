@@ -85,15 +85,6 @@ BLOOM_ROWS = 135
 #: that spills, not the thing itself.
 BLOOM_FLOOR = 105.0
 
-#: How far a halo reaches past its bar at full intensity, as a fraction of the
-#: frame height. Split into shells, one per whole pixel it covers.
-HALO_SPREAD = 0.0118
-
-#: Most shells a halo is ever drawn in. Past this the shells are thinner than
-#: the eye can use and the cost is real: a halo is four rectangles per shell per
-#: visible bar.
-HALO_SHELLS = 5
-
 #: Radius of each of the two box blurs, in shrunken pixels.
 #:
 #: Free, near enough: measured at 1080p, radius 5 costs 0.5 ms more than radius
@@ -112,6 +103,15 @@ BLOOM_GAIN = 3.6
 
 #: Luma weights, Rec. 601.
 LUMA = (0.299, 0.587, 0.114)
+
+#: How far a halo reaches past its bar at full intensity, as a fraction of the
+#: frame height. Split into shells, one per whole pixel it covers.
+HALO_SPREAD = 0.0118
+
+#: Most shells a halo is ever drawn in. Past this the shells are thinner than
+#: the eye can use and the cost is real: a halo is four rectangles per shell per
+#: visible bar.
+HALO_SHELLS = 5
 
 
 @dataclass(frozen=True, slots=True)
