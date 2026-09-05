@@ -68,6 +68,8 @@ SPARK_S = 0.45
 #: 26 ms at an eighth. It cannot go lower, because past that the cost is the
 #: full-frame composite rather than the blur.
 #:
+#: The shrink has to average the block rather than sample it. See `bloom`.
+#:
 #: How many rows that copy has, rather than how much to shrink by. A fixed
 #: eighth put a 320x180 frame's bloom on a 40x22 image, where a glow eleven
 #: pixels tall does not survive being sampled and bloom quietly did nothing.
@@ -101,8 +103,17 @@ BLOOM_BLUR = 5
 #: or turning the knee on would have read as turning bloom down.
 BLOOM_GAIN = 3.6
 
-#: Luma weights, Rec. 601.
+#: Luma weights, Rec. 601. Pillow's ``convert("L")`` uses these same weights,
+#: which is what lets the knee be a lookup table on one channel instead of a
+#: dot product over three. A test pins the two together.
 LUMA = (0.299, 0.587, 0.114)
+
+#: The soft knee as a 256-entry table: luma in, how much of the pixel blooms
+#: out, 0 to 255. Built once, applied by Pillow in C.
+KNEE_LUT: tuple[int, ...] = tuple(
+    min(255, round(255 * max(0.0, value - BLOOM_FLOOR) / (255.0 - BLOOM_FLOOR)))
+    for value in range(256)
+)
 
 #: How far a halo reaches past its bar at full intensity, as a fraction of the
 #: frame height. Split into shells, one per whole pixel it covers.
@@ -614,6 +625,27 @@ def _box_blur(plane: np.ndarray, radius: int) -> np.ndarray:
     return out / ((2 * radius) ** 2)
 
 
+def _bright_part(area: Frame, shrink: int) -> np.ndarray:
+    """The light worth spreading, shrunk, as float.
+
+    Three C loops and no full-resolution numpy: a lookup table turns luma into
+    how much of a pixel blooms, a multiply applies it, and a box reduce shrinks
+    the result. The numpy equivalent of the same arithmetic is 33 ms against
+    16 ms here, and the point-sampled version it replaces was 0.1 ms and wrong.
+
+    ``convert("L")`` uses the Rec. 601 weights `LUMA` names, so the table is
+    indexed by the same luma the float version computed.
+    """
+    from PIL import Image, ImageChops
+
+    picture = Image.fromarray(area, mode="RGB")
+    weight = picture.convert("L").point(KNEE_LUT)
+    lit = ImageChops.multiply(picture, Image.merge("RGB", (weight, weight, weight)))
+    if shrink > 1:
+        lit = lit.reduce(shrink)
+    return np.asarray(lit, dtype=np.float32)
+
+
 def bloom(frame: Frame, canvas: Canvas, k: float) -> None:
     """The light above the strike line, blurred and added back.
 
@@ -626,15 +658,22 @@ def bloom(frame: Frame, canvas: Canvas, k: float) -> None:
     music. Reading and writing above ``canvas.line`` leaves the keys alone and
     blooms the notes, which is the light worth spreading. It also makes the
     effect cheaper, since the keyboard is a sixth of the frame.
+
+    **The knee runs before the shrink, and the shrink averages.** Both halves
+    of that are load-bearing and neither works alone. Taking every sixth pixel
+    made a bar's glow depend on where the sampling grid happened to fall on it,
+    so two identical notes a semitone apart bloomed by amounts that differed by
+    a third. Averaging the block instead fixes that only if what is averaged is
+    linear in the light, and the knee is not: a block half covered by a bar
+    averages to a dimmer pixel, which the knee then discounts again, so a
+    partly covered block loses most of its light twice over. Weighing each full
+    resolution pixel first and averaging afterwards conserves it.
     """
     area = frame[: canvas.line]
     if area.shape[0] < 2:
         return
-    shrink = max(1, area.shape[0] // BLOOM_ROWS)
-    small = area[::shrink, ::shrink].astype(np.float32)
-    luma = small @ np.array(LUMA, dtype=np.float32)
-    excess = np.clip(luma - BLOOM_FLOOR, 0.0, None) / (255.0 - BLOOM_FLOOR)
-    bright = small * excess[:, :, None]
+    shrink = max(1, min(area.shape[0] // BLOOM_ROWS, *area.shape[:2]))
+    bright = _bright_part(area, shrink)
     blurred = np.dstack(
         [_box_blur(bright[:, :, band], BLOOM_BLUR) for band in range(3)]
     )
@@ -664,6 +703,13 @@ def _upscale(light: np.ndarray, width: int, height: int) -> np.ndarray:
     The gain is applied before this, not after, so what is being stretched is
     the light to add, already in 0-255. That is why it can travel as bytes: the
     values are about to be added to a uint8 frame regardless.
+
+    Stretching in float instead was tried and dropped. It costs 17 ms more a
+    frame and changes at most one grey level on 2% of the pixels, because the
+    frame these values are added to is itself 8-bit: there is no finer step for
+    the extra precision to land on. The long flat runs in a shallow falloff are
+    the same length either way, so they are a flat light field rather than a
+    quantisation band.
     """
     from PIL import Image
 

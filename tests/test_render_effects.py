@@ -25,13 +25,20 @@ from hypothesis import strategies as st
 
 from psv.config import Config, ConfigError, EffectConfig, VisualConfig
 from psv.midi import read_midi
-from psv.model import Note, Part, Score
+from psv.model import Hand, Note, Part, Score, is_black_key
 from psv.presets import (
     EFFECT_DESCRIPTIONS,
     EFFECT_SETS,
     apply_effect_set,
 )
-from psv.render.effects import KINDS, PAINTERS, Canvas, background_for, pulse_lift
+from psv.render.effects import (
+    BLOOM_ROWS,
+    KINDS,
+    PAINTERS,
+    Canvas,
+    background_for,
+    pulse_lift,
+)
 from psv.render.frame import render_frame
 from tests.fixtures.midi_builder import FIXTURES
 from tests.test_render_frame import NO_LANES, SMALL
@@ -505,6 +512,152 @@ def test_the_bloom_upscale_interpolates_rather_than_repeating_pixels() -> None:
     rising = row[: peak + 1]
     assert all(a <= b for a, b in itertools.pairwise(rising)), (
         "the ramp up to the peak is not monotonic"
+    )
+
+
+#: Big enough that the falling area is several times `BLOOM_ROWS`, so the
+#: shrink is greater than 1 and the sampling path actually runs. The committed
+#: reference is 320x180, where it does not.
+BLOOM_SIZE = VisualConfig(width=960, height=1080, fps=10, lookahead_s=3.0)
+
+
+def bloom_swing(width: int, height: int, along: str) -> float:
+    """How much a bar's bloom changes as it slides across the sampling grid.
+
+    The same bar, moved one pixel at a time through a whole shrink period. It
+    emits exactly the same light at every position, so a downsample that
+    conserves light gives the same answer every time and the swing is the
+    error. Point sampling gave 200% here: a thin bar landed between the sampled
+    columns and vanished outright.
+    """
+    from psv.render.effects import bloom
+
+    canvas = bloom_canvas(BLOOM_SIZE)
+    shrink = max(1, canvas.line // BLOOM_ROWS)
+    assert shrink > 1, "this size no longer exercises the shrink"
+
+    totals = []
+    for step in range(shrink):
+        frame = np.zeros((BLOOM_SIZE.height, BLOOM_SIZE.width, 3), dtype=np.uint8)
+        x, y = 400, 200
+        if along == "x":
+            x += step
+        else:
+            y += step
+        frame[y : y + height, x : x + width] = 230
+        before = frame.astype(np.float64).sum()
+        bloom(frame, canvas, 1.0)
+        totals.append(frame.astype(np.float64).sum() - before)
+
+    spread = np.array(totals)
+    assert spread.mean() > 0, "the bar did not bloom at all"
+    return float((spread.max() - spread.min()) / spread.mean())
+
+
+@pytest.mark.feature("F-83")
+@pytest.mark.parametrize(
+    ("width", "height", "along"),
+    [
+        (32, 400, "x"),  # a white-key bar at 1080p
+        (19, 400, "x"),  # a black-key bar, and the worse of the two
+        (4, 400, "x"),  # a border, a halo shell: the thin bright things
+        (32, 16, "y"),  # a fast note falling, one pixel per frame
+        (32, 8, "y"),
+    ],
+)
+def test_a_bar_blooms_the_same_wherever_it_sits(
+    width: int, height: int, along: str
+) -> None:
+    """The bug Ren would have seen as some notes glowing brighter than others.
+
+    Bloom used to take every sixth pixel, so whether a bar was caught depended
+    on where it happened to sit. Two identical notes a semitone apart differed
+    by a third, and a four-pixel bar between the sampled columns disappeared.
+    Both are gone now that each pixel is weighed before the block is averaged.
+    """
+    assert bloom_swing(width, height, along) < 0.10
+
+
+@pytest.mark.feature("F-83")
+@pytest.mark.parametrize("black", [False, True])
+def test_identical_notes_bloom_by_the_same_amount(black: bool) -> None:
+    """The same thing again, through a real render rather than a drawn box.
+
+    Every bar compared here is the same colour, the same width, the same
+    velocity and the same length, so the only thing separating them is which
+    column of pixels they happen to land on. White and black keys are measured
+    apart because a black-key bar really is drawn narrower and really does
+    bloom less, which is the effect working rather than failing.
+
+    Divided by the light the bar itself puts on screen, because that is not
+    quite equal either: a bar 9.5 pixels wide is drawn 9 pixels wide at one
+    pitch and 10 at the next, and 11% more bar is honestly 11% more glow. What
+    is left after dividing it out is the sampling and nothing else.
+
+    Point sampling put a third between the brightest and dimmest black-key bar.
+    """
+    from psv.render.effects import bloom
+
+    config = replace(
+        BLOOM_SIZE,
+        colors=replace(BLOOM_SIZE.colors, quiet=1.0, loud=1.0),
+        black_key_darkening=0.0,
+    )
+    pitches = [p for p in range(60, 85) if is_black_key(p) is black]
+    empty = render_frame(Score(), config, 1.0, pedal_lanes=NO_LANES)
+    added = []
+    for pitch in pitches:
+        one_note = Score(
+            parts=(
+                Part(
+                    hand=Hand.RIGHT,
+                    notes=(
+                        Note(
+                            pitch=pitch,
+                            start=0.4,
+                            end=2.4,
+                            velocity=80,
+                            hand=Hand.RIGHT,
+                        ),
+                    ),
+                ),
+            )
+        )
+        frame = render_frame(one_note, config, 1.0, pedal_lanes=NO_LANES)
+        canvas = replace(bloom_canvas(config), score=one_note, time=1.0)
+        ink = float(
+            (frame.astype(np.float64) - empty.astype(np.float64))[: canvas.line].sum()
+        )
+        before = frame.copy()
+        bloom(frame, canvas, 1.0)
+        lit = float(
+            (frame.astype(np.float64) - before.astype(np.float64))[: canvas.line].sum()
+        )
+        added.append(lit / ink)
+
+    spread = np.array(added)
+    assert spread.min() > 0, "some bar did not bloom at all"
+    assert (spread.max() - spread.min()) / spread.mean() < 0.12, (
+        f"identical notes bloom by different amounts: {spread}"
+    )
+
+
+@pytest.mark.feature("F-83")
+def test_the_knee_table_matches_the_luma_weights_it_is_indexed_by() -> None:
+    """`KNEE_LUT` is looked up by Pillow's grey conversion rather than by a dot
+    product with `LUMA`, which is only correct while the two agree."""
+    from PIL import Image
+
+    from psv.render.effects import LUMA
+
+    colours = np.array(
+        [[[200, 30, 60], [10, 240, 15], [70, 70, 200], [255, 255, 255], [0, 0, 0]]],
+        dtype=np.uint8,
+    )
+    grey = np.asarray(Image.fromarray(colours, mode="RGB").convert("L"), dtype=float)
+    expected = colours.astype(float) @ np.array(LUMA)
+    assert np.abs(grey - expected).max() <= 1.0, (
+        f"Pillow's luma is not Rec. 601 any more: {grey} vs {expected}"
     )
 
 
