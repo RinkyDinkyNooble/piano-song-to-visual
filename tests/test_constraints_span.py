@@ -232,7 +232,7 @@ def test_a_note_with_no_context_is_scored_on_its_own() -> None:
 # -- salience read off the whole score -----------------------------------
 
 
-def run(pitches: list[int], start: float = 0.0, step: float = 0.06) -> list[Note]:
+def scale_run(pitches: list[int], start: float = 0.0, step: float = 0.06) -> list[Note]:
     """A scale in short notes: a melodic run, and every note an ornament by
     length alone."""
     return [
@@ -250,7 +250,7 @@ def test_a_note_in_a_run_carries_the_line_and_an_isolated_short_note_does_not() 
     """
     from psv.constraints.salience import Salience
 
-    scale = run([60, 62, 64, 65, 67])
+    scale = scale_run([60, 62, 64, 65, 67])
     stab = [note(84, 5.0, 5.05)]
     weigh = Salience.analyse([*scale, *stab])
 
@@ -288,7 +288,7 @@ def test_a_short_note_in_the_tune_outranks_the_long_note_under_it() -> None:
     """
     from psv.constraints.salience import Salience
 
-    tune = run([72, 74, 76, 77])
+    tune = scale_run([72, 74, 76, 77])
     held = note(60, 0.0, 2.0)
     weigh = Salience.analyse([*tune, held])
 
@@ -354,7 +354,7 @@ def test_an_unanalysed_note_falls_back_rather_than_failing() -> None:
     the score the analysis read."""
     from psv.constraints.salience import Salience
 
-    weigh = Salience.analyse(run([60, 62, 64]))
+    weigh = Salience.analyse(scale_run([60, 62, 64]))
     rewritten = note(75, 9.0, 9.5)
     assert weigh.of(rewritten, [rewritten, note(70, 9.0, 9.5)]) > 0.0
     assert not weigh.carries_line(rewritten)

@@ -170,11 +170,14 @@ def _span(pitches: Sequence[int]) -> int:
     return max(pitches) - min(pitches) if pitches else 0
 
 
-def _choose_outlier(state: _Working, held: list[int]) -> int:
+def _choose_outlier(state: _Working, held: list[int], now: float) -> int:
     """Which extreme to move.
 
     Removing either end narrows the set. Take whichever removal narrows it more;
-    when both are equal, give up the one the music will miss least.
+    when both are equal, give up the one the music will miss least, judged at
+    the instant of the violation rather than in the abstract: a note with most
+    of itself already sounded is a cheaper thing to give up than one that has
+    barely started.
     """
     pitches = sorted((state.notes[i].pitch, i) for i in held)
     without_low = pitches[-1][0] - pitches[1][0]
@@ -189,7 +192,7 @@ def _choose_outlier(state: _Working, held: list[int]) -> int:
     return min(
         (low, high),
         key=lambda i: (
-            state.weigh.of(state.notes[i], chord),
+            state.weigh.of(state.notes[i], chord, now),
             -state.notes[i].pitch,
         ),
     )
@@ -266,7 +269,9 @@ def _try_truncate(
     return earlier, state.notes[earlier].shortened_to(new_end)
 
 
-def _drop(state: _Working, held: list[int], outlier: int) -> tuple[int, None]:
+def _drop(
+    state: _Working, held: list[int], outlier: int, now: float
+) -> tuple[int, None]:
     del outlier
     chord = [state.notes[i] for i in held]
     pitches = sorted((state.notes[i].pitch, i) for i in held)
@@ -274,7 +279,7 @@ def _drop(state: _Working, held: list[int], outlier: int) -> tuple[int, None]:
     victim = min(
         (low, high),
         key=lambda i: (
-            state.weigh.of(state.notes[i], chord),
+            state.weigh.of(state.notes[i], chord, now),
             -state.notes[i].pitch,
         ),
     )
@@ -297,7 +302,7 @@ def _repair_violation(
     if _span([state.notes[i].pitch for i in held]) <= max_span:
         return None
 
-    outlier = _choose_outlier(state, held)
+    outlier = _choose_outlier(state, held, violation.time)
     pedal = _pedal_down(pedals, violation.time)
 
     # Truncation is nearly free while the pedal holds the note ringing, so it
@@ -319,7 +324,7 @@ def _repair_violation(
         state.notes[index] = replacement
         return Repair(name, violation.hand, violation.time, before, replacement)
 
-    index, _ = _drop(state, held, outlier)
+    index, _ = _drop(state, held, outlier, violation.time)
     before = state.notes[index]
     state.dropped.add(index)
     return Repair("drop", violation.hand, violation.time, before, None)
@@ -342,7 +347,9 @@ def _force_clean(state: _Working, max_span: int, tolerance: float) -> list[Repai
         held = state.live(violation.indices)
         if len(held) < 2:  # pragma: no cover - compact() keeps indices live
             return repairs
-        index, _ = _drop(state, held, _choose_outlier(state, held))
+        index, _ = _drop(
+            state, held, _choose_outlier(state, held, violation.time), violation.time
+        )
         before = state.notes[index]
         state.dropped.add(index)
         repairs.append(Repair("drop", violation.hand, violation.time, before, None))
