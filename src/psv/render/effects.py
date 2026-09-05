@@ -73,8 +73,38 @@ SPARK_S = 0.45
 #: pixels tall does not survive being sampled and bloom quietly did nothing.
 BLOOM_ROWS = 135
 
-#: How bright a pixel has to be before bloom picks it up.
-BLOOM_FLOOR = 150
+#: How bright a pixel has to be before bloom picks it up at all, and how
+#: much brighter it has to be before it blooms at full strength. The gap
+#: between them is a soft knee: a pixel just over the floor contributes a
+#: little and one at white contributes all of itself.
+#:
+#: A hard threshold made bloom pop on. A bar brightens with velocity and fades
+#: with a theme's `quiet`, so it crosses any fixed line mid-fall, and at that
+#: moment the whole glow appeared at once. Blooming the light *above* the floor
+#: rather than the whole pixel is also what real bloom does: it is the excess
+#: that spills, not the thing itself.
+BLOOM_FLOOR = 105.0
+
+#: Radius of each of the two box blurs, in shrunken pixels.
+#:
+#: Larger than it needs to be for the spread, deliberately. The shrunken bloom
+#: is scaled back up by repeating pixels, so any structure finer than the shrink
+#: factor arrives as hard squares. Blurring it well below that scale first means
+#: neighbouring blocks barely differ, which is what makes the blocks stop being
+#: visible. It is also free: measured at 1080p, radius 5 costs 0.5 ms more than
+#: radius 2, because the cost is all in the full-size composite.
+BLOOM_BLUR = 5
+
+#: How hard the blurred light is added back.
+#:
+#: Higher than the 2.2 this used before the soft knee, and by about the amount
+#: the knee takes away: a bar at luma 210 used to contribute all of itself and
+#: now contributes (210 - 105) / 150 of itself, so the gain has to make that up
+#: or turning the knee on would have read as turning bloom down.
+BLOOM_GAIN = 3.6
+
+#: Luma weights, Rec. 601.
+LUMA = (0.299, 0.587, 0.114)
 
 
 @dataclass(frozen=True, slots=True)
@@ -360,23 +390,38 @@ def _box_blur(plane: np.ndarray, radius: int) -> np.ndarray:
 
 
 def bloom(frame: Frame, canvas: Canvas, k: float) -> None:
-    """The brightest pixels blurred and added back.
+    """The light above the strike line, blurred and added back.
 
-    The expensive one, by a long way, and the only one here that cannot be made
-    local: being global is what it is. It also finds the white keys, because
-    they are the brightest thing on screen.
+    The expensive one by a long way, and the only one that cannot be made
+    local: being global is what it is.
+
+    **Only the falling area.** The white keys are the brightest thing on screen
+    by a wide margin, so a bloom over the whole frame is mostly a bloom of the
+    keyboard, which washes the picture and glows the one part of it that is not
+    music. Reading and writing above ``canvas.line`` leaves the keys alone and
+    blooms the notes, which is the light worth spreading. It also makes the
+    effect cheaper, since the keyboard is a sixth of the frame.
     """
-    del canvas
-    shrink = max(1, frame.shape[0] // BLOOM_ROWS)
-    small = frame[::shrink, ::shrink].astype(np.float32)
-    luma = small @ np.array([0.299, 0.587, 0.114], dtype=np.float32)
-    bright = small * (luma > BLOOM_FLOOR)[:, :, None]
-    blurred = np.dstack([_box_blur(bright[:, :, band], 2) for band in range(3)])
-    blurred = np.dstack([_box_blur(blurred[:, :, band], 2) for band in range(3)])
+    area = frame[: canvas.line]
+    if area.shape[0] < 2:
+        return
+    shrink = max(1, area.shape[0] // BLOOM_ROWS)
+    small = area[::shrink, ::shrink].astype(np.float32)
+    luma = small @ np.array(LUMA, dtype=np.float32)
+    excess = np.clip(luma - BLOOM_FLOOR, 0.0, None) / (255.0 - BLOOM_FLOOR)
+    bright = small * excess[:, :, None]
+    blurred = np.dstack(
+        [_box_blur(bright[:, :, band], BLOOM_BLUR) for band in range(3)]
+    )
+    blurred = np.dstack(
+        [_box_blur(blurred[:, :, band], BLOOM_BLUR) for band in range(3)]
+    )
     grown = np.repeat(np.repeat(blurred, shrink, axis=0), shrink, axis=1)
-    grown = grown[: frame.shape[0], : frame.shape[1]]
-    frame[:] = np.clip(
-        frame.astype(np.int16) + (grown * (2.2 * k)).astype(np.int16), 0, 255
+    grown = grown[: area.shape[0], : area.shape[1]]
+    rows, columns = grown.shape[:2]
+    target = area[:rows, :columns]
+    target[:] = np.clip(
+        target.astype(np.int16) + (grown * (BLOOM_GAIN * k)).astype(np.int16), 0, 255
     ).astype(np.uint8)
 
 

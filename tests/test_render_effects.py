@@ -28,7 +28,7 @@ from psv.presets import (
     EFFECT_SETS,
     apply_effect_set,
 )
-from psv.render.effects import KINDS, PAINTERS, background_for, pulse_lift
+from psv.render.effects import KINDS, PAINTERS, Canvas, background_for, pulse_lift
 from psv.render.frame import render_frame
 from tests.fixtures.midi_builder import FIXTURES
 from tests.test_render_frame import NO_LANES, SMALL
@@ -331,3 +331,73 @@ def test_every_effect_that_draws_is_registered() -> None:
 def test_the_small_reference_config_is_valid() -> None:
     EFFECT_SIZE.validate()
     assert EFFECT_SIZE.width == SMALL.width
+
+
+# -- bloom stays above the strike line -----------------------------------
+
+
+@pytest.mark.feature("F-83")
+def test_bloom_leaves_the_keyboard_alone() -> None:
+    """The white keys are the brightest thing on screen by a wide margin.
+
+    A bloom over the whole frame is therefore mostly a bloom of the keyboard,
+    which washes the picture and glows the one part of it that is not music.
+    """
+    from psv.render.frame import Layout
+
+    plain = drawn(EFFECT_SIZE)
+    bloomed = drawn(with_effects(one("bloom", 1.0)))
+    line = Layout.from_config(EFFECT_SIZE, NO_LANES).keyboard_top
+
+    assert np.array_equal(plain[line:], bloomed[line:]), "the keyboard was bloomed"
+    assert not np.array_equal(plain[:line], bloomed[:line]), "nothing was bloomed"
+
+
+def bloom_canvas(config: VisualConfig) -> Canvas:
+    """A Canvas for calling an effect directly, without drawing a frame first."""
+    from psv.render.frame import Layout
+    from psv.render.geometry import KeyboardGeometry
+
+    layout = Layout.from_config(config, NO_LANES)
+    return Canvas(
+        score=Score(),
+        config=config,
+        layout=layout,
+        geometry=KeyboardGeometry(
+            layout.keyboard_width, config.height - layout.keyboard_top
+        ),
+        time=0.0,
+    )
+
+
+@pytest.mark.feature("F-83")
+def test_bloom_has_no_step_at_the_floor() -> None:
+    """A soft knee, so a bar does not pop as it crosses the threshold.
+
+    Called on a made-up frame rather than a rendered one: a bar's brightness on
+    screen is its colour times its velocity times the theme, so driving the
+    luma through a render cannot put a patch exactly either side of the floor.
+
+    With the hard threshold this replaced, one grey level either side of the
+    floor was the difference between no glow and the whole glow.
+    """
+    from psv.render.effects import BLOOM_FLOOR, bloom
+
+    canvas = bloom_canvas(EFFECT_SIZE)
+    height, width = EFFECT_SIZE.height, EFFECT_SIZE.width
+
+    def added(luma: int) -> float:
+        frame = np.zeros((height, width, 3), dtype=np.uint8)
+        frame[20:60, 100:200] = luma
+        before = frame.copy()
+        bloom(frame, canvas, 1.0)
+        return float(np.abs(frame.astype(float) - before.astype(float)).sum())
+
+    floor = int(BLOOM_FLOOR)
+    assert added(floor - 1) == 0.0, "below the floor is still nothing"
+    just_over = added(floor + 2)
+    well_over = added(floor + 60)
+    assert just_over > 0.0, "the knee never starts"
+    assert just_over < 0.15 * well_over, (
+        f"crossing the floor is still a step: {just_over} vs {well_over}"
+    )

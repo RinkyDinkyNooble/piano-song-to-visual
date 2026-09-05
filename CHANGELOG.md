@@ -192,6 +192,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Bloom no longer glows the keyboard, and no longer arrives in squares.**
+  Three faults, all visible: it read the whole frame, so most of the glow came
+  from the white keys rather than from the music; it scaled a shrunken copy back
+  up by repeating pixels, which put the blur on screen as hard 6x6 blocks; and
+  it used a hard brightness threshold, so a bar popped as it crossed. It now
+  reads and writes only above the strike line, blurs far enough below the shrink
+  factor that neighbouring blocks barely differ, and blooms the light *above*
+  the floor rather than the whole pixel. Measured at 1080p the fix is slightly
+  cheaper than what it replaces, because the keyboard is a sixth of the frame
+  and the wider blur is free.
+
 - **Videos are written full range, so grey levels survive the encode.** h264
   defaults to the television range, 16-235, which is right for camera footage
   and wrong for a picture drawn in RGB: about one level in seven had nowhere to

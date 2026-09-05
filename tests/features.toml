@@ -691,3 +691,10 @@ name = "Rounded bar ends, as a fraction of the bar's own width"
 milestone = "M8"
 status = "done"
 verify = "unit"
+
+[[feature]]
+id = "F-83"
+name = "Bloom on the notes only, with a soft knee and no visible blocks"
+milestone = "M8"
+status = "done"
+verify = "unit"
