@@ -192,6 +192,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A bright vertical rule beside every falling note.** Cutting a rectangle
+  around the black keys clamped its first piece to the keyboard line without
+  also clamping it to the rectangle's own bottom, so anything drawn entirely
+  above the keys was stretched down to them. A halo's lower edge is above the
+  keys for as long as its bar is falling, which turned a five-pixel strip into
+  an 879-pixel line. Introduced by the occlusion pass in the commit before this
+  one, and locked in by its own reference image, which was regenerated with the
+  fault in it. A property test now asserts that splitting a rectangle never
+  reaches outside it.
+- **The halo's rings were nested rectangles, not shells.** Each ring was drawn
+  from the bar's edge out to its own distance, so it covered every ring inside
+  it and the pixel against the bar collected all five alphas while the outermost
+  collected one. That is a hard rim about five times brighter than the falloff
+  asks for. Each shell now covers its own band, and the count falls with the
+  spread so a shell is never thinner than a pixel.
+
 - **Effects that reach onto the keyboard pass behind the black keys.** The
   keyboard is drawn whites first so blacks sit on top of them, but effects run
   after the keyboard, which put them on top of everything: a struck white key

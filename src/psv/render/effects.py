@@ -85,6 +85,15 @@ BLOOM_ROWS = 135
 #: that spills, not the thing itself.
 BLOOM_FLOOR = 105.0
 
+#: How far a halo reaches past its bar at full intensity, as a fraction of the
+#: frame height. Split into shells, one per whole pixel it covers.
+HALO_SPREAD = 0.0118
+
+#: Most shells a halo is ever drawn in. Past this the shells are thinner than
+#: the eye can use and the cost is real: a halo is four rectangles per shell per
+#: visible bar.
+HALO_SHELLS = 5
+
 #: Radius of each of the two box blurs, in shrunken pixels.
 #:
 #: Free, near enough: measured at 1080p, radius 5 costs 0.5 ms more than radius
@@ -280,13 +289,22 @@ def _behind_keys(
     the band where black keys actually are gets cut.
     """
     black_end = canvas.line + 1 + canvas.geometry.black_height
-    top = max(y0, canvas.line)
-    if y0 < top:
-        yield x0, y0, x1, top
-    middle = min(y1, black_end)
-    if top < middle:
+
+    # Above the keyboard, whole. Clamped to y1 as well as to the keyboard line:
+    # a rectangle that ends before the keys must not be stretched down to them,
+    # which is what a halo's lower edge does on every bar still falling.
+    above = min(y1, canvas.line)
+    if y0 < above:
+        yield x0, y0, x1, above
+
+    # Through the black keys, cut around them.
+    band_top = max(y0, canvas.line)
+    band_bottom = min(y1, black_end)
+    if band_top < band_bottom:
         for left, right in _black_key_gaps(canvas, pitch, x0, x1):
-            yield left, top, right, middle
+            yield left, band_top, right, band_bottom
+
+    # Past their ends, whole again.
     if y1 > black_end:
         yield x0, max(y0, black_end), x1, y1
 
@@ -505,30 +523,71 @@ def halo(frame: Frame, canvas: Canvas, k: float) -> None:
     The one with negative learning value: it smears adjacent notes together,
     which is exactly what the gap between bars exists to prevent.
 
+    **Shells that abut, not rectangles that nest.** Each shell used to be drawn
+    from the bar's edge out to its own distance, so every shell covered all the
+    ones inside it and the pixel against the bar received all five alphas while
+    the outermost received one. That is a hard rim about five times brighter
+    than the falloff asks for, and where a pitch repeats quickly the rims of
+    consecutive bars join into an unbroken line down the screen, far more
+    visible than the bars. Each shell now covers only its own band.
+
+    **The shells are sized in whole pixels.** At a modest intensity the whole
+    glow is a few pixels wide, so five shells of it are sub-pixel: rounding
+    threw most of them away and stacked the rest on one column, which is the
+    other half of the same artefact. The count falls with the spread so a shell
+    is never thinner than a pixel.
+
     The ring follows the bar's corners. Drawn as four full-width strips it is a
     rectangle, and a rectangle of light around a rounded bar puts the corners
     back: the bar reads as square again, with its own corners merely darker than
     the glow around them. So each strip stops short by however far the rounding
     reaches in, leaving the light to trace the straight edges only.
-
-    With `note_radius` at 0 the inset is 0 and this is the square ring it always
-    drew, pixel for pixel. A square bar wants square corners.
     """
+    spread = canvas.up(HALO_SPREAD * k)
+    shells = max(1, min(HALO_SHELLS, int(spread)))
+    if spread <= 0.0:
+        return
+
     for note, top, bottom in canvas.falling():
         left, right = canvas.geometry.bar_span(note.pitch)
         inset = _corner_inset(canvas.config.note_radius, left, right, top, bottom)
         glow = canvas.colour(note)
-        for ring in range(1, 6):
-            pad = canvas.up(ring * 0.00236 * k)
-            alpha = 0.30 * k / (ring * 1.4)
-            near, far = left - pad + inset, right + pad - inset
-            add_light(frame, near, top - pad, far, top, glow, alpha)
+        for shell in range(shells):
+            inner = spread * shell / shells
+            outer = spread * (shell + 1) / shells
+            # The falloff the nested version was trying to have, now that each
+            # band is drawn once and only once.
+            alpha = 0.30 * k / (shell + 1)
+            near, far = left - outer + inset, right + outer - inset
+            add_light(frame, near, top - outer, far, top - inner, glow, alpha)
             add_light_behind_keys(
-                frame, canvas, note.pitch, near, bottom, far, bottom + pad, glow, alpha
+                frame,
+                canvas,
+                note.pitch,
+                near,
+                bottom + inner,
+                far,
+                bottom + outer,
+                glow,
+                alpha,
             )
-            add_light(frame, left - pad, top + inset, left, bottom - inset, glow, alpha)
             add_light(
-                frame, right, top + inset, right + pad, bottom - inset, glow, alpha
+                frame,
+                left - outer,
+                top + inset,
+                left - inner,
+                bottom - inset,
+                glow,
+                alpha,
+            )
+            add_light(
+                frame,
+                right + inner,
+                top + inset,
+                right + outer,
+                bottom - inset,
+                glow,
+                alpha,
             )
 
 

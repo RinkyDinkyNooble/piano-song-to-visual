@@ -20,6 +20,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from psv.config import Config, ConfigError, EffectConfig, VisualConfig
 from psv.midi import read_midi
@@ -655,4 +657,88 @@ def test_a_struck_black_key_is_still_lit_by_its_own_effects() -> None:
     )
     assert np.abs(drawn_now[patch].astype(int) - plain[patch].astype(int)).sum() > 0, (
         "the black key occluded its own trail"
+    )
+
+
+# -- the occlusion must never grow what it is given ----------------------
+
+
+@pytest.mark.feature("F-85")
+@given(
+    y0=st.floats(min_value=-50, max_value=1200),
+    height=st.floats(min_value=0.0, max_value=400),
+    x0=st.floats(min_value=0, max_value=1200),
+    width=st.floats(min_value=0.0, max_value=120),
+)
+@settings(max_examples=300, deadline=None)
+def test_occlusion_never_reaches_outside_the_rectangle_it_was_given(
+    y0: float, height: float, x0: float, width: float
+) -> None:
+    """The invariant that matters, and the one that broke.
+
+    Splitting a rectangle around the black keys clamped the first piece to the
+    keyboard line without also clamping it to the rectangle's own bottom. Every
+    halo's lower edge sits above the keys while its bar is still falling, so
+    each one was stretched from a five-pixel strip into a line running all the
+    way down to the keyboard: a bright vertical rule beside every falling note.
+    """
+    from psv.render.effects import _behind_keys
+
+    canvas = bloom_canvas(replace(EFFECT_SIZE, width=1280, height=720))
+    x1, y1 = x0 + width, y0 + height
+
+    for left, top, right, bottom in _behind_keys(canvas, 62, x0, y0, x1, y1):
+        assert top >= y0, f"piece starts above the rectangle: {top} < {y0}"
+        assert bottom <= y1, f"piece ends below the rectangle: {bottom} > {y1}"
+        assert left >= x0, f"piece starts left of the rectangle: {left} < {x0}"
+        assert right <= x1, f"piece ends right of the rectangle: {right} > {x1}"
+
+
+@pytest.mark.feature("F-85")
+def test_a_rectangle_clear_of_the_keyboard_is_not_cut_at_all() -> None:
+    """Nothing above the keys can be occluded by a key, so nothing changes."""
+    from psv.render.effects import _behind_keys
+
+    base = replace(EFFECT_SIZE, width=1280, height=720)
+    canvas = bloom_canvas(base)
+    rect = (600.0, 100.0, 640.0, 160.0)
+    pieces = list(_behind_keys(canvas, 62, *rect))
+    assert pieces == [(600.0, 100.0, 640.0, 160.0)]
+
+
+@pytest.mark.feature("F-85")
+def test_no_falling_bar_draws_a_rule_down_to_the_keyboard() -> None:
+    """The artefact itself, at the size it was seen.
+
+    A column beside a bar was brighter than its neighbours over most of the
+    frame's height. Nothing an effect draws around a falling bar should be
+    taller than the bar.
+    """
+    base = replace(
+        EFFECT_SIZE,
+        width=1280,
+        height=720,
+        grid=replace(EFFECT_SIZE.grid, pitch_lines="none", beat_lines="none"),
+    )
+    # A run of short notes on one pitch, which is what made the rules join up.
+    notes = tuple(
+        Note(pitch=62, start=1.0 + i * 0.12, end=1.06 + i * 0.12) for i in range(12)
+    )
+    score = Score(parts=(Part(notes=notes),))
+    from psv.render.frame import Layout
+
+    layout = Layout.from_config(base, NO_LANES)
+
+    plain = render_frame(score, base, 1.5, pedal_lanes=NO_LANES)
+    haloed = render_frame(
+        score, with_effects(one("halo", 1.0), base=base), 1.5, pedal_lanes=NO_LANES
+    )
+    added = np.abs(
+        haloed[: layout.keyboard_top].astype(int)
+        - plain[: layout.keyboard_top].astype(int)
+    ).sum(axis=2)
+
+    tallest = int((added > 0).sum(axis=0).max())
+    assert tallest < layout.keyboard_top * 0.6, (
+        f"a column is lit over {tallest} of {layout.keyboard_top} rows"
     )
