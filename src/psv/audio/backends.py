@@ -289,6 +289,34 @@ def reverb_settings(amount: float) -> dict[str, float]:
     return settings
 
 
+#: How events landing on the same instant are ordered. Releases go first, then
+#: controllers, then presses, which is the ordering a MIDI sequencer uses.
+#:
+#: It is load-bearing rather than tidy. A repeated key is written as one note
+#: ending exactly where the next begins, so at that instant there is both a
+#: release and a press for the same pitch. Press first and FluidSynth is told
+#: noteon then noteoff on one key, which kills the note that was just started
+#: and turns a held note into a tap. Fur Elise alone has 164 of those.
+RELEASE, CONTROL, PRESS = 0, 1, 2
+
+
+def synth_events(score: Score) -> list[tuple[float, int, int, int]]:
+    """Every note and pedal boundary as ``(time, rank, number, value)``.
+
+    Sorted, so a caller can feed a synthesiser in order. See `RELEASE` for why
+    the rank matters.
+    """
+    events: list[tuple[float, int, int, int]] = []
+    for note in score.notes:
+        events.append((note.start, PRESS, note.pitch, note.velocity))
+        events.append((note.end, RELEASE, note.pitch, 0))
+    for pedal in score.pedals:
+        events.append((pedal.start, CONTROL, int(pedal.pedal), pedal.depth))
+        events.append((pedal.end, CONTROL, int(pedal.pedal), 0))
+    events.sort()
+    return events
+
+
 def synthesise_fluidsynth(
     score: Score,
     soundfont: str,
@@ -322,14 +350,7 @@ def synthesise_fluidsynth(
             raise AudioError(f"FluidSynth could not load {soundfont}")
         synth.program_select(0, preset, 0, program)
 
-        events: list[tuple[float, int, int, int]] = []
-        for note in score.notes:
-            events.append((note.start, 0, note.pitch, note.velocity))
-            events.append((note.end, 1, note.pitch, 0))
-        for pedal in score.pedals:
-            events.append((pedal.start, 2, int(pedal.pedal), pedal.depth))
-            events.append((pedal.end, 2, int(pedal.pedal), 0))
-        events.sort()
+        events = synth_events(score)
 
         blocks: list[np.ndarray] = []
         rendered = 0
@@ -344,9 +365,9 @@ def synthesise_fluidsynth(
                 rendered = frame
             if frame < 0:
                 continue
-            if kind == 0:
+            if kind == PRESS:
                 synth.noteon(0, number, value)
-            elif kind == 1:
+            elif kind == RELEASE:
                 synth.noteoff(0, number)
             else:
                 synth.cc(0, number, value)

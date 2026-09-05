@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **A repeated key went silent under FluidSynth.** The backend built its event
+  list with note-on ranked before note-off, then sorted it, so at an instant
+  carrying both (which is how a repeated key is written: one note ending
+  exactly where the next begins) the synth was told noteon then noteoff on that
+  key and killed the note it had just started. A held note came out as a tap.
+  Fur Elise has 164 such instants, clustered from 1:50 onward, and it happened
+  on every SoundFont because nothing about the font was involved. The picture
+  was always right, since only the audio path used this ordering. Releases are
+  now sent before controllers, and controllers before presses, which is the
+  order a sequencer uses. The event builder is now a named function so it
+  can be tested without a synthesiser, and a test pins the ordering.
 
 ## [1.0.0] - 2026-09-05
 

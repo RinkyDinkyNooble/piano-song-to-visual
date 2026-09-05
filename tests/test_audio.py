@@ -589,3 +589,51 @@ def test_more_reverb_means_a_longer_tail() -> None:
     dry, middle, wet = tail(0.0), tail(DEFAULT_REVERB), tail(1.0)
     assert dry < middle < wet
     assert wet > dry * 10, f"the range is too narrow to be worth a knob: {dry} to {wet}"
+
+
+# -- a repeated key must not silence itself ------------------------------
+
+
+def test_a_release_is_sent_before_a_press_at_the_same_instant() -> None:
+    """The bug that turned held notes into taps.
+
+    A repeated key is written as one note ending exactly where the next
+    begins, so both a release and a press for that pitch land on one instant.
+    Sent press-first, FluidSynth gets noteon then noteoff on the same key and
+    kills the note that was just started. Fur Elise had 164 of these and went
+    percussive from 1:50 onward, on every SoundFont, while the picture stayed
+    correct because only the audio path used this ordering.
+    """
+    from psv.audio.backends import PRESS, RELEASE, synth_events
+
+    score = Score().with_notes(
+        [
+            Note(pitch=64, start=0.0, end=1.0, hand=Hand.RIGHT),
+            Note(pitch=64, start=1.0, end=2.0, hand=Hand.RIGHT),
+        ]
+    )
+    at_one = [(rank, kind) for rank, kind, _, _ in synth_events(score) if rank == 1.0]
+    assert at_one == [(1.0, RELEASE), (1.0, PRESS)], (
+        f"the press comes first, so the second note is killed: {at_one}"
+    )
+
+
+def test_a_repeated_key_keeps_its_full_length_through_the_synth() -> None:
+    """The same shape, end to end, through the built-in synth.
+
+    This one does NOT guard the FluidSynth ordering: the built-in synth walks
+    the notes directly rather than through , so it passes either
+    way. It is here because a repeated key going silent is worth catching in
+    whichever backend grows the fault next.
+    """
+    score = Score().with_notes(
+        [
+            Note(pitch=64, start=0.0, end=0.5, velocity=100, hand=Hand.RIGHT),
+            Note(pitch=64, start=0.5, end=1.5, velocity=100, hand=Hand.RIGHT),
+        ]
+    )
+    from psv.audio.backends import SAMPLE_RATE, synthesise
+
+    samples = synthesise(score, duration=1.6)
+    late = samples[int(1.0 * SAMPLE_RATE) : int(1.4 * SAMPLE_RATE)]
+    assert float(np.abs(late).max()) > 1e-3, "the repeated note went silent"
