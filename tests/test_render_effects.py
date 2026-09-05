@@ -504,3 +504,67 @@ def test_the_bloom_upscale_interpolates_rather_than_repeating_pixels() -> None:
     assert all(a <= b for a, b in itertools.pairwise(rising)), (
         "the ramp up to the peak is not monotonic"
     )
+
+
+# -- the key glow follows the key, not its bounding box -------------------
+
+
+@pytest.mark.feature("F-85")
+def test_a_white_key_glow_does_not_spill_onto_its_black_neighbours() -> None:
+    """A white key is not a rectangle.
+
+    For the length of the black keys it is only the tab between them. Lit at
+    full width for that whole length it draws over the half of each neighbour
+    sitting in front of it, and the black key looks like it is glowing too.
+    """
+    from psv.render.frame import Layout
+    from psv.render.geometry import KeyboardGeometry
+
+    white, black = 62, 61  # D4, and the C#4 to its left
+    base = replace(
+        EFFECT_SIZE,
+        width=1280,
+        height=720,
+        grid=replace(EFFECT_SIZE.grid, pitch_lines="none", beat_lines="none"),
+    )
+    notes = Score(parts=(Part(notes=(Note(pitch=white, start=0.5, end=3.0),)),))
+    layout = Layout.from_config(base, NO_LANES)
+    geometry = KeyboardGeometry(
+        layout.keyboard_width, base.height - layout.keyboard_top
+    )
+
+    plain = render_frame(notes, base, 1.5, pedal_lanes=NO_LANES)
+    lit = render_frame(
+        notes, with_effects(one("key_glow", 1.0), base=base), 1.5, pedal_lanes=NO_LANES
+    )
+
+    # Down the middle of the black key, over the length that black keys have.
+    column = round(geometry.key_centre(black))
+    rows = np.s_[layout.keyboard_top : layout.keyboard_top + int(geometry.black_height)]
+    assert np.array_equal(plain[rows, column], lit[rows, column]), (
+        "the glow reached the black key beside it"
+    )
+
+    # And it did light the white key it belongs to.
+    own = round(geometry.key_centre(white))
+    assert not np.array_equal(plain[rows, own], lit[rows, own]), "nothing was lit"
+
+
+@pytest.mark.feature("F-85")
+def test_a_black_key_is_a_rectangle_and_keeps_its_full_width() -> None:
+    """The narrowing is a white-key fact. A black key has no neighbours in
+    front of it, so its span is the same at every depth."""
+    from psv.render.frame import Layout
+    from psv.render.geometry import KeyboardGeometry
+
+    base = replace(EFFECT_SIZE, width=1280, height=720)
+    layout = Layout.from_config(base, NO_LANES)
+    geometry = KeyboardGeometry(
+        layout.keyboard_width, base.height - layout.keyboard_top
+    )
+    for pitch in (61, 63, 66):
+        assert geometry.visible_span(pitch, 0.0) == geometry.key_span(pitch)
+
+    # Below the black keys, a white key is its full width again.
+    assert geometry.visible_span(62, geometry.black_height) == geometry.key_span(62)
+    assert geometry.visible_span(62, 0.0) != geometry.key_span(62)

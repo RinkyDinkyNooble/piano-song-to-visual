@@ -295,15 +295,40 @@ def key_glow(frame: Frame, canvas: Canvas, k: float) -> None:
     above = 0.55 * k * (1 - np.arange(rise - 1, -1, -1) / rise) ** 2
     below = 0.30 * k * (1 - np.arange(depth) / depth)
 
+    # Where the black keys end, and so where a white key stops being a tab
+    # between them and becomes its full width.
+    waist = min(depth, max(0, int(canvas.geometry.black_height)))
+
     for note in canvas.sounding():
         left, right = canvas.geometry.key_span(note.pitch)
         glow = lighten(canvas.colour(note), 0.35)
         add_light_column(
             frame, left, canvas.line - rise, right, canvas.line, glow, above
         )
+
+        # Down the key, following its shape rather than its bounding box. A
+        # white key lit at full width for the length of the black keys spills
+        # over the half of each neighbour that is sitting in front of it.
+        narrow_left, narrow_right = canvas.geometry.visible_span(note.pitch, 0.0)
         add_light_column(
-            frame, left, canvas.line, right, canvas.line + depth, glow, below
+            frame,
+            narrow_left,
+            canvas.line,
+            narrow_right,
+            canvas.line + waist,
+            glow,
+            below[:waist],
         )
+        if depth > waist:
+            add_light_column(
+                frame,
+                left,
+                canvas.line + waist,
+                right,
+                canvas.line + depth,
+                glow,
+                below[waist:],
+            )
 
 
 def trail(frame: Frame, canvas: Canvas, k: float) -> None:

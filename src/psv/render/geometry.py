@@ -87,6 +87,26 @@ class KeyboardGeometry:
         left = index * self.white_width
         return left, left + self.white_width
 
+    def visible_span(self, pitch: int, depth: float) -> tuple[float, float]:
+        """The key's left and right edge ``depth`` pixels down from the top.
+
+        A white key is not a rectangle. For the length of the black keys it is
+        only the tab between them, and it widens to its full width below their
+        ends. Anything drawn on a white key at full width for that whole length
+        is drawn over its neighbours: the key looks like it has grown sideways
+        under the black keys, which do not move.
+
+        A black key is a rectangle, and is returned unchanged.
+        """
+        left, right = self.key_span(pitch)
+        if is_black_key(pitch) or depth >= self.black_height:
+            return left, right
+        if pitch > LOWEST_KEY and is_black_key(pitch - 1):
+            left = max(left, self.key_span(pitch - 1)[1])
+        if pitch < HIGHEST_KEY and is_black_key(pitch + 1):
+            right = min(right, self.key_span(pitch + 1)[0])
+        return left, right
+
     def key_centre(self, pitch: int) -> float:
         left, right = self.key_span(pitch)
         return (left + right) / 2

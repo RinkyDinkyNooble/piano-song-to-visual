@@ -705,3 +705,10 @@ name = "The halo follows a bar's rounded corners instead of squaring them off"
 milestone = "M8"
 status = "done"
 verify = "unit"
+
+[[feature]]
+id = "F-85"
+name = "The key glow follows the key's shape, not its bounding box"
+milestone = "M8"
+status = "done"
+verify = "unit"

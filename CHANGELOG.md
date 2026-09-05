@@ -192,6 +192,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The key glow follows the key rather than its bounding box.** A white key is
+  not a rectangle: for the length of the black keys it is only the tab between
+  them. Lit at full width for that whole length, the glow drew over the half of
+  each black neighbour sitting in front of it, and the black key looked lit too.
+  `KeyboardGeometry.visible_span` now says how wide a key is at a given depth,
+  and the glow narrows over the black keys and widens below their ends.
+
 - **Bloom is smooth now, not blocky.** Scaling the shrunken glow back up by
   repeating pixels made every blurred pixel a 6x6 square at 1080p, which against
   a near-black background the eye picks out easily. Blurring harder only lowered
