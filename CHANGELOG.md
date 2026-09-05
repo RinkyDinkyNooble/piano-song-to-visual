@@ -192,6 +192,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The halo no longer squares off a rounded bar.** Drawn as four full-width
+  strips it is a rectangle of light, and a rectangle around a rounded bar
+  redraws the corners the rounding removed, in glow rather than in the bar's
+  colour, so the bar reads as square with dark corners. Each strip now stops
+  short by however far the rounding reaches in. At `note_radius = 0` the inset
+  is 0 and the ring is what it always was, pixel for pixel.
+
 - **Bloom no longer glows the keyboard, and no longer arrives in squares.**
   Three faults, all visible: it read the whole frame, so most of the glow came
   from the white keys rather than from the music; it scaled a shrunken copy back

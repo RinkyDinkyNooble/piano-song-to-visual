@@ -380,7 +380,8 @@ right_hand = "#5fb87a"
 unassigned = "#9aa0ac"    # before hand assignment has run
 pedal      = "#c8a44a"
 quiet = 0.35              # brightness at pp
-loud  = 1.0               # brightness at ff
+loud  = 1.0               # brightness at ff. Setting these equal is how you
+                          # turn dynamics off: every note the same brightness
 
 [visual.grid]
 pitch_lines = "octave"    # vertical rules at every C, for finding a key

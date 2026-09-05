@@ -401,3 +401,74 @@ def test_bloom_has_no_step_at_the_floor() -> None:
     assert just_over < 0.15 * well_over, (
         f"crossing the floor is still a step: {just_over} vs {well_over}"
     )
+
+
+# -- the halo follows the bar's corners -----------------------------------
+
+
+@pytest.mark.feature("F-84")
+def test_a_square_bar_still_gets_a_square_halo() -> None:
+    """The inset is driven by `note_radius`, so at 0 nothing changes."""
+    square = replace(EFFECT_SIZE, note_radius=0.0)
+    assert np.array_equal(
+        drawn(with_effects(one("halo", 1.0), base=square)),
+        drawn(with_effects(one("halo", 1.0), base=square)),
+    )
+    # And the corner of the ring is lit, which is what "square" means here.
+    lit = drawn(with_effects(one("halo", 1.0), base=square))
+    plain = drawn(square)
+    assert not np.array_equal(lit, plain)
+
+
+@pytest.mark.feature("F-84")
+def test_the_halo_does_not_fill_in_a_rounded_corner() -> None:
+    """A rectangle of light around a rounded bar makes it read as square again.
+
+    The bar's own corner is dark, so a lit corner behind it redraws the
+    rectangle the rounding just removed, in glow instead of in the bar's
+    colour. Measured just outside the bar: at the corner, and level with the
+    middle of the same edge.
+    """
+    from psv.render.frame import Layout
+    from psv.render.geometry import KeyboardGeometry
+
+    pitch = 60
+    white = replace(EFFECT_SIZE.colors, left_hand="#ffffff", right_hand="#ffffff")
+    # No grid: the bar is found by scanning a column for anything that is not
+    # the background, and a beat line is not the background either.
+    base = replace(
+        EFFECT_SIZE,
+        width=640,
+        height=480,
+        note_radius=0.5,
+        colors=white,
+        grid=replace(EFFECT_SIZE.grid, pitch_lines="none", beat_lines="none"),
+    )
+    notes = Score(parts=(Part(notes=(Note(pitch=pitch, start=1.0, end=1.9),)),))
+    layout = Layout.from_config(base, NO_LANES)
+    geometry = KeyboardGeometry(
+        layout.keyboard_width, base.height - layout.keyboard_top
+    )
+    left, right = geometry.bar_span(pitch)
+    edge = round(left)
+    inset = round((right - left) * base.note_radius)
+
+    plain = render_frame(notes, base, 1.3, pedal_lanes=NO_LANES)
+    haloed = render_frame(
+        notes, with_effects(one("halo", 1.0), base=base), 1.3, pedal_lanes=NO_LANES
+    )
+    added = np.abs(haloed.astype(int) - plain.astype(int)).sum(axis=2)
+
+    # The bar's own rows, found down its middle and stopping at the keyboard.
+    column = plain[: layout.keyboard_top, (edge + round(right)) // 2]
+    rows = np.where(np.any(column != column[0], axis=-1))[0]
+    top = int(rows.min())
+    middle = (top + int(rows.max())) // 2
+
+    at_corner = added[top - inset : top, edge - inset : edge].sum()
+    at_edge = added[middle - inset : middle, edge - inset : edge].sum()
+
+    assert at_edge > 0, "the halo drew nothing beside the bar at all"
+    assert at_corner < 0.2 * at_edge, (
+        f"the corner is lit like the straight edge: {at_corner} vs {at_edge}"
+    )

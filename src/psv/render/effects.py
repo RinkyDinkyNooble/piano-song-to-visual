@@ -367,17 +367,44 @@ def halo(frame: Frame, canvas: Canvas, k: float) -> None:
 
     The one with negative learning value: it smears adjacent notes together,
     which is exactly what the gap between bars exists to prevent.
+
+    The ring follows the bar's corners. Drawn as four full-width strips it is a
+    rectangle, and a rectangle of light around a rounded bar puts the corners
+    back: the bar reads as square again, with its own corners merely darker than
+    the glow around them. So each strip stops short by however far the rounding
+    reaches in, leaving the light to trace the straight edges only.
+
+    With `note_radius` at 0 the inset is 0 and this is the square ring it always
+    drew, pixel for pixel. A square bar wants square corners.
     """
     for note, top, bottom in canvas.falling():
         left, right = canvas.geometry.bar_span(note.pitch)
+        inset = _corner_inset(canvas.config.note_radius, left, right, top, bottom)
         glow = canvas.colour(note)
         for ring in range(1, 6):
             pad = canvas.up(ring * 0.00236 * k)
             alpha = 0.30 * k / (ring * 1.4)
-            add_light(frame, left - pad, top - pad, right + pad, top, glow, alpha)
-            add_light(frame, left - pad, bottom, right + pad, bottom + pad, glow, alpha)
-            add_light(frame, left - pad, top, left, bottom, glow, alpha)
-            add_light(frame, right, top, right + pad, bottom, glow, alpha)
+            near, far = left - pad + inset, right + pad - inset
+            add_light(frame, near, top - pad, far, top, glow, alpha)
+            add_light(frame, near, bottom, far, bottom + pad, glow, alpha)
+            add_light(frame, left - pad, top + inset, left, bottom - inset, glow, alpha)
+            add_light(
+                frame, right, top + inset, right + pad, bottom - inset, glow, alpha
+            )
+
+
+def _corner_inset(
+    radius: float, left: float, right: float, top: float, bottom: float
+) -> float:
+    """How far a bar's corner rounding reaches in from each edge, in pixels.
+
+    The same cap the renderer applies when it rounds the corners: a fraction of
+    the bar's width, and never more than half of either side.
+    """
+    if radius <= 0.0:
+        return 0.0
+    width, height = right - left, bottom - top
+    return max(0.0, min(width * radius, width / 2, height / 2))
 
 
 def _box_blur(plane: np.ndarray, radius: int) -> np.ndarray:

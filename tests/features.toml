@@ -698,3 +698,10 @@ name = "Bloom on the notes only, with a soft knee and no visible blocks"
 milestone = "M8"
 status = "done"
 verify = "unit"
+
+[[feature]]
+id = "F-84"
+name = "The halo follows a bar's rounded corners instead of squaring them off"
+milestone = "M8"
+status = "done"
+verify = "unit"
