@@ -296,3 +296,114 @@ def test_a_theme_leaves_everything_but_the_look_alone() -> None:
     assert themed.practice == base.practice
     assert themed.audio == base.audio
     assert themed.visual.width == base.visual.width
+
+
+# -- rounded ends --------------------------------------------------------
+
+
+def flat_bar_config(note_radius: float = 0.0) -> VisualConfig:
+    """A bar with no border and no gradient, so it is one flat colour.
+
+    Rounding is measured as area, and area is only readable when every pixel of
+    the bar is the same colour. The border is a *shade* of that colour, so with
+    it on, a row of pure border and a row of fill are two different brightnesses
+    and coverage stops meaning what it says.
+    """
+    return replace(
+        small_config(),
+        width=1920,
+        height=1080,
+        note_border=0.0,
+        note_radius=note_radius,
+    )
+
+
+def bar_row(frame: np.ndarray, row: int, pitch: int, config: VisualConfig) -> float:
+    """How much of one row the bar covers, in whole pixels.
+
+    Summed coverage rather than a count of non-background pixels: a rounded
+    corner is antialiased, so its edge pixels are part bar and part background,
+    and counting them whole would report a rounded end as full width.
+    """
+    layout = Layout.from_config(config, NO_LANES)
+    geometry = KeyboardGeometry(
+        layout.keyboard_width, config.height - layout.keyboard_top
+    )
+    left, right = geometry.bar_span(pitch)
+    background = np.array(parse_hex(config.background), dtype=np.float64)
+    full = np.abs(
+        np.array(parse_hex(config.colors.unassigned), dtype=np.float64) - background
+    ).sum()
+    strip = frame[row, round(left) : round(right)].astype(np.float64)
+    distance = np.abs(strip - background).sum(axis=1)
+    return float(np.clip(distance / full, 0.0, 1.0).sum())
+
+
+@pytest.mark.feature("F-82")
+def test_the_default_radius_leaves_the_bar_exactly_as_it_was() -> None:
+    """The important one: rounding is opt-in and costs nothing when off."""
+    score = long_note_score()
+    config = small_config()
+    assert config.note_radius == 0.0
+    square = render_frame(score, config, 1.2, pedal_lanes=NO_LANES)
+    explicit = render_frame(
+        score, replace(config, note_radius=0.0), 1.2, pedal_lanes=NO_LANES
+    )
+    assert np.array_equal(square, explicit)
+
+
+@pytest.mark.feature("F-82")
+def test_rounding_narrows_the_ends_and_leaves_the_middle_alone() -> None:
+    """A rounded bar is a bar with its corners taken off, nothing more."""
+    score = long_note_score()
+    config = flat_bar_config(note_radius=0.5)
+    layout = Layout.from_config(config, NO_LANES)
+    frame = render_frame(score, config, 1.2, pedal_lanes=NO_LANES)
+
+    rows = [
+        row
+        for row in range(layout.keyboard_top)
+        if bar_row(frame, row, 60, config) > 0.5
+    ]
+    assert len(rows) > 8, "need a bar tall enough to have ends and a middle"
+
+    first, middle, last = rows[0], rows[len(rows) // 2], rows[-1]
+    assert bar_row(frame, first, 60, config) < bar_row(frame, middle, 60, config)
+    assert bar_row(frame, last, 60, config) < bar_row(frame, middle, 60, config)
+
+
+@pytest.mark.feature("F-82")
+def test_a_wider_radius_takes_more_off_the_bar() -> None:
+    """Total covered area falls as the radius grows, and only at the ends."""
+    score = long_note_score()
+    base = flat_bar_config()
+    layout = Layout.from_config(base, NO_LANES)
+
+    areas = []
+    for radius in (0.0, 0.1, 0.5):
+        config = replace(base, note_radius=radius)
+        frame = render_frame(score, config, 1.2, pedal_lanes=NO_LANES)
+        areas.append(
+            sum(bar_row(frame, row, 60, config) for row in range(layout.keyboard_top))
+        )
+
+    assert areas[0] > areas[1] > areas[2]
+
+
+@pytest.mark.feature("F-82")
+def test_a_bar_too_short_to_round_is_drawn_square_rather_than_vanishing() -> None:
+    """Radius is capped by half the bar, so a two-pixel note keeps its pixels."""
+    score = Score(parts=(Part(notes=(Note(pitch=60, start=1.0, end=1.004),)),))
+    config = replace(small_config(), note_radius=0.5)
+    frame = render_frame(score, config, 1.0, pedal_lanes=NO_LANES)
+    background = parse_hex(config.background)
+    assert any(
+        tuple(int(c) for c in pixel) != background for pixel in frame.reshape(-1, 3)
+    ), "the note must still be drawn"
+
+
+@pytest.mark.feature("F-82")
+@pytest.mark.parametrize("radius", [-0.01, 0.51, 1.0])
+def test_a_radius_outside_the_range_is_an_error(radius: float) -> None:
+    with pytest.raises(ConfigError, match="note_radius"):
+        VisualConfig(note_radius=radius).validate()

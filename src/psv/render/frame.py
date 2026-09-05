@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
+from functools import lru_cache
 
 import numpy as np
 
@@ -57,6 +58,12 @@ BAR_GRADIENT_DEPTH = 0.6
 #: note at speed is only a few pixels tall, and an outline that swallowed it
 #: would cost exactly the thing the outline is for.
 BORDER_MAX_SHARE = 0.34
+
+#: Subpixels per axis when working out how much of a corner pixel the rounding
+#: covers. Sixteen samples is enough that the curve reads as smooth and few
+#: enough that the masks are built in microseconds. They are built once per
+#: radius and cached, so this costs nothing per frame.
+CORNER_SAMPLES = 4
 
 #: How much of its own colour a note keeps when the other hand has the focus.
 #: Faint enough to read past, strong enough to still say which hand and how
@@ -453,6 +460,7 @@ def _draw_falling_notes(
             border=border,
             shade=config.note_border_shade,
             gradient=config.bar_gradient,
+            radius=config.note_radius,
         )
 
     return sounding
@@ -468,6 +476,7 @@ def _draw_bar(
     border: int,
     shade: float,
     gradient: float,
+    radius: float = 0.0,
 ) -> None:
     """One note bar, outlined in a shade of its own colour.
 
@@ -478,7 +487,28 @@ def _draw_bar(
 
     ``shade`` decides which way the outline goes: darker cuts the bar out of
     the background, lighter makes it look lit from inside.
+
+    ``radius`` rounds the four corners afterwards, by putting back what was
+    under them. Rounding has to come last: it is defined against whatever the
+    bar is sitting on, and the bar covers that up.
     """
+    corners = _take_corners(frame, left, top, right, bottom, radius)
+    _draw_square_bar(frame, left, top, right, bottom, colour, border, shade, gradient)
+    if corners is not None:
+        _put_corners(frame, corners)
+
+
+def _draw_square_bar(
+    frame: Frame,
+    left: float,
+    top: float,
+    right: float,
+    bottom: float,
+    colour: RGB,
+    border: int,
+    shade: float,
+    gradient: float,
+) -> None:
     if border <= 0:
         _fill_bar(frame, left, top, right, bottom, colour, gradient)
         return
@@ -503,6 +533,94 @@ def _draw_bar(
         colour,
         gradient,
     )
+
+
+# -- rounding ------------------------------------------------------------
+#
+# Rounding a corner means not drawing the bar there, and what should be there
+# instead is whatever the bar was about to cover: the background, its gradient,
+# a grid line. That is already on the frame and about to be overwritten, so the
+# corners are copied first and blended back afterwards. Two small copies per
+# corner beats reasoning about what the background would have been.
+
+
+@lru_cache(maxsize=32)
+def _corner_mask(radius: int) -> np.ndarray:
+    """How much of each pixel a quarter-disc covers, for a top-left corner.
+
+    1 where the bar survives, 0 where it is rounded away, fractional along the
+    curve. The other three corners are this one flipped, so there is one mask
+    per radius rather than four.
+    """
+    step = 1.0 / CORNER_SAMPLES
+    offsets = (np.arange(CORNER_SAMPLES) + 0.5) * step
+    ys = (np.arange(radius)[:, None] + offsets[None, :]).reshape(-1)
+    xs = ys
+    # Distance from the centre of the disc, which sits at the inner corner.
+    dy = radius - ys
+    dx = radius - xs
+    inside = (dy[:, None] ** 2 + dx[None, :] ** 2) <= radius**2
+    # Average the subpixels back down to one value per pixel.
+    coverage = inside.reshape(radius, CORNER_SAMPLES, radius, CORNER_SAMPLES).mean(
+        axis=(1, 3)
+    )
+    mask: np.ndarray = coverage.astype(np.float32)
+    return mask
+
+
+def _take_corners(
+    frame: Frame,
+    left: float,
+    top: float,
+    right: float,
+    bottom: float,
+    radius: float,
+) -> list[tuple[int, int, np.ndarray, np.ndarray]] | None:
+    """Copy what is under each corner, with the mask to blend it back by.
+
+    A corner that is not wholly on the frame is skipped rather than clipped: a
+    partly visible curve is not one, and the bar simply keeps a square edge
+    where it runs off the picture.
+    """
+    if radius <= 0.0:
+        return None
+    height, width = frame.shape[:2]
+    x0, x1 = round(left), round(right)
+    y0, y1 = round(top), round(bottom)
+    size = min(
+        int((x1 - x0) * radius),
+        (x1 - x0) // 2,
+        (y1 - y0) // 2,
+    )
+    if size < 1:
+        return None
+
+    mask = _corner_mask(size)
+    taken: list[tuple[int, int, np.ndarray, np.ndarray]] = []
+    for cy, cx, flipped in (
+        (y0, x0, mask),
+        (y0, x1 - size, mask[:, ::-1]),
+        (y1 - size, x0, mask[::-1, :]),
+        (y1 - size, x1 - size, mask[::-1, ::-1]),
+    ):
+        if cy < 0 or cx < 0 or cy + size > height or cx + size > width:
+            continue
+        under = frame[cy : cy + size, cx : cx + size].copy()
+        taken.append((cy, cx, under, flipped))
+    return taken or None
+
+
+def _put_corners(
+    frame: Frame, corners: list[tuple[int, int, np.ndarray, np.ndarray]]
+) -> None:
+    """Blend each corner back toward what was under it."""
+    for cy, cx, under, mask in corners:
+        size = under.shape[0]
+        region = frame[cy : cy + size, cx : cx + size]
+        alpha = mask[:, :, None]
+        region[:] = np.rint(
+            region.astype(np.float32) * alpha + under.astype(np.float32) * (1.0 - alpha)
+        ).astype(np.uint8)
 
 
 # -- pedals --------------------------------------------------------------

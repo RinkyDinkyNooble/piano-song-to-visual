@@ -241,6 +241,16 @@ class VisualConfig:
     #: outline, and keeping it a shade of the bar's hue is what leaves which
     #: hand is playing readable at the edge.
     note_border_shade: float = -0.45
+    #: Rounds the ends of every bar, as a fraction of the bar's own width.
+    #: 0 is the square corner this always drew, 0.5 rounds each end into a
+    #: half-circle.
+    #:
+    #: A fraction of the bar rather than of the frame, unlike `note_border`,
+    #: because the right radius is set by how wide the bar is and nothing else:
+    #: a black-key bar is narrower than a white-key one and wants less. It is
+    #: also self-limiting, since half a bar's width is the most that can be
+    #: rounded off either end.
+    note_radius: float = 0.0
     #: A vertical brightness ramp down each bar. 0 is the flat fill. Positive
     #: fades the top of the bar, negative fades the bottom, so which end looks
     #: lit is a choice rather than a fixed opinion.
@@ -308,6 +318,10 @@ class VisualConfig:
         if not 0.0 <= self.note_border <= 0.02:
             raise ConfigError(
                 f"visual.note_border must be between 0 and 0.02, got {self.note_border}"
+            )
+        if not 0.0 <= self.note_radius <= 0.5:
+            raise ConfigError(
+                f"visual.note_radius must be between 0 and 0.5, got {self.note_radius}"
             )
         if not -1.0 <= self.note_border_shade <= 1.0:
             raise ConfigError(

@@ -684,3 +684,10 @@ name = "A count-in that keeps its time and drops its clicks"
 milestone = "M8"
 status = "done"
 verify = "unit"
+
+[[feature]]
+id = "F-82"
+name = "Rounded bar ends, as a fraction of the bar's own width"
+milestone = "M8"
+status = "done"
+verify = "unit"

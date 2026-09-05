@@ -360,6 +360,10 @@ note_border = 0.0016      # outline on each bar, as a fraction of frame width.
 note_border_shade = -0.45 # -1 black, 0 the bar's own colour, +1 white. Negative
                           # cuts the bar out of the background, positive lights
                           # it from inside
+note_radius = 0.0         # rounds the ends of each bar, as a fraction of the
+                          # bar's own width. 0.5 makes each end a half-circle.
+                          # A fraction of the bar, not the frame, because a
+                          # black-key bar is narrower and wants less
 bar_gradient = 0.0        # brightness ramp along each bar. Positive fades the
                           # top, negative fades the bottom
 gradient_top = ""         # a vertical gradient behind everything. Set both ends

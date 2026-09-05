@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Rounded bar ends**, `visual.note_radius`, as a fraction of the bar's own
+  width rather than of the frame: the right radius is set by how wide the bar
+  is, a black-key bar is narrower and wants less, and half a bar is the most
+  that can be rounded off either end. 0 is the square corner this always drew
+  and is byte-identical to it.
+
 - **A count-in that keeps its time and drops its clicks.** `--silent-count-in`,
   or `count_in_clicks = false`. The lead-in does two jobs, giving you time to
   get your hands ready and counting the beat, and the falling notes already do
