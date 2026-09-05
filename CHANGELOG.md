@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A count-in that keeps its time and drops its clicks.** `--silent-count-in`,
+  or `count_in_clicks = false`. The lead-in does two jobs, giving you time to
+  get your hands ready and counting the beat, and the falling notes already do
+  the second one. Two settings because they are two decisions.
+
 - **Optional visual effects, off by default.** Seven of them, composed in the
   order listed, each with an `intensity` from 0 to 1 where 0 is a no-op rather
   than something faint. `strike_flash`, `key_glow`, `trail`, `particles`,
@@ -202,6 +207,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lines exactly as faint as either line alone.
 
 ### Changed
+
+- One definition of what a colour is, in `psv.rgb`. Reading `#4a90d9` and
+  deciding whether a colour is grey had been written twice, once in `psv.config`
+  to validate and once in `psv.render.color` to parse, because config cannot
+  import the renderer. Now both import the primitives, and there is a test that
+  every string validation accepts, parsing can read.
+- `constraints/hands.py` and `constraints/salience.py` described the arrange
+  stage as work that had not happened yet. It has. The fallback assignment they
+  document is still real, but it is a fallback now rather than a placeholder.
 
 - The README's config reference is loaded by a test rather than copied into one.
   It had drifted into two `[visual]` headers, which TOML rejects outright, and an

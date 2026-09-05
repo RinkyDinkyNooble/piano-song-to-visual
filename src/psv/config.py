@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Self, get_args, get_origin, get_type_hints
 
 from psv.model import DEFAULT_OVERLAP_TOLERANCE_S
+from psv.rgb import is_grayscale, is_hex, parse_hex
 
 #: The widest simultaneous reach the engine will ever allow, about 2.5 octaves.
 MAX_ALLOWED_SPAN = 36
@@ -127,7 +128,7 @@ class ColorConfig:
     def validate(self) -> None:
         for name in ("left_hand", "right_hand", "unassigned", "pedal"):
             value = getattr(self, name)
-            if not _is_hex_colour(value):
+            if not is_hex(value):
                 raise ConfigError(
                     f"visual.colors.{name} must be a hex colour like '#4a90d9', "
                     f"got {value!r}"
@@ -324,7 +325,7 @@ class VisualConfig:
             )
         for name in ("gradient_top", "gradient_bottom"):
             value = getattr(self, name)
-            if value and not _is_hex_colour(value):
+            if value and not is_hex(value):
                 raise ConfigError(
                     f"visual.{name} must be a hex colour like '#140e28', got {value!r}"
                 )
@@ -340,14 +341,13 @@ class VisualConfig:
                 f"visual.encode must be one of {', '.join(ENCODE_LEVELS)}, "
                 f"got {self.encode!r}"
             )
-        if not _is_hex_colour(self.background):
+        if not is_hex(self.background):
             raise ConfigError(
                 f"visual.background must be a hex colour, got {self.background!r}"
             )
         # The spec asks for a grayscale background, and it is right to: any hue
         # back there competes with the hues that carry which-hand information.
-        red, green, blue = _hex_to_rgb(self.background)
-        if not red == green == blue:
+        if not is_grayscale(parse_hex(self.background)):
             raise ConfigError(
                 "visual.background must be grayscale so it cannot compete with "
                 f"the note colours, got {self.background!r}"
@@ -443,8 +443,12 @@ class PracticeConfig:
     tempo: float = 1.0
     #: Which hand sounds. The other is still drawn, faintly.
     hands: str = "both"
-    #: Bars of clicks before the music starts. 0 for none.
+    #: Bars of lead-in before the music starts. 0 for none.
     count_in_bars: int = 0
+    #: Whether the lead-in clicks. False keeps the time and drops the sound,
+    #: which is what you want once the falling notes are doing the counting:
+    #: you can see the beat arriving, and the beeps are just noise over it.
+    count_in_clicks: bool = True
     #: Keep clicking through the piece, not only into it.
     metronome: bool = False
 
@@ -511,20 +515,6 @@ class Config:
     def from_dict(cls, raw: dict[str, Any]) -> Self:
         built: Self = _build(cls, raw, prefix="")
         return built
-
-
-def _hex_to_rgb(value: str) -> tuple[int, int, int]:
-    digits = value.lstrip("#")
-    if len(digits) == 3:
-        digits = "".join(c * 2 for c in digits)
-    return (int(digits[0:2], 16), int(digits[2:4], 16), int(digits[4:6], 16))
-
-
-def _is_hex_colour(value: str) -> bool:
-    if not isinstance(value, str) or not value.startswith("#"):
-        return False
-    digits = value[1:]
-    return len(digits) in {3, 6} and all(c in "0123456789abcdefABCDEF" for c in digits)
 
 
 def _build(target: type[Any], raw: dict[str, Any], prefix: str) -> Any:

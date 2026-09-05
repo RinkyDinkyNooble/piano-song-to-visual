@@ -277,7 +277,9 @@ psv run song.mid -o practice.mp4 --bars 20-40 --tempo 0.6 --hands left --count-i
 - `--hands left` sounds one hand. The other stays on screen, faintly, so you can
   still see where it is.
 - `--count-in 2` puts two bars of clicks in front of the music, at the tempo and
-  meter you are about to play. `--metronome` keeps clicking through the piece.
+  meter you are about to play. `--silent-count-in` keeps that time and drops the
+  clicks, for when the notes falling toward the line are counting for you.
+  `--metronome` keeps clicking through the piece.
 
 None of these touch the arrangement. They run after arrange and constrain, so
 the piece you practise at half speed is note for note the piece you practise at
@@ -288,6 +290,7 @@ full speed. All four can also live in a config file:
 tempo = 0.75
 hands = "both"       # both | left | right
 count_in_bars = 2
+count_in_clicks = true
 metronome = false
 ```
 
@@ -406,7 +409,9 @@ stereo_width = 0.5        # low notes left, high notes right, as at the keyboard
 [practice]                # how the finished arrangement is presented
 tempo = 1.0               # 0.75 renders at three-quarters speed
 hands = "both"            # both | left | right
-count_in_bars = 0         # bars of clicks before the music
+count_in_bars = 0         # bars of lead-in before the music
+count_in_clicks = true    # false keeps the time and drops the beeps, which is
+                          # what you want once the falling notes count for you
 metronome = false         # keep clicking through it
 ```
 

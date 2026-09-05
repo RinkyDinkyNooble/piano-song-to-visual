@@ -319,3 +319,46 @@ def test_scaling_keeps_a_pedal_event_valid() -> None:
     )
     scaled = time_scaled(score, 0.25)
     assert scaled.pedals[0].end == pytest.approx(4.0)
+
+
+@pytest.mark.feature("F-81")
+def test_a_silent_count_in_keeps_its_time_and_drops_its_clicks() -> None:
+    """The lead-in does two jobs and this turns off only one of them."""
+    score = two_hand_score()
+    loud = click_times(score, music_start=0.0, end=0.0, count_in_bars=1)
+    silent = click_times(
+        score, music_start=0.0, end=0.0, count_in_bars=1, count_in_clicks=False
+    )
+    assert loud
+    assert silent == ()
+    # The time it reserves is what count_in_seconds says, and that is a
+    # property of the bars alone.
+    assert count_in_seconds(score, 0.0, 1) == pytest.approx(2.0)
+
+
+@pytest.mark.feature("F-81")
+def test_a_silent_count_in_still_opens_the_window_before_the_music() -> None:
+    score = two_hand_score()
+    shown = prepare(
+        score,
+        PracticeConfig(count_in_bars=2, count_in_clicks=False),
+        tail=0.0,
+    )
+    assert shown.start == pytest.approx(-4.0)
+    assert shown.clicks == ()
+    assert "silent" in shown.label
+
+
+@pytest.mark.feature("F-81")
+def test_silencing_the_count_in_leaves_the_metronome_alone() -> None:
+    """Two switches, two jobs: one counts you in, the other keeps time."""
+    clicks = click_times(
+        two_hand_score(),
+        music_start=0.0,
+        end=4.0,
+        count_in_bars=1,
+        count_in_clicks=False,
+        metronome=True,
+    )
+    assert clicks
+    assert all(click.time >= 0.0 for click in clicks)

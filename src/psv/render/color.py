@@ -21,25 +21,24 @@ from __future__ import annotations
 
 from psv.config import ColorConfig
 from psv.model import Hand, Note
+from psv.rgb import RGB, WHITE, is_grayscale, parse_hex
 
-RGB = tuple[int, int, int]
+__all__ = [
+    "RGB",
+    "WHITE",
+    "blend",
+    "hand_color",
+    "is_grayscale",
+    "note_color",
+    "parse_hex",
+    "pedal_color",
+    "scale",
+    "shaded",
+    "velocity_brightness",
+]
 
 #: MIDI velocity runs 1 to 127, so there are 126 steps between the extremes.
 _VELOCITY_RANGE = 126.0
-
-WHITE: RGB = (255, 255, 255)
-
-
-def parse_hex(colour: str) -> RGB:
-    """``#4a90d9`` or ``#abc`` to an RGB triple."""
-    digits = colour.lstrip("#")
-    if len(digits) == 3:
-        digits = "".join(c * 2 for c in digits)
-    return (int(digits[0:2], 16), int(digits[2:4], 16), int(digits[4:6], 16))
-
-
-def is_grayscale(colour: RGB) -> bool:
-    return colour[0] == colour[1] == colour[2]
 
 
 def scale(colour: RGB, factor: float) -> RGB:

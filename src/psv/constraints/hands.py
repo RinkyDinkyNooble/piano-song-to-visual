@@ -1,18 +1,18 @@
-"""Provisional hand assignment.
+"""The fallback hand assignment, for a score that arrives without one.
 
 The constraint engine works per hand, so a score has to have hands before it
-can be constrained. Parsing does not assign them, and the arrange stage that
-will do it properly is M6.
+can be constrained. `psv.arrange` is what normally provides them, and it is
+much better at it. This is what runs when `constrain` is called on its own, on
+a file whose hands nobody has decided yet.
 
-What is here is the simplest thing that is honest: split at the piece's median
-pitch. It is not good hand assignment. It will put a left-hand melody in the
-right hand whenever the voices cross, and it takes no account of continuity or
-of what is comfortable to play. It exists so the engine has something to work
-on, and so that its failures are the kind you can see rather than the kind that
-silently produce nothing.
+It splits at the piece's median pitch. That is not good hand assignment: it
+puts a left-hand melody in the right hand whenever the voices cross, and it
+takes no account of continuity or of what is comfortable to play. It is here so
+the engine always has something to work on, and so its failures are the kind you
+can see rather than the kind that silently produce nothing.
 
-M6 replaces this. Nothing else in the engine depends on how hands were chosen,
-only that they exist.
+`ensure_hands` never overwrites an assignment that already exists, which is what
+keeps the arrange stage's decisions from being undone by the stage after it.
 """
 
 from __future__ import annotations

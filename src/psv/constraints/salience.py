@@ -3,10 +3,10 @@
 Used in two places: choosing which note to drop when nothing gentler will fix a
 violation, and thinning texture for a difficulty level.
 
-This is deliberately crude. Real salience needs harmonic analysis, which is the
-arrange stage's problem (M6). What is here is enough to make the two decisions
-above defensibly rather than arbitrarily, and it is a single function so M6 has
-one place to replace.
+This is deliberately crude. Real salience needs harmonic analysis, which
+nothing in psv does yet. What is here is enough to make the two decisions above
+defensibly rather than arbitrarily, and it is a single function, so there is one
+place to replace when something better exists.
 """
 
 from __future__ import annotations

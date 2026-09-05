@@ -146,6 +146,7 @@ def click_times(
     music_start: float,
     end: float,
     count_in_bars: int = 0,
+    count_in_clicks: bool = True,
     metronome: bool = False,
 ) -> tuple[Click, ...]:
     """Every click to sound between the count-in and ``end``.
@@ -154,9 +155,14 @@ def click_times(
     steady tempo, because there is no music there to follow and a count-in that
     accelerates is useless. Clicks during the piece come from the tempo map and
     the bar index instead, so they follow tempo and meter changes.
+
+    ``count_in_clicks`` silences the lead-in without shortening it. The two are
+    separate because the lead-in does two jobs: it gives you time to get your
+    hands ready, and it counts the beat. The falling notes already do the
+    second one.
     """
     clicks: list[Click] = []
-    if count_in_bars > 0:
+    if count_in_bars > 0 and count_in_clicks:
         clicks.extend(_count_in_clicks(score, music_start, count_in_bars))
     if metronome:
         clicks.extend(_metronome_clicks(score, music_start, end))
@@ -260,6 +266,7 @@ def prepare(
         music_start=start,
         end=end,
         count_in_bars=config.count_in_bars,
+        count_in_clicks=config.count_in_clicks,
         metronome=config.metronome,
     )
 
@@ -288,7 +295,8 @@ def _label(config: PracticeConfig, bars: tuple[int, int] | None) -> str:
     if config.hands != "both":
         parts.append(f"{config.hands} hand")
     if config.count_in_bars:
-        parts.append(f"{config.count_in_bars}-bar count-in")
+        silent = "" if config.count_in_clicks else " (silent)"
+        parts.append(f"{config.count_in_bars}-bar count-in{silent}")
     if config.metronome:
         parts.append("metronome")
     return ", ".join(parts)

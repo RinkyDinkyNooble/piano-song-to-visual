@@ -261,7 +261,14 @@ def _add_practice_options(parser: argparse.ArgumentParser) -> None:
         type=int,
         default=None,
         metavar="BARS",
-        help="bars of metronome clicks before the music starts",
+        help="bars of lead-in before the music starts",
+    )
+    group.add_argument(
+        "--silent-count-in",
+        action="store_false",
+        dest="count_in_clicks",
+        default=None,
+        help="keep the lead-in but drop its clicks; the falling notes count it",
     )
     group.add_argument(
         "--metronome",
@@ -383,6 +390,7 @@ def _practice_with_overrides(
             ("tempo", "tempo"),
             ("hands", "hands"),
             ("count_in_bars", "count_in"),
+            ("count_in_clicks", "count_in_clicks"),
             ("metronome", "metronome"),
         )
         if getattr(args, name, None) is not None

@@ -677,3 +677,10 @@ name = "Reverb, as one amount from dry to a large hall"
 milestone = "M8"
 status = "done"
 verify = "unit"
+
+[[feature]]
+id = "F-81"
+name = "A count-in that keeps its time and drops its clicks"
+milestone = "M8"
+status = "done"
+verify = "unit"
