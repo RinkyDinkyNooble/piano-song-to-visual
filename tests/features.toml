@@ -712,3 +712,10 @@ name = "The key glow follows the key's shape, not its bounding box"
 milestone = "M8"
 status = "done"
 verify = "unit"
+
+[[feature]]
+id = "F-86"
+name = "A title card and fades, for a video you would post"
+milestone = "M8"
+status = "done"
+verify = "e2e"

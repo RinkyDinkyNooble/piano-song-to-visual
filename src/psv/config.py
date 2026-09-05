@@ -64,6 +64,21 @@ DEFAULT_REVERB = 0.5
 #: A count-in longer than this is waiting, not counting.
 MAX_COUNT_IN_BARS = 8
 
+#: How a title card's opacity falls to nothing.
+#:
+#:   ease    (1-t)^2   holds, then clears decisively
+#:   linear  1-t
+#:   slow    sqrt(1-t) clears early and lingers faint
+TITLE_CURVES = ("ease", "linear", "slow")
+
+#: A card longer than this is a wait, not an introduction.
+MAX_TITLE_SECONDS = 20.0
+
+#: What fraction of the card's time it takes to clear, when `clear_at` is left
+#: at 0. The rest is clear screen, so the first notes are plainly visible
+#: falling before any of them lands.
+TITLE_CLEAR_SHARE = 0.7
+
 
 class ConfigError(ValueError):
     """A config file is malformed, or a value is out of range."""
@@ -488,6 +503,77 @@ class PracticeConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class TitleConfig:
+    """A title card at the front, and a fade to black at the end.
+
+    Off until `seconds` is set, because a practice video wants neither.
+
+    The card is a screen laid over the render with the music already playing
+    behind it, fading to nothing rather than a separate clip spliced on the
+    front. Two clips joined end to end cannot show the notes already falling,
+    because in the first one there is nothing to see through to.
+    """
+
+    #: How long the card is on screen. 0 turns the whole feature off.
+    seconds: float = 0.0
+    #: The piece and who wrote it. Empty takes them from the score, which
+    #: MusicXML carries and MIDI does not.
+    text: str = ""
+    composer: str = ""
+    #: A third line, fainter and lower. For a channel name.
+    footer: str = ""
+    #: A .ttf or .otf file. Empty looks for a serif in the usual places and
+    #: falls back to a built-in face rather than failing the render.
+    font: str = ""
+    #: The screen behind the text, and how opaque it starts.
+    screen: str = "#0a0a0a"
+    opacity: float = 1.0
+    #: When the card reaches nothing, in seconds. 0 means a share of `seconds`.
+    clear_at: float = 0.0
+    #: One of TITLE_CURVES.
+    curve: str = "ease"
+    #: The end: a fade to black over this long, then this long held on black.
+    fade_out_s: float = 0.0
+    hold_s: float = 0.0
+
+    @property
+    def is_on(self) -> bool:
+        return self.seconds > 0.0 or self.fade_out_s > 0.0 or self.hold_s > 0.0
+
+    @property
+    def clears_at(self) -> float:
+        """When the card reaches nothing, resolved."""
+        if self.clear_at > 0.0:
+            return self.clear_at
+        return self.seconds * TITLE_CLEAR_SHARE
+
+    def validate(self) -> None:
+        for name in ("seconds", "fade_out_s", "hold_s", "clear_at"):
+            if getattr(self, name) < 0.0:
+                raise ConfigError(f"title.{name} cannot be negative")
+        if self.seconds > MAX_TITLE_SECONDS:
+            raise ConfigError(
+                f"title.seconds must be at most {MAX_TITLE_SECONDS}, got {self.seconds}"
+            )
+        if self.clear_at > self.seconds:
+            raise ConfigError(
+                f"title.clear_at is {self.clear_at} but the card is only "
+                f"{self.seconds}s long, so it would never clear"
+            )
+        if self.curve not in TITLE_CURVES:
+            raise ConfigError(
+                f"title.curve must be one of {', '.join(TITLE_CURVES)}, "
+                f"got {self.curve!r}"
+            )
+        if not 0.0 <= self.opacity <= 1.0:
+            raise ConfigError(
+                f"title.opacity must be between 0 and 1, got {self.opacity}"
+            )
+        if not is_hex(self.screen):
+            raise ConfigError(f"title.screen must be a hex colour, got {self.screen!r}")
+
+
+@dataclass(frozen=True, slots=True)
 class Config:
     hands: HandsConfig = field(default_factory=HandsConfig)
     difficulty: DifficultyConfig = field(default_factory=DifficultyConfig)
@@ -495,6 +581,7 @@ class Config:
     pedals: PedalsConfig = field(default_factory=PedalsConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
     practice: PracticeConfig = field(default_factory=PracticeConfig)
+    title: TitleConfig = field(default_factory=TitleConfig)
 
     def validate(self) -> None:
         self.hands.validate()
@@ -503,6 +590,7 @@ class Config:
         self.pedals.validate()
         self.audio.validate()
         self.practice.validate()
+        self.title.validate()
 
     @classmethod
     def load(cls, path: Path | str | None) -> Self:

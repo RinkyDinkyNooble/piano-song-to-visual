@@ -248,6 +248,10 @@ class Score:
     time_signatures: tuple[TimeSignature, ...] = ()
     source: Path | None = None
     title: str = ""
+    #: Who wrote it, when the file says. MIDI has nowhere to put this; MusicXML
+    #: does, and reading it rather than asking for it typed is the same argument
+    #: that made MusicXML worth supporting at all.
+    composer: str = ""
 
     # Derived values, computed once on first use. Not constructor arguments and
     # not part of equality or the repr: they carry no information the fields

@@ -21,8 +21,13 @@ DIVISIONS = 24
 _HEADER = """<?xml version="1.0" encoding="UTF-8"?>
 <score-partwise version="4.0">
   <work><work-title>{title}</work-title></work>
-  <part-list>{part_list}</part-list>
+{identification}  <part-list>{part_list}</part-list>
 {parts}</score-partwise>
+"""
+
+_IDENTIFICATION = """  <identification>
+    <creator type="composer">{composer}</creator>
+  </identification>
 """
 
 
@@ -189,7 +194,9 @@ def measure(number: int, *contents: str) -> str:
     return f'    <measure number="{number}">{body}</measure>\n'
 
 
-def score(*measures: str, title: str = "test", parts: int = 1) -> str:
+def score(
+    *measures: str, title: str = "test", parts: int = 1, composer: str = ""
+) -> str:
     """Wrap measures into a complete `score-partwise` document."""
     part_list = "".join(
         f'<score-part id="P{i + 1}"><part-name>Part {i + 1}</part-name></score-part>'
@@ -198,7 +205,10 @@ def score(*measures: str, title: str = "test", parts: int = 1) -> str:
     body = "".join(
         f'  <part id="P{i + 1}">\n{"".join(measures)}  </part>\n' for i in range(parts)
     )
-    return _HEADER.format(title=title, part_list=part_list, parts=body)
+    identification = _IDENTIFICATION.format(composer=composer) if composer else ""
+    return _HEADER.format(
+        title=title, identification=identification, part_list=part_list, parts=body
+    )
 
 
 # -- the fixtures --------------------------------------------------------

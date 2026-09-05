@@ -10,6 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A title card and fades, for a video you would post.** `--title-card`,
+  `--fade-out`, `--hold-black`, and a `[title]` section for the rest. The card
+  is an overlay whose opacity falls to nothing over the music already playing
+  behind it, not a clip spliced on the front: two clips joined end to end cannot
+  show the notes already falling, because in the first one there is nothing to
+  see through to. Off by default, since it is the only step that re-encodes.
+- **The composer is read from MusicXML.** `<creator type="composer">`, so a real
+  score names itself on its own title card and nothing has to be typed. MIDI has
+  nowhere to put this, which is one more thing MusicXML states and MIDI leaves
+  to be guessed.
+
 - **Rounded bar ends**, `visual.note_radius`, as a fraction of the bar's own
   width rather than of the frame: the right radius is set by how wide the bar
   is, a black-key bar is narrower and wants less, and half a bar is the most

@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 import zipfile
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -144,14 +144,10 @@ def read_musicxml_file(path: Path | str) -> Score:
     except ElementTree.ParseError as exc:
         raise MusicXmlReadError(f"{source} is not valid XML: {exc}") from exc
     score = read_musicxml(root)
-    return Score(
-        parts=score.parts,
-        pedals=score.pedals,
-        tempo_map=score.tempo_map,
-        time_signatures=score.time_signatures,
-        source=source,
-        title=score.title or source.stem,
-    )
+    # `replace`, not a field-by-field copy: this used to list the fields it
+    # carried over, so anything added to Score later was silently dropped on the
+    # way out of the file reader.
+    return replace(score, source=source, title=score.title or source.stem)
 
 
 def _parse(source: Path) -> ElementTree.Element:
@@ -219,6 +215,7 @@ def read_musicxml(root: ElementTree.Element) -> Score:
         tempo_map=tempo_map,
         time_signatures=_time_signatures(reads, tempo_map),
         title=_title(root),
+        composer=_composer(root),
     )
 
 
@@ -228,6 +225,26 @@ def _title(root: ElementTree.Element) -> str:
         if found is not None and found.text:
             return found.text.strip()
     return ""
+
+
+def _composer(root: ElementTree.Element) -> str:
+    """The composer, from ``<identification>``.
+
+    A file may name several creators: a composer, a lyricist, an arranger, the
+    person who made the transcription. Only the composer is wanted, and an
+    untyped ``<creator>`` is taken only when there is no typed one, since a lone
+    creator on a score is nearly always the composer.
+    """
+    fallback = ""
+    for creator in root.findall("identification/creator"):
+        if not creator.text:
+            continue
+        text = creator.text.strip()
+        if creator.get("type") == "composer":
+            return text
+        if not creator.get("type") and not fallback:
+            fallback = text
+    return fallback
 
 
 # -- one part ------------------------------------------------------------

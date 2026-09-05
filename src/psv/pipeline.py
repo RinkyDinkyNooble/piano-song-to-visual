@@ -23,6 +23,8 @@ from psv.constraints import ConstrainResult, constrain
 from psv.load import read_score
 from psv.model import Score
 from psv.practice import prepare
+from psv.render.title import TitleError, add_title, card_text
+from psv.render.title import summary as title_summary
 from psv.render.video import TAIL_S, render_video
 
 log = logging.getLogger(__name__)
@@ -39,6 +41,8 @@ class PipelineResult:
     audio: AudioResult
     #: What the practice settings did, empty when they were all defaults.
     practice: str = ""
+    #: What the title pass did, empty when it was off.
+    title: str = ""
 
     def summary(self) -> str:
         lines = [
@@ -53,6 +57,8 @@ class PipelineResult:
         lines.append(f"  audio            {audio}")
         if self.practice:
             lines.append(f"  practice         {self.practice}")
+        if self.title:
+            lines.append(f"  title            {self.title}")
         lines.append(f"  notes            {len(self.score.notes)}")
         return "\n".join(lines)
 
@@ -142,6 +148,8 @@ def run(
                 _copy(silent, output)
                 audio = AudioResult(path=None, backend="none", note=str(exc))
 
+    title = _add_title(output, config, score)
+
     log.info("wrote %s", output)
     return PipelineResult(
         output=output,
@@ -150,6 +158,7 @@ def run(
         constrained=constrained,
         audio=audio,
         practice=show.label,
+        title=title,
     )
 
 
@@ -159,3 +168,33 @@ def _copy(source: Path, destination: Path) -> None:
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(source, destination)
+
+
+def _add_title(output: Path, config: Config, score: Score) -> str:
+    """Put a card and fades on the finished file, and say what was done.
+
+    Runs last, over the muxed video, and rewrites it in place through a
+    temporary. A failure here loses the card, not the render: the video already
+    exists and is already correct, so the pass says what went wrong and leaves
+    it alone.
+    """
+    if not config.title.is_on:
+        return ""
+
+    card = card_text(config.title, title=score.title, composer=score.composer)
+    with tempfile.TemporaryDirectory(prefix="psv-title-") as scratch:
+        titled = Path(scratch) / f"titled{output.suffix}"
+        try:
+            add_title(
+                output,
+                titled,
+                config.title,
+                title=score.title,
+                composer=score.composer,
+                workspace=Path(scratch),
+            )
+        except TitleError as exc:
+            log.warning("%s; leaving the video without a title", exc)
+            return ""
+        _copy(titled, output)
+    return title_summary(config.title, card)

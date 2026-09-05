@@ -25,6 +25,7 @@ from psv.config import (
     Config,
     ConfigError,
     PracticeConfig,
+    TitleConfig,
     VisualConfig,
 )
 from psv.constraints import ConstraintError
@@ -227,6 +228,7 @@ def _add_render_options(parser: argparse.ArgumentParser) -> None:
         ),
     )
     _add_practice_options(parser)
+    _add_title_options(parser)
 
 
 def _add_practice_options(parser: argparse.ArgumentParser) -> None:
@@ -275,6 +277,53 @@ def _add_practice_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         default=None,
         help="keep clicking through the piece, not only into it",
+    )
+
+
+def _add_title_options(parser: argparse.ArgumentParser) -> None:
+    """A card at the front and a fade at the end, for a video you will post.
+
+    Off unless one of these is given, because a practice video wants neither
+    and they cost a re-encode of the finished file.
+    """
+    group = parser.add_argument_group("title")
+    group.add_argument(
+        "--title-card",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        dest="title_seconds",
+        help="show a title card for this long, fading to reveal the music",
+    )
+    group.add_argument(
+        "--title",
+        default=None,
+        metavar="TEXT",
+        dest="title_text",
+        help="what the card says; the score's own title is used when omitted",
+    )
+    group.add_argument(
+        "--composer",
+        default=None,
+        metavar="TEXT",
+        dest="title_composer",
+        help="the second line; read from MusicXML when omitted",
+    )
+    group.add_argument(
+        "--fade-out",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        dest="title_fade_out_s",
+        help="fade the picture and the sound to black over this long",
+    )
+    group.add_argument(
+        "--hold-black",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        dest="title_hold_s",
+        help="hold on black for this long after the fade",
     )
 
 
@@ -346,7 +395,14 @@ def _cmd_render(args: argparse.Namespace, config: Config) -> int:
     score = read_score(args.input)
     visual = _visual_with_overrides(config.visual, args)
     practice = _practice_with_overrides(config.practice, args)
+    title = _title_with_overrides(config.title, args)
     _check_window_flags(args)
+
+    if title.is_on:
+        # `render` writes the picture only. A card here would be accepted and
+        # then thrown away by whatever muxes the sound on afterwards.
+        print("psv: the title options need `psv run`", file=sys.stderr)
+        return 2
 
     if practice.metronome:
         # `render` writes a silent video, so saying nothing here would look like
@@ -378,6 +434,26 @@ def _cmd_render(args: argparse.Namespace, config: Config) -> int:
         print(f"  practice         {show.label}")
     print(f"wrote {path}")
     return 0
+
+
+def _title_with_overrides(title: TitleConfig, args: argparse.Namespace) -> TitleConfig:
+    """Command-line flags win over the config file, as the others do."""
+    overrides = {
+        field: getattr(args, name)
+        for field, name in (
+            ("seconds", "title_seconds"),
+            ("text", "title_text"),
+            ("composer", "title_composer"),
+            ("fade_out_s", "title_fade_out_s"),
+            ("hold_s", "title_hold_s"),
+        )
+        if getattr(args, name, None) is not None
+    }
+    if not overrides:
+        return title
+    updated = replace(title, **overrides)
+    updated.validate()
+    return updated
 
 
 def _practice_with_overrides(
@@ -534,12 +610,13 @@ def _progress(args: argparse.Namespace) -> Callable[[int, int], None]:
 def _cmd_run(args: argparse.Namespace, config: Config) -> int:
     visual = _visual_with_overrides(config.visual, args)
     practice = _practice_with_overrides(config.practice, args)
+    title = _title_with_overrides(config.title, args)
     audio = _audio_with_overrides(config.audio, args)
     _check_window_flags(args)
     result = run_pipeline(
         args.input,
         args.output,
-        replace(config, visual=visual, practice=practice, audio=audio),
+        replace(config, visual=visual, practice=practice, audio=audio, title=title),
         start=args.start or 0.0,
         duration=args.seconds,
         bars=args.bars,

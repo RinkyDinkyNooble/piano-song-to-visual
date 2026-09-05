@@ -260,6 +260,34 @@ Precedence runs least specific to most: the config file, then the preset, then
 the theme, then the effects, then the individual flags.
 `--preset small-hands --span 14` gives you 14.
 
+### A video you would post
+
+Off unless you ask, because a practice video wants none of it:
+
+```bash
+psv run song.musicxml -o out.mp4 --title-card 4 --fade-out 3 --hold-black 2
+```
+
+A title card at the front, fading to nothing to reveal the music **already
+playing behind it**, then a fade to black at the end and a few seconds held
+there. The card is an overlay rather than a separate clip spliced on the front,
+which is the only way the notes can already be falling while it clears.
+
+You do not type the words. MusicXML carries `<work-title>` and
+`<creator type="composer">`, so a real score names itself; `--title` and
+`--composer` override when the file is wrong or when the input is a MIDI, which
+has nowhere to put either. `[title]` in the config file has the rest: the
+screen colour, a footer line for a channel name, a font, and which way the
+opacity falls.
+
+The card clears before it leaves the screen — 70% of the way through by default
+— so there is a moment of clear picture with the first notes visibly falling
+before any of them lands.
+
+This is the one step that re-encodes the finished file. Everything else is
+copied, so it costs a generation and a minute or so on a long render, which is
+why it stays off until asked for.
+
 ### Practising with it
 
 A video of the piece at full speed, both hands, from the top, is not how anyone
@@ -410,6 +438,24 @@ reverb = 0.5              # how much room the piano is played in, 0 dry to 1 a
 audio_file = ""           # for backend = "mux": your own recording
 offset_s = 0.0            # nudge that recording into sync
 stereo_width = 0.5        # low notes left, high notes right, as at the keyboard
+
+[title]                   # a card at the front and a fade at the end, for a
+                          # video you will post. Off until `seconds` is set,
+                          # and the only step that re-encodes the finished file
+seconds = 0.0             # how long the card is up. 0 turns the whole thing off
+text = ""                 # what it says; empty takes the score's own title
+composer = ""             # the second line; MusicXML carries this, MIDI does not
+footer = ""               # a third line, fainter and lower. For a channel name
+font = ""                 # a .ttf or .otf; empty finds a serif, and falls back
+                          # to a built-in face rather than failing the render
+screen = "#0a0a0a"        # the screen behind the text
+opacity = 1.0             # how opaque it starts, before it fades to nothing
+clear_at = 0.0            # when it reaches nothing. 0 means 70% of `seconds`,
+                          # leaving clear screen so the first notes are visible
+                          # falling before any of them lands
+curve = "ease"            # ease | linear | slow: how the opacity falls
+fade_out_s = 0.0          # fade the picture and the sound to black over this
+hold_s = 0.0              # then hold on black for this long
 
 [practice]                # how the finished arrangement is presented
 tempo = 1.0               # 0.75 renders at three-quarters speed
