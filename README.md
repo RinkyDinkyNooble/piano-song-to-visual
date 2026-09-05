@@ -10,9 +10,9 @@ actually play it.
 > effects, off by default, for when you want the render to look like something
 > rather than teach you something.
 >
-> Not done: note names on the bars, exporting the soundtrack on its own, and a
-> better built-in synth tone. That last is the only one you would notice, and
-> only if you have no SoundFont.
+> Not done: exporting the soundtrack on its own, and a better built-in synth
+> tone. The second is the only one you would notice, and only if you have no
+> SoundFont.
 
 ## Why this exists
 
