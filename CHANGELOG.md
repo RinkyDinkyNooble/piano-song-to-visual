@@ -203,6 +203,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Identical notes bloomed by different amounts.** Bloom shrank the frame by
+  taking every sixth pixel at 1080p, so how much a bar glowed depended on where
+  the sampling grid happened to fall across it. A bar's position is fixed by its
+  pitch, so this was not a flicker but a standing inequality: two identical
+  notes a semitone apart differed by a third, and something four pixels wide
+  landing between two sampled columns contributed nothing at all. The shrink now
+  averages the block, and the soft knee is applied to every full-resolution
+  pixel before that rather than to the shrunken result: the knee is not linear
+  in the light, so a block half covered by a bar averaged to a dimmer pixel that
+  the knee then discounted again, losing the light twice over. Measured against
+  the light each bar puts on screen, the spread across black-key bars falls from
+  37.8% to 5.2%. Bloom costs 37.0 ms a frame rather than 27.5, all of it in
+  Pillow's C loops; the same arithmetic in numpy is more than twice that.
 - **A bright vertical rule beside every falling note.** Cutting a rectangle
   around the black keys clamped its first piece to the keyboard line without
   also clamping it to the rectangle's own bottom, so anything drawn entirely
