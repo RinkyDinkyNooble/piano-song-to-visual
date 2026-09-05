@@ -568,3 +568,91 @@ def test_a_black_key_is_a_rectangle_and_keeps_its_full_width() -> None:
     # Below the black keys, a white key is its full width again.
     assert geometry.visible_span(62, geometry.black_height) == geometry.key_span(62)
     assert geometry.visible_span(62, 0.0) != geometry.key_span(62)
+
+
+@pytest.mark.feature("F-85")
+@pytest.mark.parametrize("kind", ["trail", "strike_flash", "halo", "key_glow"])
+def test_nothing_drawn_on_a_struck_key_reaches_its_black_neighbours(
+    kind: str,
+) -> None:
+    """The keyboard is drawn whites first so blacks sit on top of them.
+
+    Effects run after the keyboard, which puts them on top of everything, so
+    each one that reaches down onto the keys has to do that occluding itself.
+    Sampled just after the strike, where the trail and the flash are alive.
+    """
+    from psv.render.frame import Layout
+    from psv.render.geometry import KeyboardGeometry
+
+    white = 62  # D4, a black key either side
+    base = replace(
+        EFFECT_SIZE,
+        width=1280,
+        height=720,
+        grid=replace(EFFECT_SIZE.grid, pitch_lines="none", beat_lines="none"),
+    )
+    notes = Score(parts=(Part(notes=(Note(pitch=white, start=1.0, end=3.0),)),))
+    layout = Layout.from_config(base, NO_LANES)
+    geometry = KeyboardGeometry(
+        layout.keyboard_width, base.height - layout.keyboard_top
+    )
+    rows = np.s_[
+        layout.keyboard_top + 1 : layout.keyboard_top + 1 + int(geometry.black_height)
+    ]
+
+    lit_own = 0
+    for when in (1.02, 1.15, 1.30):
+        plain = render_frame(notes, base, when, pedal_lanes=NO_LANES)
+        drawn_now = render_frame(
+            notes, with_effects(one(kind, 1.0), base=base), when, pedal_lanes=NO_LANES
+        )
+        for black in (61, 63):
+            left, right = geometry.key_span(black)
+            columns = np.s_[round(left) + 1 : round(right) - 1]
+            spill = np.abs(
+                drawn_now[rows, columns].astype(int) - plain[rows, columns].astype(int)
+            ).sum()
+            assert spill == 0, f"{kind} spilled onto the black key at {when}s"
+
+        left, right = geometry.key_span(white)
+        own = np.s_[round(left) + 2 : round(right) - 2]
+        lit_own += int(
+            np.abs(
+                drawn_now[rows, own].astype(int) - plain[rows, own].astype(int)
+            ).sum()
+        )
+
+    assert lit_own > 0, f"{kind} lit nothing on the key it belongs to"
+
+
+@pytest.mark.feature("F-85")
+def test_a_struck_black_key_is_still_lit_by_its_own_effects() -> None:
+    """A key never occludes itself. The light belongs on it."""
+    from psv.render.frame import Layout
+    from psv.render.geometry import KeyboardGeometry
+
+    black = 61
+    base = replace(
+        EFFECT_SIZE,
+        width=1280,
+        height=720,
+        grid=replace(EFFECT_SIZE.grid, pitch_lines="none", beat_lines="none"),
+    )
+    notes = Score(parts=(Part(notes=(Note(pitch=black, start=1.0, end=3.0),)),))
+    layout = Layout.from_config(base, NO_LANES)
+    geometry = KeyboardGeometry(
+        layout.keyboard_width, base.height - layout.keyboard_top
+    )
+    left, right = geometry.key_span(black)
+    patch = np.s_[
+        layout.keyboard_top + 1 : layout.keyboard_top + 1 + int(geometry.black_height),
+        round(left) + 2 : round(right) - 2,
+    ]
+
+    plain = render_frame(notes, base, 1.05, pedal_lanes=NO_LANES)
+    drawn_now = render_frame(
+        notes, with_effects(one("trail", 1.0), base=base), 1.05, pedal_lanes=NO_LANES
+    )
+    assert np.abs(drawn_now[patch].astype(int) - plain[patch].astype(int)).sum() > 0, (
+        "the black key occluded its own trail"
+    )

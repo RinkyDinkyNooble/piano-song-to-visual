@@ -192,6 +192,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Effects that reach onto the keyboard pass behind the black keys.** The
+  keyboard is drawn whites first so blacks sit on top of them, but effects run
+  after the keyboard, which put them on top of everything: a struck white key
+  painted its strike flash and its trail across the front half of both black
+  neighbours. Each such rectangle is now cut into the pieces a black key does
+  not cover, with the alpha scaled by each piece's share of the original width,
+  so light squeezed into the tab between two black keys stays a wash instead of
+  becoming a hard line. A key never occludes itself.
+
 - **The key glow follows the key rather than its bounding box.** A white key is
   not a rectangle: for the length of the black keys it is only the tab between
   them. Lit at full width for that whole length, the glow drew over the half of

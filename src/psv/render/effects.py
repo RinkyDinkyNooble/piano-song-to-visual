@@ -35,7 +35,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from psv.config import VisualConfig
-from psv.model import Note, Score
+from psv.model import Note, Score, is_black_key
 from psv.render.color import RGB, note_color, parse_hex
 from psv.render.geometry import KeyboardGeometry
 
@@ -235,6 +235,110 @@ def add_light_column(
     )
 
 
+def _black_key_gaps(
+    canvas: Canvas, pitch: int, x0: float, x1: float
+) -> list[tuple[float, float]]:
+    """The parts of ``x0``-``x1`` that no *other* key's black key covers.
+
+    The note's own key is never an occluder. A black key's own light belongs on
+    it; it is the neighbours it must not paint over.
+
+    Only the immediate neighbours are checked. Everything that draws on the
+    keyboard here is centred on one key and no wider than a key plus a little,
+    so a black key two away cannot be in the way.
+    """
+    spans: list[tuple[float, float]] = []
+    cursor = x0
+    for other in range(pitch - 2, pitch + 3):
+        if other == pitch or not is_black_key(other):
+            continue
+        if not canvas.geometry.contains(other):
+            continue
+        left, right = canvas.geometry.key_span(other)
+        if right <= cursor or left >= x1:
+            continue
+        if left > cursor:
+            spans.append((cursor, left))
+        cursor = max(cursor, right)
+    if cursor < x1:
+        spans.append((cursor, x1))
+    return spans
+
+
+def _behind_keys(
+    canvas: Canvas, pitch: int, x0: float, y0: float, x1: float, y1: float
+) -> Iterator[tuple[float, float, float, float]]:
+    """Cut a rectangle into the pieces a black key does not cover.
+
+    The keyboard is drawn whites first so blacks sit on top of them, and effects
+    run after the keyboard, which puts them on top of everything. Anything an
+    effect draws down onto the keys therefore has to do the occluding itself, or
+    a struck white key paints its trail across the front half of both its black
+    neighbours.
+
+    Above the keys and below the black keys' ends the rectangle is whole; only
+    the band where black keys actually are gets cut.
+    """
+    black_end = canvas.line + 1 + canvas.geometry.black_height
+    top = max(y0, canvas.line)
+    if y0 < top:
+        yield x0, y0, x1, top
+    middle = min(y1, black_end)
+    if top < middle:
+        for left, right in _black_key_gaps(canvas, pitch, x0, x1):
+            yield left, top, right, middle
+    if y1 > black_end:
+        yield x0, max(y0, black_end), x1, y1
+
+
+def add_light_behind_keys(
+    frame: Frame,
+    canvas: Canvas,
+    pitch: int,
+    x0: float,
+    y0: float,
+    x1: float,
+    y1: float,
+    colour: RGB,
+    alpha: float,
+) -> None:
+    """`add_light`, but passing behind the black keys."""
+    for left, top, right, bottom in _behind_keys(canvas, pitch, x0, y0, x1, y1):
+        add_light(frame, left, top, right, bottom, colour, alpha)
+
+
+def add_light_column_behind_keys(
+    frame: Frame,
+    canvas: Canvas,
+    pitch: int,
+    x0: float,
+    y0: float,
+    x1: float,
+    y1: float,
+    colour: RGB,
+    alphas: np.ndarray,
+) -> None:
+    """`add_light_column`, but passing behind the black keys.
+
+    Each piece takes the slice of ``alphas`` for the rows it covers, so the
+    fade down the streak is the one it would have had undivided rather than
+    restarting in every piece.
+    """
+    base = round(y0)
+    full = max(1e-6, x1 - x0)
+    for left, top, right, bottom in _behind_keys(canvas, pitch, x0, y0, x1, y1):
+        first, last = round(top) - base, round(bottom) - base
+        if last <= first:
+            continue
+        # Conserve the light rather than the brightness. Squeezed from a bar
+        # into the tab between two black keys, the same alpha over 40% of the
+        # width stops reading as a wash and starts reading as a hard line.
+        share = (right - left) / full
+        add_light_column(
+            frame, left, top, right, bottom, colour, alphas[first:last] * share
+        )
+
+
 def lighten(colour: RGB, amount: float) -> RGB:
     """Toward white, keeping the hue that says which hand is playing."""
     return (
@@ -274,8 +378,10 @@ def strike_flash(frame: Frame, canvas: Canvas, k: float) -> None:
         for step in range(6):
             spread = 1.0 + step * 0.55
             height = canvas.up(0.0097 + step * 0.0153 * k)
-            add_light(
+            add_light_behind_keys(
                 frame,
+                canvas,
+                note.pitch,
                 centre - half * spread,
                 canvas.line - height,
                 centre + half * spread,
@@ -345,8 +451,16 @@ def trail(frame: Frame, canvas: Canvas, k: float) -> None:
         colour = lighten(canvas.colour(note), 0.5)
         reach = max(1, round(canvas.keys_height * (0.4 + 1.1 * aged)))
         alphas = 0.75 * k * fade * (1 - np.arange(reach) / reach) ** 1.4
-        add_light_column(
-            frame, left, canvas.line, right, canvas.line + reach, colour, alphas
+        add_light_column_behind_keys(
+            frame,
+            canvas,
+            note.pitch,
+            left,
+            canvas.line,
+            right,
+            canvas.line + reach,
+            colour,
+            alphas,
         )
 
 
@@ -409,7 +523,9 @@ def halo(frame: Frame, canvas: Canvas, k: float) -> None:
             alpha = 0.30 * k / (ring * 1.4)
             near, far = left - pad + inset, right + pad - inset
             add_light(frame, near, top - pad, far, top, glow, alpha)
-            add_light(frame, near, bottom, far, bottom + pad, glow, alpha)
+            add_light_behind_keys(
+                frame, canvas, note.pitch, near, bottom, far, bottom + pad, glow, alpha
+            )
             add_light(frame, left - pad, top + inset, left, bottom - inset, glow, alpha)
             add_light(
                 frame, right, top + inset, right + pad, bottom - inset, glow, alpha
