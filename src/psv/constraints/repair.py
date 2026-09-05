@@ -39,7 +39,7 @@ from psv.model import (
 
 from .difficulty import apply_difficulty
 from .hands import ensure_hands
-from .salience import contextual_salience
+from .salience import Salience
 from .span import Violation, detect_violations, verify_span
 
 log = logging.getLogger(__name__)
@@ -132,6 +132,10 @@ class _Working:
     """Mutable state for one run. Indices stay stable within a pass."""
 
     notes: list[Note]
+    #: Read from the score once, before anything is edited. A repair rewrites
+    #: notes as it goes, and re-reading the piece after every edit would make
+    #: the stage quadratic for an analysis that barely moves.
+    weigh: Salience = field(default_factory=Salience)
     dropped: set[int] = field(default_factory=set)
     shifts: dict[int, int] = field(default_factory=dict)
     reassigned: set[int] = field(default_factory=set)
@@ -185,7 +189,7 @@ def _choose_outlier(state: _Working, held: list[int]) -> int:
     return min(
         (low, high),
         key=lambda i: (
-            contextual_salience(state.notes[i], chord),
+            state.weigh.of(state.notes[i], chord),
             -state.notes[i].pitch,
         ),
     )
@@ -270,7 +274,7 @@ def _drop(state: _Working, held: list[int], outlier: int) -> tuple[int, None]:
     victim = min(
         (low, high),
         key=lambda i: (
-            contextual_salience(state.notes[i], chord),
+            state.weigh.of(state.notes[i], chord),
             -state.notes[i].pitch,
         ),
     )
@@ -375,7 +379,10 @@ def constrain(score: Score, config: Config) -> ConstrainResult:
             span_enforced=False,
         )
 
-    state = _Working(notes=list(score.notes))
+    state = _Working(
+        notes=list(score.notes),
+        weigh=Salience.analyse(score.notes),
+    )
     violations_before = len(detect_violations(state.notes, max_span, tolerance))
     repairs: list[Repair] = []
     passes = 0

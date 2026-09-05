@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from psv.model import DEFAULT_OVERLAP_TOLERANCE_S, Hand, Note, Score
 from psv.sweep import PRESS, note_events
 
-from .salience import contextual_salience
+from .salience import Salience
 
 log = logging.getLogger(__name__)
 
@@ -54,8 +54,8 @@ def apply_difficulty(
 
     A single sweep. At each note start the hand's held set is checked, and the
     least salient note is removed until the set fits. Outer voices score highly
-    in :func:`contextual_salience`, so the melody and the bass survive and the
-    harmony between them is what gives way.
+    in :class:`Salience`, so the melody and the bass survive and the harmony
+    between them is what gives way.
     """
     if level not in PROFILES:
         raise ValueError(
@@ -70,10 +70,11 @@ def apply_difficulty(
     if not notes:
         return score, ()
 
+    weigh = Salience.analyse(notes)
     active: dict[Hand, list[tuple[int, int]]] = {}
     dropped: set[int] = set()
 
-    for _time, rank, index in note_events(notes, tolerance):
+    for now, rank, index in note_events(notes, tolerance):
         note = notes[index]
         held = active.setdefault(note.hand, [])
 
@@ -89,10 +90,22 @@ def apply_difficulty(
 
         # An ornament is only expendable when something else is still sounding;
         # removing the last voice would leave a hole rather than simplify.
+        #
+        # And only when it is really an ornament. A short note that continues a
+        # line is a melodic run, which a duration threshold cannot tell from a
+        # decoration: on a piece with a fast right hand this rule alone was
+        # taking 230 of the 231 melody notes that went missing, because a run
+        # is short notes and the accompaniment under it is long ones.
+        #
+        # Only the top of the hand is spared. A line in an inner voice is
+        # figuration, and sparing that instead spent the budget on filler:
+        # long notes went in its place and left beats with nothing sounding
+        # on them at all.
         if (
             profile.min_duration_s > 0
             and note.duration < profile.min_duration_s
             and len(held) > 1
+            and not (weigh.carries_line(note) and note.pitch >= held[-1][0])
         ):
             held.remove((note.pitch, index))
             dropped.add(index)
@@ -104,7 +117,7 @@ def apply_difficulty(
             worst = min(
                 range(len(held)),
                 key=lambda position: (
-                    contextual_salience(notes[held[position][1]], chord),
+                    weigh.of(notes[held[position][1]], chord, now),
                     -notes[held[position][1]].pitch,
                 ),
             )

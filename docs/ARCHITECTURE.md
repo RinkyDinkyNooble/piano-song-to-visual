@@ -71,11 +71,12 @@ separated. This drives every decision about what the later stages need to do.
 Runs only when needed. A two-track solo piano MIDI already *is* the arrangement, and
 the tool should not touch it.
 
-1. **Salience scoring** — rank notes by how much they matter. Deliberately crude
-   as it stands: velocity, duration, and a large bonus for the top and bottom of a
-   simultaneity, since those are the melody and the bass. Real salience needs
-   harmonic analysis, and this is one function with two call sites so there is one
-   place to replace when it gets one.
+1. **Salience scoring** — rank notes by how much they matter. Read once off the
+   whole score, because the two things that decide it cannot be seen in a note on
+   its own: whether it continues a stepwise line, which is what separates a
+   melodic run from an ornament when both are short, and whether another copy of
+   the same key is already sounding. On top of those, a large bonus for the top
+   and bottom of a simultaneity, since those are the melody and the bass.
 2. **Reduction** — drop low-salience notes until the texture fits two hands.
 3. **Hand assignment** — partition surviving notes into left/right by register and
    continuity, minimising crossings and jumps. Existing track/channel splits are

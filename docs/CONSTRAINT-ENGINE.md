@@ -69,13 +69,19 @@ A violation has a low end and a high end. Moving either narrows the set, so the 
 takes whichever removal narrows it more.
 
 When both are equally effective, it gives up whichever the music will miss least, using
-`contextual_salience`: loud and long notes score higher, and the top and bottom of a
-chord get a large bonus because they are the melody and the bass. What sits between them
-is harmony, which a listener misses least.
+`Salience`: the top and bottom of a chord get a large bonus because they are the melody
+and the bass, and what sits between them is harmony, which a listener misses least. A
+note that is both the top of the chord and part of a stepwise line gets more again,
+because that is the tune, and it is short notes in a fast passage that a length-based
+score gets wrong.
 
-That salience function is deliberately crude. Real salience needs harmonic analysis,
-which belongs to the arrange stage. It is one small function so there is exactly one
-place to improve it later.
+Length counts from the moment of the choice rather than from the note's start. How much
+of a note is still to come is what dropping it costs; how long it was written is not.
+
+Harmonic analysis was tried here and removed. Scoring chord tones above passing tones
+made the arrangement measurably worse, because a passing note in the melody matters more
+than a chord tone in an inner voice and a pitch-class histogram cannot tell them apart.
+The reasoning is kept in the module docstring so it is not rebuilt.
 
 ## The five repairs
 
@@ -172,8 +178,10 @@ never a wider stretch. That separation is structural rather than a promise:
 What it does: caps how many notes one hand holds at once (2 for beginner up to 5 for
 hard, uncapped for original), and at the easiest levels strips ornaments, meaning very
 short notes sounding underneath something longer. Never the last voice, since that would
-leave a hole rather than a simpler piece. Outer voices score high in salience, so the
-melody and bass survive and the harmony between them gives way.
+leave a hole rather than a simpler piece, and never a note carrying the melodic line: a
+run is short notes over long accompaniment, so a plain length threshold keeps the
+accompaniment and deletes the tune. Outer voices score high in salience, so the melody
+and bass survive and the harmony between them gives way.
 
 ## Provenance: how to check the engine's work
 

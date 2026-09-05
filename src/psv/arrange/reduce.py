@@ -25,7 +25,7 @@ from bisect import insort
 from dataclasses import dataclass
 from itertools import pairwise
 
-from psv.constraints.salience import contextual_salience
+from psv.constraints.salience import Salience
 from psv.model import DEFAULT_OVERLAP_TOLERANCE_S, Hand, Note, Part, Score
 from psv.sweep import PRESS, note_events
 
@@ -60,17 +60,17 @@ def reduce_texture(
     """Thin the texture until no more than ``max_voices`` ever sound together.
 
     Sweeps once, and whenever the held set is too large removes the least
-    salient note in it. Outer voices score highly in
-    :func:`contextual_salience`, so the melody and the bass survive and the
-    inner harmony is what gives way.
+    salient note in it. Outer voices score highly in :class:`Salience`, so the
+    melody and the bass survive and the inner harmony is what gives way.
     """
     if max_voices <= 0:
         raise ValueError(f"max_voices must be positive, got {max_voices}")
 
+    weigh = Salience.analyse(notes)
     held: list[tuple[int, int]] = []
     dropped: set[int] = set()
 
-    for _time, rank, index in note_events(notes, tolerance):
+    for now, rank, index in note_events(notes, tolerance):
         note = notes[index]
         if rank != PRESS:
             entry = (note.pitch, index)
@@ -86,7 +86,7 @@ def reduce_texture(
             worst = min(
                 range(len(held)),
                 key=lambda position: (
-                    contextual_salience(notes[held[position][1]], chord),
+                    weigh.of(notes[held[position][1]], chord, now),
                     -notes[held[position][1]].pitch,
                 ),
             )

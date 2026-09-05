@@ -719,3 +719,10 @@ name = "A title card and fades, for a video you would post"
 milestone = "M8"
 status = "done"
 verify = "e2e"
+
+[[feature]]
+id = "F-87"
+name = "Salience knows a melodic run from an ornament, and a unison from a chord"
+milestone = "M8"
+status = "done"
+verify = "unit"

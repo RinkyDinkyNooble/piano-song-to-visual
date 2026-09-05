@@ -201,6 +201,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `scripts/fetch_test_songs.py` with SHA-256 verification.
 - Test plan explaining the two-tier asset strategy.
 
+### Changed
+
+- **Salience reads the score, not just the note.** What to sacrifice used to be
+  decided by velocity and duration plus a bonus for being the top or bottom of a
+  chord. Both halves of that were weak in ways only measuring showed. Velocity is
+  usually not there at all: five of the six real test files have exactly one
+  velocity level, because engraved sheet music exported to MIDI carries no
+  performance data, so the term was a constant and duration decided alone. And
+  duration gets fast music backwards, because a melodic run is short notes over
+  long accompaniment. `Salience` is now read once off the whole score and knows
+  two things a single note cannot: whether a note continues a stepwise line, and
+  whether another copy of the same key is already sounding. Length is also
+  counted from the moment of the choice rather than from the note's start, since
+  what dropping a note costs is how much of it was still to come.
+
+  Measured over six real pieces thinned to `beginner`: melody notes kept rises
+  from 90.5% to 93.5%, notes on a downbeat from 89.6% to 90.9%, beats left with
+  nothing sounding falls from 0.4% to 0.2%, and 1.4% fewer notes are removed to
+  reach the same limit.
+
+- **The ornament sweep no longer deletes fast melodies.** At the easiest
+  difficulties any note shorter than a threshold was removed if anything else was
+  sounding. A run and an ornament are both short, so on the test piece with a
+  fast right hand this one rule accounted for 230 of the 231 melody notes that
+  went missing. It now spares a short note that is carrying the line.
+
+- **`salience()` and `contextual_salience()` are gone**, replaced by
+  `psv.constraints.Salience`. A default-constructed one behaves as they did, so
+  there is nothing a caller needs that it cannot do.
+
 ### Fixed
 
 - **Identical notes bloomed by different amounts.** Bloom shrank the frame by

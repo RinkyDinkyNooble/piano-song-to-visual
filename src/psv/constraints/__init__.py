@@ -14,7 +14,7 @@ from psv.constraints.repair import (
     Repair,
     constrain,
 )
-from psv.constraints.salience import contextual_salience, salience
+from psv.constraints.salience import Salience
 from psv.constraints.span import (
     Violation,
     detect_violations,
@@ -27,15 +27,14 @@ __all__ = [
     "ConstrainResult",
     "ConstraintError",
     "Repair",
+    "Salience",
     "Violation",
     "apply_difficulty",
     "assign_by_register",
     "constrain",
-    "contextual_salience",
     "detect_violations",
     "ensure_hands",
     "has_hands",
-    "salience",
     "verify_span",
     "widest_span_per_hand",
 ]
