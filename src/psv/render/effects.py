@@ -87,12 +87,10 @@ BLOOM_FLOOR = 105.0
 
 #: Radius of each of the two box blurs, in shrunken pixels.
 #:
-#: Larger than it needs to be for the spread, deliberately. The shrunken bloom
-#: is scaled back up by repeating pixels, so any structure finer than the shrink
-#: factor arrives as hard squares. Blurring it well below that scale first means
-#: neighbouring blocks barely differ, which is what makes the blocks stop being
-#: visible. It is also free: measured at 1080p, radius 5 costs 0.5 ms more than
-#: radius 2, because the cost is all in the full-size composite.
+#: Free, near enough: measured at 1080p, radius 5 costs 0.5 ms more than radius
+#: 2, because the cost is all in the full-size composite rather than in the
+#: blur. Two box blurs in a row approximate a Gaussian well enough that nothing
+#: here needs a real one.
 BLOOM_BLUR = 5
 
 #: How hard the blurred light is added back.
@@ -443,13 +441,36 @@ def bloom(frame: Frame, canvas: Canvas, k: float) -> None:
     blurred = np.dstack(
         [_box_blur(blurred[:, :, band], BLOOM_BLUR) for band in range(3)]
     )
-    grown = np.repeat(np.repeat(blurred, shrink, axis=0), shrink, axis=1)
-    grown = grown[: area.shape[0], : area.shape[1]]
-    rows, columns = grown.shape[:2]
-    target = area[:rows, :columns]
-    target[:] = np.clip(
-        target.astype(np.int16) + (grown * (BLOOM_GAIN * k)).astype(np.int16), 0, 255
-    ).astype(np.uint8)
+    light = np.clip(blurred * (BLOOM_GAIN * k), 0, 255).astype(np.uint8)
+    grown = _upscale(light, area.shape[1], area.shape[0])
+    area[:] = np.clip(area.astype(np.int16) + grown.astype(np.int16), 0, 255).astype(
+        np.uint8
+    )
+
+
+def _upscale(light: np.ndarray, width: int, height: int) -> np.ndarray:
+    """Smoothly stretch the shrunken bloom back to full size.
+
+    Repeating pixels is what made bloom arrive as hard squares: at 1080p the
+    shrink is 6, so every blurred pixel became a 6x6 block, and against a near
+    black background the eye picks those out easily. Blurring harder first only
+    lowered the contrast between neighbouring blocks; it did not stop them being
+    blocks.
+
+    Bilinear in numpy costs 57 ms and a full-resolution smoothing pass 61 ms,
+    both measured, against 6.3 ms for the repeat. Pillow's C resize does the
+    same job in 9.5 ms, so it wins on the only axis that was ever in question.
+
+    The gain is applied before this, not after, so what is being stretched is
+    the light to add, already in 0-255. That is why it can travel as bytes: the
+    values are about to be added to a uint8 frame regardless.
+    """
+    from PIL import Image
+
+    stretched = Image.fromarray(light, mode="RGB").resize(
+        (width, height), Image.Resampling.BILINEAR
+    )
+    return np.asarray(stretched)
 
 
 #: Effects that draw into a finished frame, in the order they are named in the

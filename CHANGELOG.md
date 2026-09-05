@@ -192,6 +192,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Bloom is smooth now, not blocky.** Scaling the shrunken glow back up by
+  repeating pixels made every blurred pixel a 6x6 square at 1080p, which against
+  a near-black background the eye picks out easily. Blurring harder only lowered
+  the contrast between neighbouring blocks. Pillow's bilinear resize does the
+  stretch properly for 9.5 ms against the repeat's 6.3 ms, where bilinear in
+  numpy costs 57 ms and a full-resolution smoothing pass 61 ms. The frame got
+  faster overall, 41.4 ms against 44.5 ms, because the gain is applied before
+  the stretch and the light travels as bytes.
+
 - **The halo no longer squares off a rounded bar.** Drawn as four full-width
   strips it is a rectangle of light, and a rectangle around a rounded bar
   redraws the corners the rounding removed, in glow rather than in the bar's

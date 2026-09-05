@@ -13,6 +13,7 @@ and an effect that carried state would seam at every boundary.
 
 from __future__ import annotations
 
+import itertools
 import multiprocessing
 from dataclasses import replace
 from pathlib import Path
@@ -471,4 +472,35 @@ def test_the_halo_does_not_fill_in_a_rounded_corner() -> None:
     assert at_edge > 0, "the halo drew nothing beside the bar at all"
     assert at_corner < 0.2 * at_edge, (
         f"the corner is lit like the straight edge: {at_corner} vs {at_edge}"
+    )
+
+
+@pytest.mark.feature("F-83")
+def test_the_bloom_upscale_interpolates_rather_than_repeating_pixels() -> None:
+    """The blocks Ren saw twice, tested where they came from.
+
+    The committed bloom reference is 320x180, where the falling area is small
+    enough that the shrink is 1 and the upscale never runs, so it could not
+    have caught this. One bright cell stretched twenty-fold is unambiguous:
+    repeating pixels gives a hard square of one value, interpolating gives a
+    ramp.
+    """
+    from psv.render.effects import _upscale
+
+    small = np.zeros((5, 5, 3), dtype=np.uint8)
+    small[2, 2] = 200
+    grown = _upscale(small, 100, 100)
+
+    assert grown.shape == (100, 100, 3)
+    row = grown[50, :, 0].astype(int)
+    peak = int(np.argmax(row))
+    assert row[peak] > 0, "the bright cell did not survive the stretch"
+
+    # A repeat would put exactly two values on this row: 200 and 0.
+    assert len(set(row.tolist())) > 5, f"only {len(set(row.tolist()))} values: a block"
+
+    # And it falls away from the peak rather than stopping at an edge.
+    rising = row[: peak + 1]
+    assert all(a <= b for a, b in itertools.pairwise(rising)), (
+        "the ramp up to the peak is not monotonic"
     )
