@@ -1,1 +1,8 @@
 blank_issues_enabled: true
+contact_links:
+  - name: How to contribute
+    url: https://github.com/RinkyDinkyNooble/piano-song-to-visual/blob/main/CONTRIBUTING.md
+    about: Setup, the checks CI runs, and what the project will not trade away.
+  - name: Security vulnerability
+    url: https://github.com/RinkyDinkyNooble/piano-song-to-visual/security/advisories/new
+    about: Report privately rather than in a public issue.

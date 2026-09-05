@@ -1,18 +1,26 @@
 # piano-song-to-visual
 
+[![CI](https://github.com/RinkyDinkyNooble/piano-song-to-visual/actions/workflows/ci.yml/badge.svg)](https://github.com/RinkyDinkyNooble/piano-song-to-visual/actions/workflows/ci.yml)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/downloads/)
+[![Licence: 0BSD](https://img.shields.io/badge/licence-0BSD-green)](LICENSE)
+
 Turn a MIDI or MusicXML score into a Synthesia-style falling-notes practice
 video — no hands, just notes flowing onto a keyboard — arranged so a human can
 actually play it.
 
-> **Status: working.** One command turns a score into a practice video with
+> **Status: done, at 1.0.** One command turns a score into a practice video with
 > sound, arranged to fit your hands, at whatever tempo and over whatever bars you
 > want to drill. There is also a showcase mode: colour schemes and optional
 > effects, off by default, for when you want the render to look like something
 > rather than teach you something.
 >
-> Not done: exporting the soundtrack on its own, and a better built-in synth
-> tone. The second is the only one you would notice, and only if you have no
-> SoundFont.
+> Done means finished rather than abandoned. It does what it was built to do, so
+> the work from here is bug fixes, not features.
+>
+> Two things were left out on purpose. Exporting the soundtrack on its own, since
+> the `mux` backend already takes a finished audio file back. And a better
+> built-in synth tone, which is the only one you would notice, and only if you
+> have no SoundFont.
 
 ## Why this exists
 
@@ -97,13 +105,13 @@ psv run song.mid -o practice.mp4
 
 ```
   arrange          reduced to two hands, 12 note(s) dropped
-  constrain        403 span violation(s) found, resolved in 3 pass(es)
-    drop           50
-    octave-shift   278
-    reassign       12
-    truncate       35
+  constrain        403 span violation(s) found, resolved in 9 pass(es)
+    drop           57
+    octave-shift   272
+    reassign       50
+    truncate       34
   audio            builtin
-  notes            6066
+  notes            6082
 wrote practice.mp4
 ```
 
@@ -179,6 +187,7 @@ beethoven-op18-no4-i-quartet
   polyphony      peak 11, mean 3.7
   widest span    51 semitones at 503.5s
   tempo          138 BPM, constant
+  meter          4/4
   dynamics       none (every note the same velocity)
   pedal          none
   hands          not separated; needs the arrange stage
@@ -251,10 +260,12 @@ The kinds are `strike_flash`, `key_glow`, `trail`, `particles`, `halo`, `pulse`
 and `bloom`. Each takes an `intensity` from 0 to 1, and 0 is a no-op rather than
 something faint.
 
-Measured at 1080p, against the 8.5 ms it takes to draw a frame at all:
-`subtle` 1.3 ms, `showcase` 2.3 ms, `maximum` 8.5 ms. `bloom` on its own is
-26.8 ms, which is about three times a whole frame, so it is in none of the
-bundles and you have to name it.
+Measured at 1080p, against the 10.6 ms it takes to draw a frame at all:
+`subtle` 1.4 ms, `showcase` 2.6 ms, `maximum` 11.7 ms. `bloom` on its own is
+39 ms, nearly four times a whole frame, so it is in none of the bundles and you
+have to name it. It is the only effect that reads the frame it is given, and it
+weighs every pixel at full resolution before shrinking, which is what stops
+identical notes glowing by different amounts.
 
 Precedence runs least specific to most: the config file, then the preset, then
 the theme, then the effects, then the individual flags.
@@ -520,6 +531,13 @@ That second set is 29 small MusicXML files, each built to break one corner of th
 format. They are MIT and therefore not committed, for the same reason the CC BY-SA
 songs are not: this repository is 0BSD and should not quietly attach a condition
 it says is not there. Tests needing them skip when they are absent.
+
+## Contributing
+
+This is a personal tool that happens to be public, so bug reports are more
+welcome than large features; ask first if the change is more than a fix.
+[CONTRIBUTING.md](CONTRIBUTING.md) has the setup, the four checks CI runs, and
+the three rules the project will not trade away.
 
 ## Licence
 

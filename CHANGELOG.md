@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.0.0] - 2026-09-05
+
+The first release. Everything below was built before it, and the version number
+is a statement that the tool is finished rather than a milestone in its own
+right: a score goes in, a practice video you can actually play comes out, and
+the ten milestones the build plan set are done or deliberately dropped.
+
 
 ### Added
 
@@ -39,9 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `[[visual.effects]]` in the config, or `--effects` for a named bundle:
     `subtle`, `showcase`, `maximum`, and `none` to turn off what a config file
     asked for.
-  - Measured at 1080p, against the 8.5 ms a frame already costs: `subtle` 1.3
-    ms, `showcase` 2.3 ms, `maximum` 8.5 ms. `bloom` alone is 26.8 ms, about
-    three times a whole frame, so it is in no bundle and has to be named.
+  - Measured at 1080p, against the 10.6 ms a frame already costs: `subtle` 1.4
+    ms, `showcase` 2.6 ms, `maximum` 11.7 ms. `bloom` alone is 39 ms, nearly
+    four times a whole frame, so it is in no bundle and has to be named.
   - Nothing reads the previous frame, so `render_frame` stays a pure function
     of the score and a time. Sparks are hashed from the note and the spark
     index rather than carried between frames, which is also why a frame drawn
@@ -230,6 +239,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`salience()` and `contextual_salience()` are gone**, replaced by
   `psv.constraints.Salience`. A default-constructed one behaves as they did, so
   there is nothing a caller needs that it cannot do.
+
+- **Span repair weighs a note by what is left of it.** The difficulty and
+  arrange stages already scored a note by how much was still to come at the
+  moment of the choice; repair was still using the written length, though the
+  violation it is fixing carries the instant.
+
+- **No `License ::` classifier.** `license` is a PEP 639 SPDX expression, and
+  PyPI rejects a distribution carrying both. Development status moves from
+  pre-alpha to beta.
 
 ### Fixed
 

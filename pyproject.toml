@@ -16,10 +16,11 @@ keywords = [
   "arrangement", "practice", "video", "sheet-music-alternative",
 ]
 classifiers = [
-  "Development Status :: 2 - Pre-Alpha",
+  # No "License ::" classifier: `license` above is a PEP 639 SPDX expression,
+  # and PyPI rejects a distribution that carries both.
+  "Development Status :: 4 - Beta",
   "Environment :: Console",
   "Intended Audience :: End Users/Desktop",
-  "License :: OSI Approved :: BSD License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
