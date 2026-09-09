@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **One key, one press.** A piano key can only be held by one finger, and
+  nothing in the pipeline said so. Two voices sharing a staff write the same
+  pitch together, and one hand holds a note while the other taps it; both are
+  ordinary notation and neither is playable. They reached the video as tiles
+  stacked on top of each other and the synthesiser as a second note-on for a
+  key that never came up. `psv.constraints.keys` resolves them, and
+  `verify_single_press` is checked before `constrain` returns, alongside
+  `verify_span`.
+
+  A key struck later lifts just before the second strike, which is what
+  re-articulating a held note means and is inaudible under the sustain pedal.
+  Two notes struck together leave one press to make, so the longer keeps the
+  key and the shorter is dropped. Both are recorded as repairs, so nothing goes
+  missing unreported. The held note is not put back after the tap: that would
+  mean splitting one note into two, and the engine does not invent notes.
+
+  `hands.max_span_semitones = 0` still returns the score exactly as written,
+  double strikes included, because that setting means the piece unedited.
+
 ### Fixed
 
 - **A repeated key went silent under FluidSynth.** The backend built its event

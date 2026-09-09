@@ -17,6 +17,10 @@ without wrecking the music.
 `hands.max_span_semitones`. Not usually. Not except in hard passages. Every instant,
 every input.
 
+There is a second, smaller promise alongside it, described in full under [One key,
+one press](#one-key-one-press): no key is ever struck while another note is still
+holding it. Both are checked before `constrain` returns.
+
 ## What counts as "held together"
 
 Two notes are held together if they sound at the same time for longer than
@@ -122,9 +126,15 @@ Whole octaves only. That is the one displacement preserving pitch class and harm
 function: a C stays a C, and the chord still means what it meant. Any other interval
 changes the harmony.
 
-Refused when the note would leave the 88 keys, when it would land on a pitch the same
-hand is already holding (two voices silently merging into one), or when it would not
-strictly narrow the span. That last condition is what prevents a note oscillating up and
+Refused when the note would leave the 88 keys, when it would land on a key some other
+note is already holding (two voices silently merging into one), or when it would not
+strictly narrow the span.
+
+That second refusal is asked about the whole of the moved note's duration and about
+every hand, which it was not always. Comparing against the pitches the violating hand
+held at the violating instant misses two cases the engine hits routinely: the note being
+moved outlasts that instant, and a violation in one hand is often repaired by moving a
+note that belongs to the other. Both let the shift destroy a voice. That last condition is what prevents a note oscillating up and
 down between two conflicts; a hard cap of three shifts per note backs it up.
 
 ### 4. Truncate, with the pedal up
@@ -149,7 +159,9 @@ for pass in 1..12:
     repair each violation
     compact
 force_clean()          # drop-only, until nothing violates
-verify_span()          # the postcondition, checked every run
+resolve_keys()         # one key, one press
+verify_span()          # the postconditions, checked every run
+verify_single_press()
 ```
 
 Repairs are applied in a pass, then everything is re-detected, because a repair can move
@@ -161,10 +173,50 @@ drops notes until nothing violates. Dropping strictly reduces the note count, th
 count is finite and non-negative, and a hand holding fewer than two notes cannot violate
 anything. So the process cannot run forever, and it cannot end in a violating state.
 
-**The postcondition is checked on every call, not just under test.** `verify_span` runs
-before `constrain` returns; if it finds anything, the engine raises rather than handing
-back a score that quietly cannot be played. A failure there is a bug in this module, and
-it says so.
+**The postconditions are checked on every call, not just under test.** `verify_span` runs
+before `constrain` returns, and `verify_single_press` beside it; if either finds anything, the
+engine raises rather than handing back a score that quietly cannot be played. A failure
+there is a bug in this module, and it says so.
+
+## One key, one press
+
+Span is about how far apart two fingers can be. This is about a fact one level below
+it: **a key can only be held down by one finger at a time.**
+
+Scores ask for more than that constantly, and none of it is an error in the source.
+Two voices sharing a staff write the same pitch together. One hand holds a note while
+the other taps it — which is exactly what a keyboard cannot do, and exactly what
+notation is happy to write. Left alone it reaches the video as tiles stacked on top of
+each other, and the synthesiser as a second note-on for a key that never came up.
+
+`keys.py` sweeps for it with the same shared press/release sweep everything else uses,
+so an overlap shorter than `hands.overlap_tolerance_s` vanishes here as it does
+everywhere: a note released two milliseconds late is sloppy MIDI, not two fingers.
+
+Two resolutions, both matching what a player does:
+
+- **Struck later** — the key lifts just before the second strike. That is what
+  re-articulating a held note means, and while the sustain pedal is down it is
+  inaudible, for the same reason truncation is cheap in `repair`.
+- **Struck together** — there is only one press to make, so the longer note keeps the
+  key and the shorter one goes. The pitch still sounds, for the longer of the two
+  durations.
+
+Both are recorded as repairs (`lift-to-restrike`, `merge-unison`), so a note removed
+here is a note reported here.
+
+**It runs after span repair, not before.** A repair can create a clash itself by moving
+a note onto an occupied key, so going first would miss those. Going last is safe because
+neither resolution can widen a reach: shortening and dropping only ever narrow what one
+hand holds, so the span guarantee survives this pass untouched.
+
+**What it does not do** is put the held note back after the tap. That means splitting one
+note into two, and the engine moves, shortens and removes notes but does not invent them.
+So a long note under a repeated tap loses everything after the first tap, which on a score
+with no pedal data is audible. That is the known cost of this pass.
+
+`hands.max_span_semitones = 0` leaves double strikes alone with everything else. That
+setting means the piece as written, and resolving one costs a note.
 
 ## Difficulty is a different knob
 
@@ -207,7 +259,8 @@ empty. Alongside it:
 | Output never exceeds the span | The promise itself |
 | Output stays on the 88 keys | Repairs cannot invent keys |
 | Repairs never invent notes | The engine may move, shorten, or remove, never add |
-| A conforming score is returned untouched | It cannot make a playable arrangement worse |
+| Output never holds one key with two notes | The second promise |
+| A playable score is returned untouched | It cannot make a playable arrangement worse |
 | Constraining twice equals once | It cannot degrade a score on every run |
 
 Plus one test per strategy, including the cases where each correctly declines, and

@@ -19,7 +19,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from psv.config import Config, DifficultyConfig, HandsConfig
-from psv.constraints import constrain, verify_span
+from psv.constraints import constrain, verify_single_press, verify_span
 from psv.constraints.repair import MAX_OCTAVE_SHIFTS
 from psv.midi import read_midi
 from psv.model import (
@@ -345,9 +345,16 @@ def test_repairs_never_invent_notes(score: Score, max_span: int) -> None:
 @SLOW
 @given(score=random_scores(), max_span=st.integers(min_value=1, max_value=18))
 def test_a_conforming_score_is_returned_untouched(score: Score, max_span: int) -> None:
-    """Nothing that already fits is edited, so the engine cannot make a
-    playable arrangement worse."""
+    """Nothing already playable is edited, so the engine cannot make a playable
+    arrangement worse.
+
+    Playable means both guarantees, not only the span. A score asking one key
+    to be held by two fingers has to be edited whatever its reach, so it is not
+    a counter-example to this one.
+    """
     if verify_span(score, max_span, tolerance=0.03):
+        return
+    if verify_single_press(score, tolerance=0.03):
         return
     result = constrain(score, config_for(max_span))
     assert result.repairs == ()

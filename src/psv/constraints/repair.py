@@ -39,6 +39,7 @@ from psv.model import (
 
 from .difficulty import apply_difficulty
 from .hands import ensure_hands
+from .keys import resolve_double_strikes, verify_single_press
 from .salience import Salience
 from .span import Violation, detect_violations, verify_span
 
@@ -355,6 +356,23 @@ def _force_clean(state: _Working, max_span: int, tolerance: float) -> list[Repai
         repairs.append(Repair("drop", violation.hand, violation.time, before, None))
 
 
+def _resolve_keys(
+    notes: Sequence[Note], tolerance: float
+) -> tuple[list[Note], list[Repair]]:
+    """Make every key playable by one finger, as `Repair` records.
+
+    `keys` does the work and reports plain triples; turning them into the
+    engine's own record is this module's job, so the two do not depend on each
+    other.
+    """
+    resolved, edits = resolve_double_strikes(notes, tolerance)
+    repairs = [
+        Repair(strategy, before.hand, before.start, before, after)
+        for strategy, before, after in edits
+    ]
+    return resolved, repairs
+
+
 def constrain(score: Score, config: Config) -> ConstrainResult:
     """Make ``score`` playable within the configured hand span.
 
@@ -376,6 +394,11 @@ def constrain(score: Score, config: Config) -> ConstrainResult:
         # Asked for no limit, so there is nothing to detect and nothing to
         # repair. Returning here rather than running with a very wide span
         # keeps "unlimited" from meaning "36", and keeps every note untouched.
+        #
+        # That includes leaving double strikes alone. Resolving one costs a
+        # note, and someone who asked for the piece as written has said they
+        # will judge playability themselves; the tiles will stack in the video
+        # exactly as the score stacks them.
         log.warning(
             "hands.max_span_semitones is 0: span is not being enforced, and the "
             "result may not be playable"
@@ -412,12 +435,21 @@ def constrain(score: Score, config: Config) -> ConstrainResult:
     state.compact()
     repairs.extend(_force_clean(state, max_span, tolerance))
 
-    result = score.with_notes(state.notes)
+    notes, key_repairs = _resolve_keys(state.notes, tolerance)
+    repairs.extend(key_repairs)
+    result = score.with_notes(notes)
 
     remaining = verify_span(result, max_span, tolerance)
     if remaining:  # pragma: no cover - the guarantee, asserted in production
         raise ConstraintError(
             f"constrain left {len(remaining)} violation(s), first: {remaining[0]}. "
+            "This is a bug in psv.constraints, not in the input."
+        )
+
+    clashes = verify_single_press(result, tolerance)
+    if clashes:  # pragma: no cover - the guarantee, asserted in production
+        raise ConstraintError(
+            f"constrain left {len(clashes)} double strike(s), first: {clashes[0]}. "
             "This is a bug in psv.constraints, not in the input."
         )
 

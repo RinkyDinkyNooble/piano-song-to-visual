@@ -757,7 +757,9 @@ def test_every_fixture_reads_and_survives_the_pipeline(
     assert len(arranged.score.notes) + len(arranged.dropped) == before
 
     result = constrain(arranged.score, config)
-    reported = sum(1 for r in result.repairs if r.strategy == "drop") + len(
+    # Every repair that removed a note, whatever it called itself. Naming one
+    # strategy here would let a later one delete music unnoticed.
+    reported = sum(1 for r in result.repairs if r.dropped) + len(
         result.removed_for_difficulty
     )
     assert len(arranged.score.notes) - len(result.score.notes) == reported

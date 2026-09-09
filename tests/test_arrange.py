@@ -449,7 +449,9 @@ def test_every_note_removed_is_a_note_reported(fixture: str) -> None:
     assert kept + len(arranged.dropped) == before, "arrange lost notes silently"
 
     result = constrain(arranged.score, config)
-    reported = sum(1 for r in result.repairs if r.strategy == "drop") + len(
+    # Every repair that removed a note, whatever it called itself. Naming one
+    # strategy here would let a later one delete music unnoticed.
+    reported = sum(1 for r in result.repairs if r.dropped) + len(
         result.removed_for_difficulty
     )
     assert kept - len(result.score.notes) == reported, "constrain lost notes silently"
@@ -477,7 +479,9 @@ def test_a_real_song_loses_nothing_unreported(
     assert len(arranged.score.notes) + len(arranged.dropped) == len(score.notes)
 
     result = constrain(arranged.score, config)
-    reported = sum(1 for r in result.repairs if r.strategy == "drop") + len(
+    # Every repair that removed a note, whatever it called itself. Naming one
+    # strategy here would let a later one delete music unnoticed.
+    reported = sum(1 for r in result.repairs if r.dropped) + len(
         result.removed_for_difficulty
     )
     assert len(arranged.score.notes) - len(result.score.notes) == reported
