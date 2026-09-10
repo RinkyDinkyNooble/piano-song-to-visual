@@ -146,6 +146,32 @@ def test_constrain_resolves_double_strikes_it_was_given() -> None:
 
 
 @pytest.mark.feature("F-88")
+def test_an_octave_shift_will_not_land_on_a_key_that_is_already_sounding() -> None:
+    """The guard used to read the pitches the *violating hand* held at the
+    violating instant. That misses two cases the engine hits constantly: the
+    note being moved outlasts that instant, and the clash is with the other
+    hand.
+
+    The left hand reaches 24 semitones from C2 to C4. C4 is the outlier, and
+    the right hand cannot take it, so the octave shift is tried next and would
+    drop C4 onto the C3 the right hand is already holding. That destroys the
+    melody note and doubles a C3. Refusing lets truncation take the C2 instead,
+    which costs two seconds of bass and keeps every pitch.
+    """
+    score = score_of(
+        note(36, 0.0, 3.0, hand=Hand.LEFT),
+        note(60, 1.0, 3.0, hand=Hand.LEFT),
+        note(48, 0.0, 3.0, hand=Hand.RIGHT),
+        note(42, 0.0, 3.0, hand=Hand.RIGHT),
+    )
+    result = constrain(score, config_for(12))
+
+    assert 60 in {n.pitch for n in result.score.notes}, "the C4 was merged away"
+    assert sorted(n.pitch for n in result.score.notes) == [36, 42, 48, 60]
+    assert verify_single_press(result.score) == []
+
+
+@pytest.mark.feature("F-88")
 def test_no_span_limit_leaves_double_strikes_alone() -> None:
     """The known limit of this pass, kept in a test rather than left as a gap.
 

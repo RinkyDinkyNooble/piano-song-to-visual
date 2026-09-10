@@ -220,6 +220,17 @@ def _try_reassign(
     return outlier, state.notes[outlier].assigned_to(other)
 
 
+def _key_is_taken(state: _Working, candidate: Note, outlier: int) -> bool:
+    """Whether a surviving note already holds ``candidate``'s key while it sounds."""
+    return any(
+        index != outlier
+        and index not in state.dropped
+        and note.pitch == candidate.pitch
+        and note.overlaps(candidate)
+        for index, note in enumerate(state.notes)
+    )
+
+
 def _try_octave_shift(
     state: _Working, violation: Violation, held: list[int], outlier: int, max_span: int
 ) -> tuple[int, Note] | None:
@@ -234,9 +245,13 @@ def _try_octave_shift(
         return None
 
     others = [state.notes[i].pitch for i in held if i != outlier]
-    if candidate.pitch in others:
-        # Landing on a note the same hand is already holding would silently
-        # merge two voices into one.
+    if _key_is_taken(state, candidate, outlier):
+        # Landing on a key another note already holds would silently merge two
+        # voices into one. The question has to be asked about the whole of this
+        # note's duration and about every hand, not about the pitches held at
+        # the violating instant: the note being moved outlasts that instant,
+        # and a violation in one hand routinely moves a note belonging to the
+        # other.
         return None
     if _span([*others, candidate.pitch]) >= _span([p for p, _ in pitches]):
         # Insist on strict improvement, so a note cannot shift back and forth.

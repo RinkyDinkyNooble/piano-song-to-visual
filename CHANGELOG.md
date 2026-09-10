@@ -30,6 +30,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An octave shift could land on a key that was already sounding.** The guard
+  against merging two voices into one compared the candidate pitch against the
+  notes the *violating hand* held at the *violating instant*. The note being
+  moved routinely outlasts that instant, and a violation in one hand routinely
+  moves a note belonging to the other, so the guard missed both cases and the
+  shift destroyed a voice. It now asks whether any surviving note holds that
+  key at any point while the moved note sounds. On one test score the melody
+  C4 was being shifted onto a C3 the right hand was holding; truncating the
+  bass instead keeps every pitch.
+
 - **A repeated key went silent under FluidSynth.** The backend built its event
   list with note-on ranked before note-off, then sorted it, so at an instant
   carrying both (which is how a repeated key is written: one note ending
