@@ -349,3 +349,14 @@ class Score:
             for hand, group in sorted(by_hand.items(), key=lambda item: item[0].value)
         )
         return replace(self, parts=parts)
+
+    def without_pedals(self) -> Score:
+        """The same piece, read as if the instrument had no pedals.
+
+        Deleting the events rather than ignoring them downstream is the whole
+        point. Every stage asks the score what the pedalling is, so a score with
+        none is the only way to make them all agree: the constraint engine stops
+        shortening notes on the grounds that the damper is off the string, the
+        renderer has no lane to draw, and the synthesiser is sent no CC64.
+        """
+        return replace(self, pedals=())

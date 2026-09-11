@@ -9,6 +9,7 @@ nothing.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import replace
 from pathlib import Path
 
@@ -128,9 +129,31 @@ def test_the_card_clears_before_it_leaves_the_screen() -> None:
 
 
 @pytest.mark.feature("F-86")
-def test_a_card_that_never_clears_is_an_error() -> None:
-    with pytest.raises(ConfigError, match="never clear"):
+def test_a_card_that_never_clears_is_a_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """It holds full opacity for its whole length instead of fading.
+
+    A look, not a broken render, so it is said rather than refused.
+    """
+    with caplog.at_level(logging.WARNING, logger="psv.config"):
         TitleConfig(seconds=2.0, clear_at=3.0).validate()
+    assert "will not fade" in caplog.text
+
+
+@pytest.mark.feature("F-86")
+def test_a_card_longer_than_the_guideline_is_a_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.WARNING, logger="psv.config"):
+        TitleConfig(seconds=45.0).validate()
+    assert "a wait rather than an introduction" in caplog.text
+
+
+@pytest.mark.feature("F-86")
+def test_a_negative_card_length_is_still_an_error() -> None:
+    with pytest.raises(ConfigError, match="cannot be negative"):
+        TitleConfig(seconds=-1.0).validate()
 
 
 @pytest.mark.feature("F-86")

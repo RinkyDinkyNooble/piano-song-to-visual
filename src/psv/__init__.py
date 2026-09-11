@@ -5,6 +5,8 @@ practice video, arranged under hard hand-span constraints so it stays
 playable.
 """
 
+from psv.render.text import Fitted, fit_text
+
 __version__ = "1.0.0"
 
-__all__ = ["__version__"]
+__all__ = ["Fitted", "__version__", "fit_text"]

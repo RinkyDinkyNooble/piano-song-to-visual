@@ -20,12 +20,14 @@ from __future__ import annotations
 
 import logging
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from psv.audio.backends import ffmpeg_exe
 from psv.config import TitleConfig
+from psv.render.text import MIN_SIZE, fit_text
 from psv.rgb import parse_hex
 
 if TYPE_CHECKING:  # pragma: no cover - types only
@@ -67,6 +69,17 @@ TITLE_Y = 0.38
 COMPOSER_Y = 0.52
 FOOTER_Y = 0.70
 
+#: How much of the frame's width the type may use. The margin is what stops a
+#: long title reading as though it had been cropped.
+TEXT_WIDTH_SHARE = 0.82
+
+#: Leading between wrapped lines, as a fraction of the type size.
+LINE_SPACING = 1.25
+
+#: Clear space kept under a block that has grown past where the next one sits,
+#: as a fraction of the frame height.
+BLOCK_GAP = 0.03
+
 TITLE_INK = (245, 243, 238, 255)
 COMPOSER_INK = (188, 184, 176, 255)
 RULE_INK = (140, 137, 130, 255)
@@ -83,6 +96,16 @@ FONT_DIRS = (
     Path.home() / "Library/Fonts",
     Path("/Library/Fonts"),
 )
+
+
+@dataclass(frozen=True, slots=True)
+class _Block:
+    """Where one drawn block of type ended up, so the next can clear it."""
+
+    left: float
+    span: float
+    size: int
+    bottom: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,34 +197,76 @@ def build_card(
     if source is None:
         log.warning("no serif font found; setting the title card in the default face")
 
-    def face(fraction: float) -> tuple[AnyFont, int]:
-        size = max(10, round(height * fraction))
+    def face(fraction: float, size: int | None = None) -> tuple[AnyFont, int]:
+        if size is None:
+            size = max(MIN_SIZE, round(height * fraction))
         if source is None:
             return ImageFont.load_default(size), size
         return ImageFont.truetype(str(source), size), size
 
-    if card.title:
-        font, size = face(TITLE_SIZE)
-        text = card.title.upper()
-        span = _tracked_width(draw, text, font, size, TITLE_TRACKING)
-        _draw_tracked(
-            draw,
-            (width - span) / 2,
-            height * TITLE_Y,
+    room = width * TEXT_WIDTH_SHARE
+
+    def measured(fraction: float, tracking: float) -> Callable[[str, int], float]:
+        """Width of a string at a size, with this line's tracking included."""
+
+        def width_of(text: str, size: int) -> float:
+            font, _ = face(fraction, size)
+            return _tracked_width(draw, text, font, size, tracking)
+
+        return width_of
+
+    def set_line(
+        text: str,
+        fraction: float,
+        tracking: float,
+        top: float,
+        ink: tuple[int, int, int, int],
+    ) -> _Block:
+        """Draw one centred line, shrunk and wrapped to fit. Returns its box."""
+        asked = max(MIN_SIZE, round(height * fraction))
+        fitted = fit_text(
             text,
-            font,
-            size,
-            TITLE_TRACKING,
-            TITLE_INK,
+            width=room,
+            size=asked,
+            measure=measured(fraction, tracking),
         )
+        if not fitted.fits:
+            log.warning("%r does not fit the card even at its smallest", text)
+
+        font, size = face(fraction, fitted.size)
+        widest, left_of_widest = 0.0, 0.0
+        y = top
+        for line in fitted.lines:
+            span = _tracked_width(draw, line, font, size, tracking)
+            left = (width - span) / 2
+            _draw_tracked(draw, left, y, line, font, size, tracking, ink)
+            if span > widest:
+                widest, left_of_widest = span, left
+            y += size * LINE_SPACING
+        return _Block(left=left_of_widest, span=widest, size=size, bottom=y)
+
+    # Each block sits where its fraction says, unless the one above wrapped and
+    # grew down into it. Pushing down rather than leaving them to overlap: the
+    # positions are chosen for the usual one-line card, and a title that needed
+    # two lines has taken room the composer was going to use.
+    floor_y = 0.0
+    if card.title:
+        title_block = set_line(
+            card.title.upper(), TITLE_SIZE, TITLE_TRACKING, height * TITLE_Y, TITLE_INK
+        )
+        floor_y = title_block.bottom + height * BLOCK_GAP
 
     if card.composer:
-        font, size = face(COMPOSER_SIZE)
-        text = card.composer.upper()
-        span = _tracked_width(draw, text, font, size, SMALL_TRACKING)
-        left = (width - span) / 2
-        top = height * COMPOSER_Y
-        _draw_tracked(draw, left, top, text, font, size, SMALL_TRACKING, COMPOSER_INK)
+        top = max(height * COMPOSER_Y, floor_y)
+        composer_block = set_line(
+            card.composer.upper(), COMPOSER_SIZE, SMALL_TRACKING, top, COMPOSER_INK
+        )
+        left, span, size = (
+            composer_block.left,
+            composer_block.span,
+            composer_block.size,
+        )
+        floor_y = composer_block.bottom + height * BLOCK_GAP
 
         # A rule either side, set on the type's midline.
         gap = size * 1.4
@@ -214,17 +279,11 @@ def build_card(
             draw.line([(start, middle), (end, middle)], fill=RULE_INK, width=1)
 
     if card.footer:
-        font, size = face(FOOTER_SIZE)
-        text = card.footer.upper()
-        span = _tracked_width(draw, text, font, size, SMALL_TRACKING)
-        _draw_tracked(
-            draw,
-            (width - span) / 2,
-            height * FOOTER_Y,
-            text,
-            font,
-            size,
+        set_line(
+            card.footer.upper(),
+            FOOTER_SIZE,
             SMALL_TRACKING,
+            max(height * FOOTER_Y, floor_y),
             FOOTER_INK,
         )
 

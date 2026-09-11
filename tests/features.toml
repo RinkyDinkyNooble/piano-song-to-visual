@@ -298,8 +298,8 @@ verify = "visual"
 uses = ["fixture:tempo-changes", "fixture:time-signatures"]
 
 [[feature]]
-id = "F-35"
-name = "Background stays grayscale"
+id = "F-90"
+name = "The default palette is neutral"
 milestone = "M4"
 status = "done"
 verify = "unit"
@@ -730,6 +730,35 @@ verify = "unit"
 [[feature]]
 id = "F-88"
 name = "One key, one press: a held key is never struck by a second note"
+milestone = "M8"
+status = "done"
+verify = "unit"
+
+[[feature]]
+id = "F-89"
+name = "Read a score as if it were written without pedals"
+milestone = "M8"
+status = "done"
+verify = "e2e"
+uses = ["fixture:sustain-pedal"]
+
+[[feature]]
+id = "F-91"
+name = "Config refuses what would break a render and warns about what is only odd"
+milestone = "M8"
+status = "done"
+verify = "unit"
+
+[[feature]]
+id = "F-92"
+name = "Every config setting has a command-line flag, generated from the dataclasses"
+milestone = "M8"
+status = "done"
+verify = "unit"
+
+[[feature]]
+id = "F-93"
+name = "Title text is shrunk, and wrapped if it must be, to fit the frame"
 milestone = "M8"
 status = "done"
 verify = "unit"

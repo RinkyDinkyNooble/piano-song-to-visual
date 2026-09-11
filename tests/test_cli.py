@@ -506,14 +506,20 @@ def test_presets_describes_what_each_one_changes(
 
 
 @pytest.mark.feature("F-80")
-def test_the_reverb_flag_beats_the_config_file() -> None:
+def test_the_reverb_flag_beats_the_config_file(tmp_path: Path) -> None:
     """A flag beats the file, as every other override does."""
-    from psv.cli import _audio_with_overrides
+    from psv.cliflags import apply_overrides
     from psv.config import Config
 
-    config = Config.load(None)
-    assert _audio_with_overrides(config.audio, Namespace(reverb=0.9)).reverb == 0.9
-    assert _audio_with_overrides(config.audio, Namespace(reverb=None)) is config.audio
+    path = tmp_path / "psv.toml"
+    path.write_text("[audio]\nreverb = 0.2\n", encoding="utf-8")
+    config = Config.load(path)
+
+    given = Namespace(cfg_audio__reverb=0.9)
+    assert apply_overrides(config, given).audio.reverb == 0.9
+
+    absent = Namespace(cfg_audio__reverb=None)
+    assert apply_overrides(config, absent).audio.reverb == 0.2
 
 
 @pytest.mark.feature("F-80")

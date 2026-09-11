@@ -13,21 +13,13 @@ import argparse
 import logging
 import sys
 from collections.abc import Callable, Sequence
-from dataclasses import replace
 from pathlib import Path
 
 from psv import __version__
 from psv.arrange import arrange as arrange_score
 from psv.audio.backends import AudioError
-from psv.config import (
-    ENCODE_LEVELS,
-    AudioConfig,
-    Config,
-    ConfigError,
-    PracticeConfig,
-    TitleConfig,
-    VisualConfig,
-)
+from psv.cliflags import add_config_options, apply_overrides
+from psv.config import Config, ConfigError
 from psv.constraints import ConstraintError
 from psv.constraints import constrain as constrain_score
 from psv.inspect import format_report, inspect_score
@@ -154,16 +146,9 @@ def build_parser() -> argparse.ArgumentParser:
                 required=name in IMPLEMENTED,
                 help="output file",
             )
-        if name in {"arrange", "constrain", "run"}:
-            child.add_argument(
-                "--span",
-                type=int,
-                default=None,
-                metavar="SEMITONES",
-                help="override hands.max_span_semitones; 0 means no limit",
-            )
         if name in {"render", "run"}:
-            _add_render_options(child)
+            _add_window_options(child)
+        add_config_options(child, name)
 
     for name, help_text in UTILITY_COMMANDS.items():
         sub.add_parser(name, help=help_text, description=help_text, parents=[shared])
@@ -171,79 +156,29 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _add_render_options(parser: argparse.ArgumentParser) -> None:
-    """Overrides for the config's visual settings.
+def _add_window_options(parser: argparse.ArgumentParser) -> None:
+    """Which stretch of the piece to render.
 
-    These exist for iteration speed. Debugging a render at full 1080p60 wastes
-    minutes per attempt; `--seconds 3 --width 320 --height 180` turns the same
-    loop into about a second.
+    Not config, which is why these are still written out here: they say what to
+    do with this one file rather than how psv behaves. They also exist for
+    iteration speed, since debugging at full 1080p60 wastes minutes per attempt
+    and `--seconds 3 --width 320 --height 180` turns the same loop into about a
+    second.
     """
-    parser.add_argument(
+    group = parser.add_argument_group("window")
+    group.add_argument(
         "--start",
         type=float,
         default=None,
         metavar="S",
         help="start time in seconds, measured in the rendered video",
     )
-    parser.add_argument(
+    group.add_argument(
         "--seconds",
         type=float,
         default=None,
         metavar="S",
         help="render only this many seconds (default: the whole piece)",
-    )
-    parser.add_argument("--width", type=int, default=None, help="override frame width")
-    parser.add_argument(
-        "--height", type=int, default=None, help="override frame height"
-    )
-    parser.add_argument("--fps", type=int, default=None, help="override frame rate")
-    parser.add_argument(
-        "--encode",
-        choices=sorted(ENCODE_LEVELS),
-        default=None,
-        help=(
-            "how hard the encoder works: `small` is slowest and smallest, "
-            "`fast` is quickest and about three times the file "
-            "(default: balanced)"
-        ),
-    )
-    parser.add_argument(
-        "--workers",
-        type=int,
-        default=None,
-        help=(
-            "processes to render with; 0 picks one per core, 1 renders in "
-            "a single process (default: 0)"
-        ),
-    )
-    parser.add_argument(
-        "--reverb",
-        type=float,
-        default=None,
-        metavar="AMOUNT",
-        help=(
-            "how much room the piano is played in, 0 dry to 1 a large hall "
-            "(default: 0.5, which is what it has always sounded like). "
-            "fluidsynth backend only"
-        ),
-    )
-    _add_practice_options(parser)
-    _add_title_options(parser)
-
-
-def _add_practice_options(parser: argparse.ArgumentParser) -> None:
-    """How the finished arrangement is presented, rather than what is in it.
-
-    These are how a piece actually gets learned: slow it down, take the hard
-    forty bars on their own, count yourself in, and play one hand at a time.
-    """
-    group = parser.add_argument_group("practice")
-    group.add_argument(
-        "--tempo",
-        type=float,
-        default=None,
-        metavar="FACTOR",
-        help="playback speed; 0.75 is three-quarters of the written tempo",
     )
     group.add_argument(
         "--bars",
@@ -253,77 +188,11 @@ def _add_practice_options(parser: argparse.ArgumentParser) -> None:
         help="render only these bars, counting from 1 (e.g. 20-40, or 31)",
     )
     group.add_argument(
-        "--hands",
-        choices=("both", "left", "right"),
-        default=None,
-        help="which hand to sound; the other stays on screen, faintly",
-    )
-    group.add_argument(
-        "--count-in",
-        type=int,
-        default=None,
-        metavar="BARS",
-        help="bars of lead-in before the music starts",
-    )
-    group.add_argument(
         "--silent-count-in",
         action="store_false",
-        dest="count_in_clicks",
+        dest="cfg_practice__count_in_clicks",
         default=None,
         help="keep the lead-in but drop its clicks; the falling notes count it",
-    )
-    group.add_argument(
-        "--metronome",
-        action="store_true",
-        default=None,
-        help="keep clicking through the piece, not only into it",
-    )
-
-
-def _add_title_options(parser: argparse.ArgumentParser) -> None:
-    """A card at the front and a fade at the end, for a video you will post.
-
-    Off unless one of these is given, because a practice video wants neither
-    and they cost a re-encode of the finished file.
-    """
-    group = parser.add_argument_group("title")
-    group.add_argument(
-        "--title-card",
-        type=float,
-        default=None,
-        metavar="SECONDS",
-        dest="title_seconds",
-        help="show a title card for this long, fading to reveal the music",
-    )
-    group.add_argument(
-        "--title",
-        default=None,
-        metavar="TEXT",
-        dest="title_text",
-        help="what the card says; the score's own title is used when omitted",
-    )
-    group.add_argument(
-        "--composer",
-        default=None,
-        metavar="TEXT",
-        dest="title_composer",
-        help="the second line; read from MusicXML when omitted",
-    )
-    group.add_argument(
-        "--fade-out",
-        type=float,
-        default=None,
-        metavar="SECONDS",
-        dest="title_fade_out_s",
-        help="fade the picture and the sound to black over this long",
-    )
-    group.add_argument(
-        "--hold-black",
-        type=float,
-        default=None,
-        metavar="SECONDS",
-        dest="title_hold_s",
-        help="hold on black for this long after the fade",
     )
 
 
@@ -354,48 +223,24 @@ def configure_logging(verbosity: int) -> None:
 
 
 def _cmd_inspect(args: argparse.Namespace, _config: Config) -> int:
+    # Read whole, pedalling included, whatever `pedals.enabled` says. This
+    # command answers what is in the file; every other one answers what psv
+    # will do with it.
     score = read_score(args.input)
     print(format_report(inspect_score(score), verbose=args.verbose > 0))
     return 0
 
 
-def _cmd_export(args: argparse.Namespace, _config: Config) -> int:
-    score = read_score(args.input)
+def _cmd_export(args: argparse.Namespace, config: Config) -> int:
+    score = read_score(args.input, pedals=config.pedals.enabled)
     path = write_midi_file(score, args.output)
     print(f"wrote {path}")
     return 0
 
 
-def _visual_with_overrides(
-    visual: VisualConfig, args: argparse.Namespace
-) -> VisualConfig:
-    overrides = {
-        name: getattr(args, name)
-        for name in ("width", "height", "fps", "encode", "workers")
-        if getattr(args, name, None) is not None
-    }
-    if not overrides:
-        return visual
-    updated = replace(visual, **overrides)
-    updated.validate()
-    return updated
-
-
-def _audio_with_overrides(audio: AudioConfig, args: argparse.Namespace) -> AudioConfig:
-    """`--reverb` beats audio.reverb, as the size overrides do."""
-    reverb = getattr(args, "reverb", None)
-    if reverb is None:
-        return audio
-    updated = replace(audio, reverb=reverb)
-    updated.validate()
-    return updated
-
-
 def _cmd_render(args: argparse.Namespace, config: Config) -> int:
-    score = read_score(args.input)
-    visual = _visual_with_overrides(config.visual, args)
-    practice = _practice_with_overrides(config.practice, args)
-    title = _title_with_overrides(config.title, args)
+    score = read_score(args.input, pedals=config.pedals.enabled)
+    visual, practice, title = config.visual, config.practice, config.title
     _check_window_flags(args)
 
     if title.is_on:
@@ -434,48 +279,6 @@ def _cmd_render(args: argparse.Namespace, config: Config) -> int:
         print(f"  practice         {show.label}")
     print(f"wrote {path}")
     return 0
-
-
-def _title_with_overrides(title: TitleConfig, args: argparse.Namespace) -> TitleConfig:
-    """Command-line flags win over the config file, as the others do."""
-    overrides = {
-        field: getattr(args, name)
-        for field, name in (
-            ("seconds", "title_seconds"),
-            ("text", "title_text"),
-            ("composer", "title_composer"),
-            ("fade_out_s", "title_fade_out_s"),
-            ("hold_s", "title_hold_s"),
-        )
-        if getattr(args, name, None) is not None
-    }
-    if not overrides:
-        return title
-    updated = replace(title, **overrides)
-    updated.validate()
-    return updated
-
-
-def _practice_with_overrides(
-    practice: PracticeConfig, args: argparse.Namespace
-) -> PracticeConfig:
-    """Command-line flags win over the config file, as the size overrides do."""
-    overrides = {
-        field: getattr(args, name)
-        for field, name in (
-            ("tempo", "tempo"),
-            ("hands", "hands"),
-            ("count_in_bars", "count_in"),
-            ("count_in_clicks", "count_in_clicks"),
-            ("metronome", "metronome"),
-        )
-        if getattr(args, name, None) is not None
-    }
-    if not overrides:
-        return practice
-    updated = replace(practice, **overrides)
-    updated.validate()
-    return updated
 
 
 def _check_window_flags(args: argparse.Namespace) -> None:
@@ -519,16 +322,6 @@ def _cmd_presets(args: argparse.Namespace, config: Config) -> int:
     return 0
 
 
-def _hands_with_overrides(config: Config, args: argparse.Namespace) -> Config:
-    """`--span` beats hands.max_span_semitones, as the size overrides do."""
-    span = getattr(args, "span", None)
-    if span is None:
-        return config
-    hands = replace(config.hands, max_span_semitones=span)
-    hands.validate()
-    return replace(config, hands=hands)
-
-
 def _cmd_instruments(args: argparse.Namespace, config: Config) -> int:
     """What `audio.program` can be set to, from the SoundFont where there is one.
 
@@ -569,7 +362,7 @@ def _cmd_instruments(args: argparse.Namespace, config: Config) -> int:
 
 
 def _cmd_constrain(args: argparse.Namespace, config: Config) -> int:
-    score = read_score(args.input)
+    score = read_score(args.input, pedals=config.pedals.enabled)
     result = constrain_score(score, config)
 
     print(result.summary())
@@ -584,7 +377,7 @@ def _cmd_constrain(args: argparse.Namespace, config: Config) -> int:
 
 
 def _cmd_arrange(args: argparse.Namespace, config: Config) -> int:
-    score = read_score(args.input)
+    score = read_score(args.input, pedals=config.pedals.enabled)
     result = arrange_score(
         score,
         max_span=config.hands.layout_span,
@@ -608,15 +401,11 @@ def _progress(args: argparse.Namespace) -> Callable[[int, int], None]:
 
 
 def _cmd_run(args: argparse.Namespace, config: Config) -> int:
-    visual = _visual_with_overrides(config.visual, args)
-    practice = _practice_with_overrides(config.practice, args)
-    title = _title_with_overrides(config.title, args)
-    audio = _audio_with_overrides(config.audio, args)
     _check_window_flags(args)
     result = run_pipeline(
         args.input,
         args.output,
-        replace(config, visual=visual, practice=practice, audio=audio, title=title),
+        config,
         start=args.start or 0.0,
         duration=args.seconds,
         bars=args.bars,
@@ -663,7 +452,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             config = apply_theme(config, args.theme)
         if args.effects is not None:
             config = apply_effect_set(config, args.effects)
-        config = _hands_with_overrides(config, args)
+        config = apply_overrides(config, args)
         return HANDLERS[args.command](args, config)
     except (
         ConfigError,

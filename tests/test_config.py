@@ -6,6 +6,7 @@ a colour key should say so, rather than leaving a render quietly wrong.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import fields
 from pathlib import Path
 
@@ -127,15 +128,15 @@ def test_the_readme_documents_every_config_key() -> None:
     [
         ("[difficulty]\nlevel = 'impossible'\n", "difficulty.level"),
         ("[visual.colors]\nleft_hand = 'blue'\n", "hex colour"),
-        ("[visual.colors]\nquiet = 0.9\nloud = 0.2\n", "quiet <= loud"),
+        ("[visual.colors]\nquiet = 1.9\n", "between 0 and 1"),
         ("[visual.grid]\nbeat_lines = 'sometimes'\n", "beat_lines must be"),
         ("[visual.grid]\npitch_lines = 'thirds'\n", "pitch_lines must be"),
         ("[visual.grid]\nopacity = 2.0\n", "opacity"),
-        ("[visual]\nbackground = '#204060'\n", "grayscale"),
+        ("[visual]\nbackground = 'navy'\n", "hex colour"),
         ("[visual.colors]\npedal = 'gold'\n", "hex colour"),
         ("[visual.colors]\nunassigned = 'grey'\n", "hex colour"),
         ("[visual]\nfps = 0\n", "visual.fps"),
-        ("[visual]\nblack_key_bar_width = 1.5\n", "black_key_bar_width"),
+        ("[visual]\nblack_key_bar_width = 0\n", "black_key_bar_width"),
         ("[pedals]\nlanes = 4\n", "pedals.lanes"),
         ("[pedals]\nthreshold = 0\n", "pedals.threshold"),
         ("[audio]\nreverb = 2\n", "audio.reverb"),
@@ -219,3 +220,99 @@ def test_the_render_settings_have_working_defaults() -> None:
     visual = Config.load(None).visual
     assert visual.workers == 0, "0 means one process per core"
     assert visual.encode == "balanced"
+
+
+# -- the three tiers -----------------------------------------------------
+
+
+#: Every value that is odd rather than impossible, with the words the warning
+#: uses. Listed here so a check that quietly turns back into a hard error has
+#: somewhere to fail.
+COSMETIC = [
+    ("[visual.colors]\nquiet = 0.9\nloud = 0.2\n", "brighter than loud"),
+    ("[visual]\nblack_key_bar_width = 1.5\n", "wider than a white-key"),
+    ("[visual]\nnote_border = 0.05\n", "mostly outline"),
+    ("[visual]\nnote_radius = 0.9\n", "draws as 0.5"),
+    ("[visual]\ngradient_top = '#101010'\n", "stays the flat"),
+    ("[practice]\ncount_in_bars = 20\n", "waiting, not counting"),
+    ("[title]\nseconds = 45.0\n", "a wait rather than an introduction"),
+    ("[title]\nseconds = 2.0\nclear_at = 3.0\n", "will not fade"),
+]
+
+
+@pytest.mark.feature("F-91")
+@pytest.mark.parametrize(("body", "fragment"), COSMETIC)
+def test_a_cosmetic_value_warns_and_loads(
+    tmp_path: Path, body: str, fragment: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The warn tier: the render happens, and the config says why it may look odd.
+
+    These were all hard errors once. A forty-minute render refused over
+    somebody else's taste is a worse outcome than a video somebody else would
+    not have made.
+    """
+    with caplog.at_level(logging.WARNING, logger="psv.config"):
+        config = Config.load(write(tmp_path, body))
+
+    config.validate()
+    assert fragment in caplog.text
+
+
+@pytest.mark.feature("F-91")
+def test_a_warning_is_given_once_however_often_it_is_validated(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The CLI validates a section again after applying a flag over it.
+
+    Hearing the same sentence three times teaches nothing the first did not.
+    """
+    with caplog.at_level(logging.WARNING, logger="psv.config"):
+        config = Config.load(write(tmp_path, "[visual]\nnote_radius = 0.9\n"))
+        config.validate()
+        config.validate()
+
+    assert caplog.text.count("draws as 0.5") == 1
+
+
+@pytest.mark.feature("F-91")
+def test_nothing_in_the_warn_tier_blocks_a_render(tmp_path: Path) -> None:
+    """Every cosmetic oddity at once, in one file, and it still loads.
+
+    Written out rather than joining the cases above, because TOML rejects a
+    repeated table header and a real file would collect them under one.
+    """
+    merged = """
+        [visual]
+        black_key_bar_width = 1.5
+        note_border = 0.05
+        note_radius = 0.9
+        gradient_top = '#101010'
+
+        [visual.colors]
+        quiet = 0.9
+        loud = 0.2
+
+        [practice]
+        count_in_bars = 20
+
+        [title]
+        seconds = 45.0
+        clear_at = 50.0
+        """
+    Config.load(write(tmp_path, merged)).validate()
+
+
+@pytest.mark.feature("F-91")
+def test_an_impossible_value_is_still_refused(tmp_path: Path) -> None:
+    """The error tier did not soften. Each of these would fail or draw garbage."""
+    for body in (
+        "[visual]\nfps = 0\n",
+        "[visual]\nwidth = 1921\n",
+        "[visual]\nnote_radius = -0.1\n",
+        "[visual]\nbackground = 'navy'\n",
+        "[hands]\nmax_span_semitones = 99\n",
+        "[audio]\nbackend = 'winamp'\n",
+        "[nonsense]\nkey = 1\n",
+    ):
+        with pytest.raises(ConfigError):
+            Config.load(write(tmp_path, body))

@@ -84,7 +84,7 @@ def run(
     speed or section you asked to practise.
     """
     output = Path(output)
-    score = read_score(source)
+    score = read_score(source, pedals=config.pedals.enabled)
 
     arranged = arrange(
         score,

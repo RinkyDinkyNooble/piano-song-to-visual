@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A pedal switch that means something.** `pedals.enabled = false`, or
+  `--no-pedal`, reads a piece as if it had been written without pedals. The
+  events are dropped as the score is read, at the one point every stage goes
+  through, so nothing downstream has to be told twice: the constraint engine
+  stops shortening notes on the grounds that the damper is off the string, the
+  renderer has no lane to draw, and the synthesiser is sent no CC64.
+
+  It is a different question from `pedals.lanes = 0`, which hides the lane and
+  changes neither the sound nor the arrangement. `psv inspect` ignores the
+  setting, because that command answers what is in the file and every other one
+  answers what psv will do with it.
+
+- **A flag for every config setting**, generated from the dataclasses rather
+  than written out by hand. There were 30 `add_argument` calls covering about
+  70 settings, which is why changing a colour meant opening source. A flag is
+  named for where the setting lives, so `visual.grid.opacity` is
+  `--visual-grid-opacity`, and the shorter names that were already here
+  (`--fps`, `--span`, `--tempo`) are kept as extra spellings of the same flag.
+  A command only offers the sections it reads: `psv constrain --visual-fps` is
+  a usage error rather than a flag that silently does nothing.
+
+- **Text that fits the frame.** A long title ran off the side of the card, and
+  two scripts outside the package had their own copies of the same fault.
+  `psv.fit_text` shrinks a line until it fits and wraps it at spaces only once
+  shrinking has reached a legible floor, since a smaller title still reads as a
+  title and a wrapped one is a different-looking card. A block that wraps now
+  pushes the line below it down instead of landing on top of it.
+
 - **One key, one press.** A piano key can only be held by one finger, and
   nothing in the pipeline said so. Two voices sharing a staff write the same
   pitch together, and one hand holds a note while the other taps it; both are
@@ -27,6 +55,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   `hands.max_span_semitones = 0` still returns the score exactly as written,
   double strikes included, because that setting means the piece unedited.
+
+### Changed
+
+- **Config refusals now come in three tiers.** Every check was a hard error,
+  including several that were only opinions about how a video should look, and
+  a forty-minute render refused over taste is a worse outcome than a video
+  somebody else would not have made. An error is now kept for what would fail
+  or draw garbage: a value that cannot be parsed, one outside the range the
+  arithmetic is defined over, a name for something that does not exist, an
+  unknown key. Eight checks became warnings that say their piece once and do
+  not block — a bar wider than a white key, a border thick enough to swallow a
+  short note, half a gradient, a card longer than the guideline. The hand-span
+  limit is not in this scheme and stays an invariant.
+
+### Removed
+
+- **The grayscale background rule.** `visual.background` accepts any hex
+  colour. A hue behind the notes does compete with the hues that say which hand
+  is playing, which is why the default is grey and why every shipped theme
+  keeps it neutral, but it is a choice about somebody's own video and psv now
+  has an opinion rather than a veto. Feature F-35, "Background stays
+  grayscale", is retired; F-90 covers what is still true, that the default
+  palette is neutral.
 
 ### Fixed
 

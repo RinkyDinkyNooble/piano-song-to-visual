@@ -183,26 +183,31 @@ def test_pedal_colour_is_not_a_hand_colour() -> None:
 # -- the background ------------------------------------------------------
 
 
-@pytest.mark.feature("F-35")
+@pytest.mark.feature("F-90")
 def test_the_default_background_is_grayscale() -> None:
+    """The opinion psv still has. A hue back here competes with the hues that
+    say which hand is playing, so the default does not have one."""
     assert is_grayscale(parse_hex(VisualConfig().background))
 
 
-@pytest.mark.feature("F-35")
-def test_a_coloured_background_is_rejected() -> None:
-    """The spec asks for grayscale, and it is right to: a hue back there
-    competes with the hues carrying which-hand information."""
-    with pytest.raises(ConfigError, match="grayscale"):
-        replace(VisualConfig(), background="#204060").validate()
-
-
-@pytest.mark.feature("F-35")
-@pytest.mark.parametrize("shade", ["#000000", "#101010", "#808080", "#ffffff"])
-def test_any_grey_is_accepted(shade: str) -> None:
+@pytest.mark.feature("F-90")
+@pytest.mark.parametrize(
+    "shade", ["#000000", "#101010", "#808080", "#ffffff", "#204060", "#7a1f1f"]
+)
+def test_any_hex_background_is_accepted(shade: str) -> None:
+    """Coloured backgrounds used to be refused outright. They are taste, and
+    taste belongs to whoever is making the video."""
     replace(VisualConfig(), background=shade).validate()
 
 
-@pytest.mark.feature("F-35")
+@pytest.mark.feature("F-90")
+def test_a_background_that_is_not_a_colour_at_all_is_still_an_error() -> None:
+    """Dropping the grayscale rule did not drop the parsing one."""
+    with pytest.raises(ConfigError, match="hex colour"):
+        replace(VisualConfig(), background="dark").validate()
+
+
+@pytest.mark.feature("F-90")
 def test_every_non_note_colour_in_the_default_palette_is_grey() -> None:
     """Keys, grid, lanes and rules are all neutral by design."""
     from psv.render.frame import Palette

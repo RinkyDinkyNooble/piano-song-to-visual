@@ -8,6 +8,7 @@ still draws exactly what it drew before. The second kind is the important one.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import replace
 from pathlib import Path
 
@@ -126,22 +127,34 @@ def test_a_grid_crossing_is_no_brighter_than_the_lines_that_cross() -> None:
     "body",
     ["[visual]\ngradient_top = '#101010'\n", "[visual]\ngradient_bottom = '#101010'\n"],
 )
-def test_half_a_gradient_is_an_error(tmp_path: Path, body: str) -> None:
+def test_half_a_gradient_is_a_warning_and_renders(
+    tmp_path: Path, body: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """One colour without the other is a flat background, not a failed render.
+
+    Worth a word, because it is a setting that looks like it did something.
+    Not worth refusing forty minutes of encoding over.
+    """
     path = tmp_path / "psv.toml"
     path.write_text(body, encoding="utf-8")
-    with pytest.raises(ConfigError, match="go together"):
-        Config.load(path)
+
+    with caplog.at_level(logging.WARNING, logger="psv.config"):
+        config = Config.load(path)
+
+    assert config.visual.gradient is None
+    assert "the background stays the flat" in caplog.text
 
 
 @pytest.mark.feature("F-71")
-def test_a_gradient_may_have_a_hue_where_the_flat_background_may_not() -> None:
-    """The grayscale rule protects the practice default. Setting a gradient is
-    itself the opt-in, so it is not subject to the same rule."""
-    coloured = small_config(gradient_top="#140e28", gradient_bottom="#46205a")
-    coloured.validate()
+def test_a_hue_is_allowed_flat_as_well_as_in_a_gradient() -> None:
+    """Neither form of coloured background is refused.
 
-    with pytest.raises(ConfigError, match="grayscale"):
-        replace(SMALL, background="#140e28").validate()
+    The flat one used to be. A hue back there does compete with the hues that
+    say which hand is playing, which is why the default is grey and why every
+    shipped theme keeps it neutral, but it is somebody's own video.
+    """
+    small_config(gradient_top="#140e28", gradient_bottom="#46205a").validate()
+    replace(SMALL, background="#140e28").validate()
 
 
 # -- the border shade ----------------------------------------------------
@@ -403,7 +416,31 @@ def test_a_bar_too_short_to_round_is_drawn_square_rather_than_vanishing() -> Non
 
 
 @pytest.mark.feature("F-82")
-@pytest.mark.parametrize("radius", [-0.01, 0.51, 1.0])
-def test_a_radius_outside_the_range_is_an_error(radius: float) -> None:
+def test_a_negative_radius_is_an_error() -> None:
+    """Below zero there is nothing to draw: the rounding has no meaning."""
     with pytest.raises(ConfigError, match="note_radius"):
+        VisualConfig(note_radius=-0.01).validate()
+
+
+@pytest.mark.feature("F-82")
+@pytest.mark.parametrize("radius", [0.51, 1.0])
+def test_a_radius_past_half_a_bar_warns_and_draws_as_half(
+    radius: float, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The renderer already caps the rounding, so this is not a broken picture.
+
+    Asserted on the pixels rather than on the config, because the claim in the
+    warning is about what gets drawn.
+    """
+    with caplog.at_level(logging.WARNING, logger="psv.config"):
         VisualConfig(note_radius=radius).validate()
+    assert "draws as 0.5" in caplog.text
+
+    score = long_note_score()
+    capped = render_frame(
+        score, flat_bar_config(note_radius=0.5), 1.2, pedal_lanes=NO_LANES
+    )
+    beyond = render_frame(
+        score, flat_bar_config(note_radius=radius), 1.2, pedal_lanes=NO_LANES
+    )
+    assert np.array_equal(capped, beyond)

@@ -64,12 +64,17 @@ def score_format(path: Path | str) -> str:
     )
 
 
-def read_score(path: Path | str) -> Score:
-    """Read a MIDI or MusicXML file into a Score."""
+def read_score(path: Path | str, *, pedals: bool = True) -> Score:
+    """Read a MIDI or MusicXML file into a Score.
+
+    ``pedals=False`` drops the pedalling here, at the one point every stage
+    reads through, so nothing downstream has to be told twice. A boolean rather
+    than the config, because this module has no business knowing what a config
+    is; the caller that holds one passes `config.pedals.enabled`.
+    """
     kind = score_format(path)
     try:
-        if kind == "midi":
-            return read_midi_file(path)
-        return read_musicxml_file(path)
+        score = read_midi_file(path) if kind == "midi" else read_musicxml_file(path)
     except (MidiReadError, MusicXmlReadError) as exc:
         raise ScoreReadError(str(exc)) from exc
+    return score if pedals else score.without_pedals()

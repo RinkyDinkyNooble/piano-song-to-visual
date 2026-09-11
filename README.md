@@ -365,6 +365,15 @@ how you check that ingest understood a file.
 Everything meaningful is configurable via a TOML file rather than flags you have to
 remember. The sketch:
 
+Every setting below also has a flag, named after where it lives: `visual.grid.opacity`
+is `--visual-grid-opacity`. The flags are generated from the config itself, so `-h`
+lists all of them and cannot fall behind. Shorter names for the ones used most
+(`--fps`, `--span`, `--tempo`, `--no-pedal`) are kept alongside the long forms.
+
+Values layer from least specific to most: the defaults, then the TOML file, then a
+`--preset`, then the flags. A flag you do not pass changes nothing, so a config file
+and a one-off override do not fight.
+
 The grid keys are named after what each line *marks*, not which way it runs. In a
 falling-notes view the horizontal axis is pitch and the vertical axis is time, so
 "horizontal lines" and "vertical lines" are easy to get backwards.
@@ -389,8 +398,8 @@ height = 1080             # both must be even: h264 encodes in 2x2 blocks, and
                           # an odd size would be quietly padded
 fps = 60
 lookahead_s = 3.0         # seconds of music visible above the keyboard at once
-background = "#101010"    # grayscale, so nothing back here competes with the
-                          # hues that say which hand is playing
+background = "#101010"    # any hex colour. Grey by default so nothing back here
+                          # competes with the hues that say which hand is playing
 black_key_bar_width = 0.6 # relative to white-key bars, so black keys read from far away
 black_key_darkening = 0.2 # applied on top of the note's colour
 note_border = 0.0016      # outline on each bar, as a fraction of frame width.
@@ -432,6 +441,9 @@ kind = "strike_flash"     # strike_flash | key_glow | trail | particles
 intensity = 0.8           # halo | pulse | bloom. 0 draws nothing at all
 
 [pedals]
+enabled = true            # false reads the piece as if written without pedals:
+                          # different repairs, no lane, no CC64. Not the same
+                          # question as lanes = 0, which only hides the lane
 lanes = 1                 # up to 3; sustain is the one MIDI reliably carries
 threshold = 1             # controller value at which a pedal counts as engaged.
                           # 1 shows half-pedalling; 64 is the on/off convention

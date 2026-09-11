@@ -56,8 +56,14 @@ def test_is_grayscale_is_about_the_triple_not_the_string() -> None:
     assert not is_grayscale(parse_hex("#141415"))
 
 
-def test_the_background_rule_uses_the_same_parser_the_renderer_does() -> None:
-    """A three-digit grey is grey, and has to be accepted as one."""
+def test_the_background_check_uses_the_same_parser_the_renderer_does() -> None:
+    """A three-digit colour is one, and has to be accepted as one.
+
+    The check is now only that the string parses. `is_grayscale` stays, because
+    the shipped palette is still tested against it; the config no longer uses
+    it to refuse anyone's background.
+    """
     VisualConfig(background="#333").validate()
-    with pytest.raises(ConfigError, match="grayscale"):
-        VisualConfig(background="#334").validate()
+    VisualConfig(background="#334").validate()
+    with pytest.raises(ConfigError, match="hex colour"):
+        VisualConfig(background="#33").validate()

@@ -1,24 +1,61 @@
 """Configuration, loaded from TOML and validated before anything uses it.
 
-Two rules shape this module.
+Every check here sits in one of three tiers, and which tier a check belongs in
+is a question about what the value would cost, not about how wrong it looks.
 
-The hand-span limit is a hard invariant, so it is validated here and cannot be
-set to something the constraint engine would silently ignore.
+**Error.** The render would fail or come out garbage: a value that cannot be
+parsed, one outside the range the arithmetic is defined over, a name for
+something that does not exist, or a backend asked for without what it needs.
+Unknown keys are in here too, since a misspelled key is a setting that silently
+did nothing. These raise `ConfigError` and nothing gets rendered.
 
-Config values reach ffmpeg and the filesystem, so unknown keys are an error
-rather than being quietly dropped. A typo in a colour key should say so, not
-leave you wondering why the render looks wrong.
+**Warn.** The value works and the render will happen; it is just outside what
+usually looks right, or is a pair of settings that do not agree. Said once
+through the log and never blocking. Nothing visual belongs in the error tier
+merely because someone else would not have chosen it: a 40-minute render
+refused over taste is worse than an ugly video.
+
+**Silent.** Taste with no failure mode at all, where even a message is noise.
+The background used to be required to be grayscale, on the argument that a hue
+back there competes with the hues carrying which-hand information. That
+argument is still true and it is still not psv's call.
+
+The hand-span limit is not in this scheme. It is a hard invariant, validated
+here so it cannot be set to something the constraint engine would ignore.
 """
 
 from __future__ import annotations
 
+import logging
 import tomllib
 from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import Any, Self, get_args, get_origin, get_type_hints
 
 from psv.model import DEFAULT_OVERLAP_TOLERANCE_S
-from psv.rgb import is_grayscale, is_hex, parse_hex
+from psv.rgb import is_hex
+
+log = logging.getLogger(__name__)
+
+#: Warnings already given, so a setting is mentioned once however many times it
+#: is validated. The CLI validates a section again after applying a flag over
+#: it, and hearing the same sentence three times teaches nothing the first did
+#: not.
+_ADVISED: set[str] = set()
+
+
+def advise(message: str) -> None:
+    """Say a value is odd, and carry on. The warn tier, in one place."""
+    if message in _ADVISED:
+        return
+    _ADVISED.add(message)
+    log.warning("%s", message)
+
+
+def reset_advice() -> None:
+    """Forget what has already been said. For tests, and for long-lived hosts."""
+    _ADVISED.clear()
+
 
 #: The widest simultaneous reach the engine will ever allow, about 2.5 octaves.
 MAX_ALLOWED_SPAN = 36
@@ -51,6 +88,12 @@ ENCODE_LEVELS = {
 DIFFICULTY_LEVELS = ("beginner", "easy", "medium", "hard", "original")
 AUDIO_BACKENDS = ("fluidsynth", "mux", "builtin", "none")
 PRACTICE_HANDS = ("both", "left", "right")
+
+#: Where the alignment rules are drawn. Named here rather than inline in
+#: `GridConfig.validate`, so the command line offers exactly what the config
+#: accepts instead of a second copy that can drift from it.
+PITCH_LINES = ("octave", "fifth", "none")
+BEAT_LINES = ("beat", "bar", "none")
 
 #: Slowest and fastest practice playback.
 MIN_TEMPO = 0.1
@@ -148,10 +191,19 @@ class ColorConfig:
                     f"visual.colors.{name} must be a hex colour like '#4a90d9', "
                     f"got {value!r}"
                 )
-        if not 0.0 <= self.quiet <= self.loud <= 1.0:
-            raise ConfigError(
-                "visual.colors requires 0 <= quiet <= loud <= 1, got "
-                f"quiet={self.quiet}, loud={self.loud}"
+        for name in ("quiet", "loud"):
+            value = getattr(self, name)
+            if not 0.0 <= value <= 1.0:
+                raise ConfigError(
+                    f"visual.colors.{name} is a brightness multiplier between "
+                    f"0 and 1, got {value}"
+                )
+        if self.quiet > self.loud:
+            # Renders perfectly well; it just draws quiet notes brighter than
+            # loud ones, which is the dynamics scale upside down.
+            advise(
+                f"visual.colors.quiet ({self.quiet}) is above loud ({self.loud}), "
+                "so quiet notes will be drawn brighter than loud ones"
             )
 
 
@@ -176,14 +228,14 @@ class GridConfig:
     opacity: float = 0.15
 
     def validate(self) -> None:
-        if self.pitch_lines not in ("octave", "fifth", "none"):
+        if self.pitch_lines not in PITCH_LINES:
             raise ConfigError(
-                "visual.grid.pitch_lines must be octave, fifth, or none, "
+                f"visual.grid.pitch_lines must be {', '.join(PITCH_LINES)}, "
                 f"got {self.pitch_lines!r}"
             )
-        if self.beat_lines not in ("beat", "bar", "none"):
+        if self.beat_lines not in BEAT_LINES:
             raise ConfigError(
-                "visual.grid.beat_lines must be beat, bar, or none, "
+                f"visual.grid.beat_lines must be {', '.join(BEAT_LINES)}, "
                 f"got {self.beat_lines!r}"
             )
         if not 0.0 <= self.opacity <= 1.0:
@@ -325,18 +377,35 @@ class VisualConfig:
                 )
         if self.lookahead_s <= 0:
             raise ConfigError("visual.lookahead_s must be positive")
-        if not 0.0 < self.black_key_bar_width <= 1.0:
+        if self.black_key_bar_width <= 0.0:
             raise ConfigError(
-                "visual.black_key_bar_width must be greater than 0 and at most 1, "
+                "visual.black_key_bar_width must be greater than 0, "
                 f"got {self.black_key_bar_width}"
             )
-        if not 0.0 <= self.note_border <= 0.02:
-            raise ConfigError(
-                f"visual.note_border must be between 0 and 0.02, got {self.note_border}"
+        if self.black_key_bar_width > 1.0:
+            advise(
+                f"visual.black_key_bar_width is {self.black_key_bar_width}, so a "
+                "black-key bar will be drawn wider than a white-key one"
             )
-        if not 0.0 <= self.note_radius <= 0.5:
+        if self.note_border < 0.0:
             raise ConfigError(
-                f"visual.note_radius must be between 0 and 0.5, got {self.note_radius}"
+                f"visual.note_border cannot be negative, got {self.note_border}"
+            )
+        if self.note_border > 0.02:
+            advise(
+                f"visual.note_border is {self.note_border} of the frame width, "
+                "which will leave a short note mostly outline"
+            )
+        if self.note_radius < 0.0:
+            raise ConfigError(
+                f"visual.note_radius cannot be negative, got {self.note_radius}"
+            )
+        if self.note_radius > 0.5:
+            # The renderer already caps the rounding at half the bar, so this
+            # draws the same picture 0.5 does rather than a broken one.
+            advise(
+                f"visual.note_radius is {self.note_radius}; half a bar is the "
+                "most that can be rounded off, so this draws as 0.5"
             )
         if not -1.0 <= self.note_border_shade <= 1.0:
             raise ConfigError(
@@ -348,9 +417,14 @@ class VisualConfig:
                 f"visual.bar_gradient must be between -1 and 1, got {self.bar_gradient}"
             )
         if bool(self.gradient_top) != bool(self.gradient_bottom):
-            raise ConfigError(
-                "visual.gradient_top and visual.gradient_bottom go together: "
-                "set both for a gradient background, or neither for a flat one"
+            # Half a gradient is not a broken render, it is a flat background
+            # and someone who thinks they asked for a gradient. Saying so is
+            # the whole fix.
+            given = "gradient_top" if self.gradient_top else "gradient_bottom"
+            missing = "gradient_bottom" if self.gradient_top else "gradient_top"
+            advise(
+                f"visual.{given} is set but visual.{missing} is not, so the "
+                "background stays the flat visual.background colour"
             )
         for name in ("gradient_top", "gradient_bottom"):
             value = getattr(self, name)
@@ -374,13 +448,11 @@ class VisualConfig:
             raise ConfigError(
                 f"visual.background must be a hex colour, got {self.background!r}"
             )
-        # The spec asks for a grayscale background, and it is right to: any hue
-        # back there competes with the hues that carry which-hand information.
-        if not is_grayscale(parse_hex(self.background)):
-            raise ConfigError(
-                "visual.background must be grayscale so it cannot compete with "
-                f"the note colours, got {self.background!r}"
-            )
+        # No grayscale rule. A hue behind the notes does compete with the hues
+        # that say which hand is playing, which is why the default is grey and
+        # why every theme that ships keeps it neutral. It is still a choice
+        # about how someone's own video looks, so psv has an opinion and not a
+        # veto.
         for effect in self.effects:
             effect.validate()
         self.colors.validate()
@@ -389,6 +461,11 @@ class VisualConfig:
 
 @dataclass(frozen=True, slots=True)
 class PedalsConfig:
+    #: Whether the piece is played with pedals at all. Off drops the pedal
+    #: events as the score is read, so every stage below sees a piece written
+    #: without them: different repairs, no lane, no CC64. That is a different
+    #: question from `lanes = 0`, which only stops the lane being drawn.
+    enabled: bool = True
     lanes: int = 1
     #: Controller value at or above which a pedal counts as engaged. The default
     #: shows half-pedalling; set it to 64 for the MIDI on/off convention.
@@ -495,10 +572,14 @@ class PracticeConfig:
             raise ConfigError(
                 f"practice.hands must be one of {PRACTICE_HANDS}, got {self.hands!r}"
             )
-        if not 0 <= self.count_in_bars <= MAX_COUNT_IN_BARS:
+        if self.count_in_bars < 0:
             raise ConfigError(
-                f"practice.count_in_bars must be 0 to {MAX_COUNT_IN_BARS}, "
-                f"got {self.count_in_bars}"
+                f"practice.count_in_bars cannot be negative, got {self.count_in_bars}"
+            )
+        if self.count_in_bars > MAX_COUNT_IN_BARS:
+            advise(
+                f"practice.count_in_bars is {self.count_in_bars}; past about "
+                f"{MAX_COUNT_IN_BARS} bars a lead-in is waiting, not counting"
             )
 
 
@@ -552,13 +633,17 @@ class TitleConfig:
             if getattr(self, name) < 0.0:
                 raise ConfigError(f"title.{name} cannot be negative")
         if self.seconds > MAX_TITLE_SECONDS:
-            raise ConfigError(
-                f"title.seconds must be at most {MAX_TITLE_SECONDS}, got {self.seconds}"
+            advise(
+                f"title.seconds is {self.seconds}; past about {MAX_TITLE_SECONDS} "
+                "a card is a wait rather than an introduction"
             )
         if self.clear_at > self.seconds:
-            raise ConfigError(
+            # The card holds its full opacity for its whole length instead of
+            # fading. A look somebody might want, and one nobody asks for by
+            # accident without wanting to be told.
+            advise(
                 f"title.clear_at is {self.clear_at} but the card is only "
-                f"{self.seconds}s long, so it would never clear"
+                f"{self.seconds}s long, so it will not fade before it ends"
             )
         if self.curve not in TITLE_CURVES:
             raise ConfigError(

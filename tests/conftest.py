@@ -7,12 +7,14 @@ and provides paths to the real songs and the synthetic fixtures.
 from __future__ import annotations
 
 import tomllib
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
 import mido
 import pytest
+
+from psv.config import reset_advice
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ASSETS = REPO_ROOT / "tests" / "assets"
@@ -39,6 +41,20 @@ def _load(path: Path) -> dict[str, Any]:
     with path.open("rb") as fh:
         data: dict[str, Any] = tomllib.load(fh)
     return data
+
+
+@pytest.fixture(autouse=True)
+def _forget_config_warnings() -> Iterator[None]:
+    """Start every test with nothing already said.
+
+    `psv.config` gives each cosmetic warning once per process so a section
+    validated twice does not say the same sentence twice. Across a test run
+    that would mean the first test to trigger a warning silences it for every
+    other, and which test that is depends on the order they ran in.
+    """
+    reset_advice()
+    yield
+    reset_advice()
 
 
 @pytest.fixture(scope="session")
