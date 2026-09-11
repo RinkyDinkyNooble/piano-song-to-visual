@@ -18,7 +18,7 @@ keywords = [
 classifiers = [
   # No "License ::" classifier: `license` above is a PEP 639 SPDX expression,
   # and PyPI rejects a distribution that carries both.
-  "Development Status :: 4 - Beta",
+  "Development Status :: 5 - Production/Stable",
   "Environment :: Console",
   "Intended Audience :: End Users/Desktop",
   "Programming Language :: Python :: 3",

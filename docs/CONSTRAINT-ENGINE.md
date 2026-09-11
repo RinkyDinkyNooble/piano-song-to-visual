@@ -118,6 +118,12 @@ pedal depth rather than a boolean.
 Refused when the two notes are **struck together**: shortening one cannot separate notes
 that start at the same instant, because the stretch exists the moment both are down.
 
+Also refused, for the whole piece, when `pedals.enabled = false`. That setting deletes
+the pedalling as the score is read, so the engine genuinely finds no pedal rather than
+being told to ignore one, and the passages this repair would have handled for free get
+an octave shift or a drop instead. That is the same music a player without a pedal
+would lose, and every one of those repairs is recorded.
+
 ### 3. Octave shift
 
 Move the outlier a whole octave toward the rest.

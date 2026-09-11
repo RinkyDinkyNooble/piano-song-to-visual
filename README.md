@@ -335,6 +335,28 @@ metronome = false
 
 A flag on the command line beats the file.
 
+### Playing it without the pedal
+
+Transcriptions often carry pedalling you do not want, and a piano you are
+practising on may not have a working pedal at all:
+
+```bash
+psv run song.mid -o practice.mp4 --no-pedal
+```
+
+This is not a display setting. The pedal events are deleted as the score is
+read, so every stage below sees a piece written without them: the arrangement
+changes, no lane is drawn, and no CC64 reaches the synthesiser.
+
+It costs a little music, and that is the honest part. The constraint engine's
+cheapest repair is to lift a finger early while the pedal holds the note
+ringing, which nobody can hear. With no pedal it has to move an octave or drop
+a note instead, in the same places a player without a pedal would lose them.
+Every one of those is reported, so `-vv` shows you exactly what it cost.
+
+To hide the lane without changing anything you hear, use `--pedals-lanes 0`
+instead. That is a display setting.
+
 ### Iterating quickly
 
 A full 1080p60 render of a long piece takes minutes. While you are trying

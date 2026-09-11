@@ -25,7 +25,10 @@ There is no GUI, and that is a decision rather than an omission:
   colour maps, grid intervals, pedal lanes — these belong in a TOML file you edit and
   version, not in a dialog box whose state lives nowhere.
 - Re-running a stage is the main workflow. `psv render -c mine.toml song.mid` after
-  tweaking one colour is trivial to type and trivial to script over a folder.
+  tweaking one colour is trivial to type and trivial to script over a folder. Every
+  setting in that file also has a flag, generated from the config dataclasses in
+  `psv.cliflags` and named for where the setting lives, so a one-off experiment does
+  not mean editing the file at all.
 - The one thing a GUI would genuinely add is **interactive arrangement editing**,
   dragging a note to the other hand when the reduction guesses wrong. Exporting a MIDI
   and fixing it in an editor that already exists does the same job without anyone
@@ -62,9 +65,18 @@ pitch, onset, duration, velocity, and provenance, plus tempo map, time signature
 pedal (CC64/66/67) events. Ticks are resolved to seconds once, here, so no downstream
 stage deals with tempo.
 
+`pedals.enabled = false` drops the pedalling here, as the file is read, rather than
+being honoured separately by each stage that cares. That is what makes the setting
+mean one thing: the constraint engine finds no pedal and stops shortening notes on
+the grounds that the damper is off the string, the renderer has no lane to draw, and
+the synthesiser is sent no CC64. It is a different question from `pedals.lanes = 0`,
+which hides the lane and changes neither the arrangement nor the sound.
+
 `psv inspect` reports what a file actually contains — track count, instruments,
 polyphony, pitch range, whether pedal data is present, whether hands are already
-separated. This drives every decision about what the later stages need to do.
+separated. This drives every decision about what the later stages need to do. It is
+the one command that ignores `pedals.enabled`, because it answers what is in the file
+and every other command answers what psv will do with it.
 
 ### Stage 2 — Arrangement (many tracks → two hands)
 
