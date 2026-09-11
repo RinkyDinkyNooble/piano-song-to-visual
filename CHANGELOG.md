@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-09-11
+
+### Fixed
+
+- **`psv --version` failed with `No module named 'numpy'` on an install
+  without the extras**, and so did every other command, and so did plain
+  `import psv`. The README has always said `pip install piano-song-to-visual`
+  gives you `inspect`, `export`, `arrange` and `constrain`. It never did.
+
+  Two causes, one of them old. `psv.cli` imported `psv.render.video` and
+  `psv.audio.backends` at module scope so it could name `VideoWriteError` and
+  `AudioError` in an `except` clause, and both of those import numpy, so the
+  CLI died before argparse read an argument. That has been true since 1.0.0.
+  Then 1.0.1 had `psv/__init__.py` re-export `fit_text` from `psv.render.text`,
+  which meant `import psv` ran `psv/render/__init__.py` and pulled in the whole
+  renderer; that broke the library as well as the command.
+
+  The exception classes now live in `psv.errors`, which imports nothing, and
+  are re-exported from where they were, so `from psv.audio.backends import
+  AudioError` still works. `fit_text` moved to `psv.text`, where it belongs:
+  it is arithmetic over a callable and never needed a renderer. The remaining
+  heavy imports happen inside the two commands that need them.
+
+  A command that does need an extra now says which one instead of raising a
+  `ModuleNotFoundError` naming whichever module was imported first:
+
+  ```
+  psv: `psv render` needs the `render` extra, which is not installed:
+      pip install 'piano-song-to-visual[render]'
+  ```
+
+  Eleven tests cover this, run in a subprocess with numpy and Pillow made
+  unimportable, since a suite that installs the extras cannot otherwise tell
+  you what a bare install does. They fail on 1.0.1.
+
 ## [1.0.1] - 2026-09-11
 
 ### Added

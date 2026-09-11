@@ -36,6 +36,7 @@ from typing import Any
 import numpy as np
 
 from psv.config import VisualConfig
+from psv.errors import VideoWriteError as VideoWriteError  # re-exported
 from psv.model import Hand, Score
 from psv.render.frame import Frame, Palette, render_frame
 
@@ -91,10 +92,6 @@ COLOUR_PARAMS = [
     "-color_trc",
     "bt709",
 ]
-
-
-class VideoWriteError(RuntimeError):
-    """Encoding failed, or the encoder was unavailable."""
 
 
 def frame_times(duration: float, fps: int, *, start: float = 0.0) -> Iterator[float]:

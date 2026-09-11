@@ -27,8 +27,8 @@ from typing import TYPE_CHECKING
 
 from psv.audio.backends import ffmpeg_exe
 from psv.config import TitleConfig
-from psv.render.text import MIN_SIZE, fit_text
 from psv.rgb import parse_hex
+from psv.text import MIN_SIZE, fit_text
 
 if TYPE_CHECKING:  # pragma: no cover - types only
     from PIL import ImageDraw

@@ -92,6 +92,9 @@ pip install -e .            # inspect, export, arrange, constrain
 pip install -e ".[render]"  # + video and audio, which is everything below
 ```
 
+A command that needs an extra you do not have says which one to install rather
+than failing on whichever module it happened to reach first.
+
 Sound works with no further setup: the built-in synth needs nothing but numpy.
 For a real sampled piano see [A real piano sound](#a-real-piano-sound) below.
 

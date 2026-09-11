@@ -23,8 +23,8 @@ from PIL import Image
 
 from psv import fit_text
 from psv.config import TitleConfig
-from psv.render.text import FLOOR_SHARE, MIN_SIZE
 from psv.render.title import TEXT_WIDTH_SHARE, TITLE_SIZE, Card, build_card
+from psv.text import FLOOR_SHARE, MIN_SIZE
 
 #: A character is this many units wide per point of type size. Made up, exact,
 #: and monotonic in the size, which is all the search needs.

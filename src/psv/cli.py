@@ -12,16 +12,17 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 
 from psv import __version__
 from psv.arrange import arrange as arrange_score
-from psv.audio.backends import AudioError
 from psv.cliflags import add_config_options, apply_overrides
 from psv.config import Config, ConfigError
 from psv.constraints import ConstraintError
 from psv.constraints import constrain as constrain_score
+from psv.errors import AudioError, MissingExtra, VideoWriteError
 from psv.inspect import format_report, inspect_score
 from psv.instruments import (
     GM_PROGRAMS,
@@ -32,7 +33,6 @@ from psv.instruments import (
 from psv.load import ScoreReadError, read_score
 from psv.midi import write_midi_file
 from psv.midi.read import MidiReadError
-from psv.pipeline import run as run_pipeline
 from psv.practice import prepare
 from psv.presets import (
     DESCRIPTIONS,
@@ -45,9 +45,28 @@ from psv.presets import (
     apply_preset,
     apply_theme,
 )
-from psv.render.video import TAIL_S, VideoWriteError, render_video
 
 log = logging.getLogger("psv")
+
+
+@contextmanager
+def _extra(name: str, what: str) -> Iterator[None]:
+    """Turn a missing optional dependency into a sentence worth reading.
+
+    The renderer and the synthesiser need numpy, Pillow and an ffmpeg binary,
+    and none of those is a core dependency: `pip install piano-song-to-visual`
+    is meant to give you the MIDI stages and nothing heavier. So the imports
+    for those live inside the commands that need them, and this turns the
+    resulting `ModuleNotFoundError` into the name of the extra to install.
+
+    Importing them at the top instead is what made `psv --version` fail with
+    `No module named 'numpy'` on exactly the install the README describes.
+    """
+    try:
+        yield
+    except ModuleNotFoundError as exc:
+        raise MissingExtra(name, what) from exc
+
 
 #: Pipeline stages, in the order they run, plus the utilities either side.
 PIPELINE_COMMANDS: dict[str, str] = {
@@ -239,6 +258,9 @@ def _cmd_export(args: argparse.Namespace, config: Config) -> int:
 
 
 def _cmd_render(args: argparse.Namespace, config: Config) -> int:
+    with _extra("render", "`psv render`"):
+        from psv.render.video import TAIL_S, render_video
+
     score = read_score(args.input, pedals=config.pedals.enabled)
     visual, practice, title = config.visual, config.practice, config.title
     _check_window_flags(args)
@@ -401,6 +423,9 @@ def _progress(args: argparse.Namespace) -> Callable[[int, int], None]:
 
 
 def _cmd_run(args: argparse.Namespace, config: Config) -> int:
+    with _extra("render", "`psv run`"):
+        from psv.pipeline import run as run_pipeline
+
     _check_window_flags(args)
     result = run_pipeline(
         args.input,
@@ -461,6 +486,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         VideoWriteError,
         ConstraintError,
         AudioError,
+        MissingExtra,
     ) as exc:
         print(f"psv: {exc}", file=sys.stderr)
         return 1

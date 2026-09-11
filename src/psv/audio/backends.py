@@ -27,6 +27,7 @@ import numpy as np
 
 from psv.audio.click import mix_clicks
 from psv.config import DEFAULT_REVERB, AudioConfig
+from psv.errors import AudioError as AudioError  # re-exported; see psv.errors
 from psv.model import HIGHEST_KEY, LOWEST_KEY, Pedal, Score
 from psv.practice import Click
 
@@ -49,10 +50,6 @@ RELEASE_S = 0.18
 
 #: Seconds of tail kept after the last sound, matching the renderer's.
 TAIL_S = 1.0
-
-
-class AudioError(RuntimeError):
-    """Audio could not be produced by any available backend."""
 
 
 @dataclass(frozen=True, slots=True)
