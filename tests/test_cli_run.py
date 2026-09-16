@@ -442,12 +442,18 @@ def test_asking_for_a_hand_with_no_notes_warns_rather_than_failing(
 
 
 @pytest.mark.feature("F-55")
-def test_no_span_limit_changes_nothing_and_says_so(
+def test_no_span_limit_leaves_the_reach_alone_and_says_so(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """An unplayable arrangement must never be a surprise, so asking for no
-    limit has to be loud about what it did not do."""
+    limit has to be loud about what it did not do.
+
+    It does still resolve double strikes, which is a different promise and one
+    no setting can make true. What it must not do is narrow a reach.
+    """
+    from psv.constraints import verify_span
     from psv.midi import read_midi_file
+    from psv.model import Provenance
 
     source = (
         Path(__file__).resolve().parent
@@ -461,9 +467,46 @@ def test_no_span_limit_changes_nothing_and_says_so(
     out = capsys.readouterr().out
     assert "span not enforced" in out
 
-    before, after = read_midi_file(source), read_midi_file(output)
-    assert len(after.notes) == len(before.notes)
-    assert not any(note.was_edited for note in after.notes)
+    after = read_midi_file(output)
+    # The wide chords are still there: this file reaches well beyond an octave
+    # and asking for no limit has to keep every one of them.
+    assert verify_span(after, 12) != []
+    # And no note was moved, which is the only way span repair narrows a reach.
+    # Compared against provenance rather than against the input's own span:
+    # `ensure_hands` assigns hands on the way through, so "one hand's reach"
+    # does not mean the same thing either side of it.
+    moved = [
+        note
+        for note in after.notes
+        if Provenance.REASSIGNED in note.provenance
+        or Provenance.OCTAVE_SHIFTED in note.provenance
+    ]
+    assert moved == []
+
+
+@pytest.mark.feature("F-94")
+def test_no_span_limit_still_reports_what_it_edited(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The one path that can now remove a note without enforcing span.
+
+    A repair nobody is told about is how music goes missing quietly, and the
+    summary used to stop at "span not enforced" because this path could not
+    produce one.
+    """
+    source = (
+        Path(__file__).resolve().parent
+        / "assets"
+        / "public-domain"
+        / "bach-bwv565-toccata-and-fugue.mid"
+    )
+    assert (
+        main(["constrain", str(source), "-o", str(tmp_path / "out.mid"), "--span", "0"])
+        == 0
+    )
+    out = capsys.readouterr().out
+    assert "lift-to-restrike" in out
+    assert "notes            3651 -> 3650" in out
 
 
 @pytest.mark.feature("F-55")

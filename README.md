@@ -407,12 +407,17 @@ falling-notes view the horizontal axis is pitch and the vertical axis is time, s
 [hands]
 max_span_semitones = 12   # hard limit on simultaneously held notes; 18 = 1.5 octaves
                           # never relaxed, at any difficulty.
-                          # 0 means no limit: the piece exactly as written,
+                          # 0 means no limit: the reach exactly as written,
                           # which psv then says loudly rather than implying
-                          # it checked something
+                          # it checked something. single_press still applies
 overlap_tolerance_s = 0.03 # overlaps shorter than this do not count as
                           # simultaneous. A note released 10 ms after the next
                           # one starts is sloppy MIDI, not a stretch to make
+single_press = true       # a key is one lever: never struck while another note
+                          # is still holding it. Separate from the span limit,
+                          # and still enforced when that is 0, because no
+                          # setting makes two fingers on one key playable.
+                          # false hands back the score as written instead
 
 [difficulty]
 level = "original"        # note density, ornamentation, harmonic detail

@@ -107,6 +107,8 @@ HELP: dict[str, str] = {
     "0 means no limit",
     "hands.overlap_tolerance_s": "overlaps shorter than this do not count as "
     "simultaneous",
+    "hands.single_press": "never strike a key another note is still holding; "
+    "separate from the span limit and still enforced when that is 0",
     "difficulty.level": "how much of the texture to keep",
     "pedals.enabled": "whether the piece is played with pedals at all; "
     "--no-pedal reads it as written without them, which changes the arrangement",

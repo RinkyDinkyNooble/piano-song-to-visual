@@ -96,6 +96,9 @@ class ConstrainResult:
     #: False when hands.max_span_semitones is 0. Reported loudly, because an
     #: arrangement nobody checked is not something to discover at the piano.
     span_enforced: bool = True
+    #: False when hands.single_press is off, which hands back double strikes
+    #: exactly as the score wrote them. Reported for the same reason.
+    single_press_enforced: bool = True
 
     @property
     def counts(self) -> dict[str, int]:
@@ -105,24 +108,31 @@ class ConstrainResult:
         return counts
 
     def summary(self) -> str:
-        if not self.span_enforced:
-            note = "span not enforced: the reach is as written and may be unplayable"
-            if not self.removed_for_difficulty:
-                return note
-            return (
-                f"{note}\n  difficulty       "
-                f"{len(self.removed_for_difficulty)} note(s) removed"
+        if self.span_enforced:
+            headline = (
+                f"{self.violations_before} span violation(s) found, "
+                f"resolved in {self.passes} pass(es)"
             )
-        if not self.violations_before and not self.removed_for_difficulty:
-            return "nothing to do: already playable at this span"
-        lines = [
-            f"{self.violations_before} span violation(s) found, "
-            f"resolved in {self.passes} pass(es)"
-        ]
+            quiet = not self.violations_before and not self.removed_for_difficulty
+            if quiet and not self.repairs:
+                return "nothing to do: already playable at this span"
+        else:
+            headline = (
+                "span not enforced: the reach is as written and may be unplayable"
+            )
+
+        lines = [headline]
+        if not self.single_press_enforced:
+            lines.append(
+                "  keys             not enforced: a key may be struck while held"
+            )
         if self.removed_for_difficulty:
             lines.append(
                 f"  difficulty       {len(self.removed_for_difficulty)} note(s) removed"
             )
+        # Listed whether or not span was enforced. The unlimited path still
+        # resolves double strikes, and a repair nobody is told about is how
+        # music goes missing quietly.
         for strategy, count in sorted(self.counts.items()):
             lines.append(f"  {strategy:16} {count}")
         return "\n".join(lines)
@@ -388,6 +398,50 @@ def _resolve_keys(
     return resolved, repairs
 
 
+def _keys_only(
+    score: Score, config: Config, removed: tuple[Note, ...]
+) -> ConstrainResult:
+    """The unlimited-span path: resolve double strikes, enforce no reach.
+
+    Kept beside the main path rather than folded into it, because the two have
+    genuinely different postconditions. This one promises one key one press and
+    says plainly that it promises nothing about span; `constrain` promises
+    both. Sharing a code path would mean one function whose guarantees depend
+    on a flag, which is how a guarantee stops being one.
+
+    Neither resolution here can widen a reach — shortening and dropping only
+    narrow what a hand holds — so running it changes nothing about a span that
+    was never being enforced.
+    """
+    tolerance = config.hands.overlap_tolerance_s
+    if not config.hands.single_press:
+        return ConstrainResult(
+            score=score,
+            removed_for_difficulty=removed,
+            span_enforced=False,
+            single_press_enforced=False,
+        )
+
+    notes, repairs = _resolve_keys(list(score.notes), tolerance)
+    result = score.with_notes(notes)
+
+    clashes = verify_single_press(result, tolerance)
+    if clashes:  # pragma: no cover - the guarantee, asserted in production
+        raise ConstraintError(
+            f"constrain left {len(clashes)} double strike(s), first: {clashes[0]}. "
+            "This is a bug in psv.constraints, not in the input."
+        )
+
+    if repairs:
+        log.info("resolved %d double strike(s); span not enforced", len(repairs))
+    return ConstrainResult(
+        score=result,
+        repairs=tuple(repairs),
+        removed_for_difficulty=removed,
+        span_enforced=False,
+    )
+
+
 def constrain(score: Score, config: Config) -> ConstrainResult:
     """Make ``score`` playable within the configured hand span.
 
@@ -407,22 +461,20 @@ def constrain(score: Score, config: Config) -> ConstrainResult:
 
     if not config.hands.is_limited:
         # Asked for no limit, so there is nothing to detect and nothing to
-        # repair. Returning here rather than running with a very wide span
-        # keeps "unlimited" from meaning "36", and keeps every note untouched.
+        # repair *about reach*. Returning here rather than running with a very
+        # wide span keeps "unlimited" from meaning "36".
         #
-        # That includes leaving double strikes alone. Resolving one costs a
-        # note, and someone who asked for the piece as written has said they
-        # will judge playability themselves; the tiles will stack in the video
-        # exactly as the score stacks them.
+        # One key, one press is a different question and is still answered.
+        # Span is a judgement about how far a hand stretches, which differs by
+        # player and is fair to decline. A key being one lever is not a
+        # judgement, and a score that asks for it twice at once is asking for
+        # something no setting makes true. Leaving those in was what put
+        # stacked tiles in the video on every score rendered at span 0.
         log.warning(
             "hands.max_span_semitones is 0: span is not being enforced, and the "
             "result may not be playable"
         )
-        return ConstrainResult(
-            score=score,
-            removed_for_difficulty=removed,
-            span_enforced=False,
-        )
+        return _keys_only(score, config, removed)
 
     state = _Working(
         notes=list(score.notes),
@@ -450,8 +502,13 @@ def constrain(score: Score, config: Config) -> ConstrainResult:
     state.compact()
     repairs.extend(_force_clean(state, max_span, tolerance))
 
-    notes, key_repairs = _resolve_keys(state.notes, tolerance)
-    repairs.extend(key_repairs)
+    # Last, because a span repair can move a note onto a key another note is
+    # holding, and going first would miss those. Nothing it does can widen a
+    # reach, so the span guarantee survives it untouched.
+    notes = state.notes
+    if config.hands.single_press:
+        notes, key_repairs = _resolve_keys(notes, tolerance)
+        repairs.extend(key_repairs)
     result = score.with_notes(notes)
 
     remaining = verify_span(result, max_span, tolerance)
@@ -461,12 +518,13 @@ def constrain(score: Score, config: Config) -> ConstrainResult:
             "This is a bug in psv.constraints, not in the input."
         )
 
-    clashes = verify_single_press(result, tolerance)
-    if clashes:  # pragma: no cover - the guarantee, asserted in production
-        raise ConstraintError(
-            f"constrain left {len(clashes)} double strike(s), first: {clashes[0]}. "
-            "This is a bug in psv.constraints, not in the input."
-        )
+    if config.hands.single_press:
+        clashes = verify_single_press(result, tolerance)
+        if clashes:  # pragma: no cover - the guarantee, asserted in production
+            raise ConstraintError(
+                f"constrain left {len(clashes)} double strike(s), first: "
+                f"{clashes[0]}. This is a bug in psv.constraints, not in the input."
+            )
 
     log.info(
         "constrained: %d violation(s) -> %d repair(s) in %d pass(es)",
@@ -480,4 +538,5 @@ def constrain(score: Score, config: Config) -> ConstrainResult:
         removed_for_difficulty=removed,
         violations_before=violations_before,
         passes=passes,
+        single_press_enforced=config.hands.single_press,
     )

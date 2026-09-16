@@ -18,6 +18,7 @@ from psv.constraints.keys import (
     resolve_double_strikes,
     verify_single_press,
 )
+from psv.constraints.span import verify_span
 from psv.model import HIGHEST_KEY, LOWEST_KEY, Hand, Note, Part, Provenance, Score
 
 
@@ -35,8 +36,10 @@ def score_of(*notes: Note) -> Score:
     return Score(parts=(Part(notes=tuple(sorted(notes))),))
 
 
-def config_for(max_span: int) -> Config:
-    return Config(hands=HandsConfig(max_span_semitones=max_span))
+def config_for(max_span: int, *, single_press: bool = True) -> Config:
+    return Config(
+        hands=HandsConfig(max_span_semitones=max_span, single_press=single_press)
+    )
 
 
 # -- detection -----------------------------------------------------------
@@ -171,22 +174,94 @@ def test_an_octave_shift_will_not_land_on_a_key_that_is_already_sounding() -> No
     assert verify_single_press(result.score) == []
 
 
-@pytest.mark.feature("F-88")
-def test_no_span_limit_leaves_double_strikes_alone() -> None:
-    """The known limit of this pass, kept in a test rather than left as a gap.
+@pytest.mark.feature("F-94")
+def test_no_span_limit_still_resolves_double_strikes() -> None:
+    """The reported bug: every video rendered at span 0 had stacked tiles.
 
-    `max_span_semitones = 0` means "the piece as written, I will judge it
-    myself". Resolving a double strike costs a note, so that path does not,
-    and the tiles stack in the video exactly as the score stacks them.
+    Span and one key one press are different questions. How far a hand
+    stretches differs by player and is fair to decline with
+    `max_span_semitones = 0`. A key being one lever is not a judgement, and no
+    setting makes a score that asks for it twice at once playable.
     """
     score = score_of(
         note(60, 0.0, 2.0, hand=Hand.RIGHT),
         note(60, 1.0, 1.2, hand=Hand.LEFT),
     )
     result = constrain(score, config_for(0))
-    assert result.span_enforced is False
+
+    assert result.span_enforced is False, "span is still not being enforced"
+    assert result.single_press_enforced is True
+    assert verify_single_press(result.score) == []
+    assert result.repairs, "a note was edited and nothing recorded it"
+
+
+@pytest.mark.feature("F-94")
+def test_no_span_limit_still_leaves_the_reach_alone() -> None:
+    """Resolving keys must not start enforcing span by the back door.
+
+    Shortening and dropping only ever narrow what one hand holds, so a reach
+    the user asked to keep is still there afterwards.
+    """
+    score = score_of(
+        note(36, 0.0, 2.0, hand=Hand.LEFT),
+        note(72, 0.0, 2.0, hand=Hand.LEFT),
+    )
+    result = constrain(score, config_for(0))
+
+    assert result.score.notes == score.notes, "an unreachable chord was repaired"
+    assert len(verify_span(result.score, 12)) == 1
+
+
+@pytest.mark.feature("F-94")
+def test_turning_single_press_off_hands_back_the_score_as_written() -> None:
+    """The escape hatch, and the one case where the clash survives on purpose.
+
+    Resolving a double strike can cost music: a long note under a repeated tap
+    keeps only what precedes the first tap, because the engine shortens and
+    removes notes but does not split one into two. Someone who would rather
+    have the notation can say so.
+    """
+    score = score_of(
+        note(60, 0.0, 2.0, hand=Hand.RIGHT),
+        note(60, 1.0, 1.2, hand=Hand.LEFT),
+    )
+    result = constrain(score, config_for(0, single_press=False))
+
+    assert result.single_press_enforced is False
     assert result.score.notes == score.notes
     assert len(verify_single_press(result.score)) == 1
+    assert "not enforced" in result.summary()
+
+
+@pytest.mark.feature("F-94")
+def test_single_press_off_applies_with_a_span_limit_too() -> None:
+    """One setting, one meaning, whichever path it takes through the engine."""
+    score = score_of(
+        note(60, 0.0, 2.0, hand=Hand.RIGHT),
+        note(60, 1.0, 1.2, hand=Hand.LEFT),
+    )
+    result = constrain(score, config_for(12, single_press=False))
+
+    assert result.span_enforced is True
+    assert result.single_press_enforced is False
+    assert len(verify_single_press(result.score)) == 1
+
+
+@pytest.mark.feature("F-94")
+def test_repairs_made_without_a_span_limit_are_reported() -> None:
+    """Music never goes missing quietly, on this path as much as the other.
+
+    The summary used to return early when span was unenforced, because that
+    path could not produce a repair. Now it can.
+    """
+    score = score_of(
+        note(60, 0.0, 2.0, hand=Hand.RIGHT),
+        note(60, 0.0, 1.2, hand=Hand.LEFT),
+    )
+    result = constrain(score, config_for(0))
+
+    assert result.counts == {"merge-unison": 1}
+    assert "merge-unison" in result.summary()
 
 
 # -- the invariant, over generated scores --------------------------------
@@ -229,9 +304,14 @@ SLOW = settings(
 
 @pytest.mark.feature("F-88")
 @SLOW
-@given(score=clashing_scores(), max_span=st.integers(min_value=1, max_value=18))
+@given(score=clashing_scores(), max_span=st.integers(min_value=0, max_value=18))
 def test_output_never_holds_one_key_with_two_notes(score: Score, max_span: int) -> None:
-    """The promise, tested as a promise: any score, any limit, one key one press."""
+    """The promise, tested as a promise: any score, any limit, one key one press.
+
+    The range starts at 0, which is the setting meaning "no span limit". It
+    used to start at 1, so the one path that skipped this pass entirely was
+    also the one path the property never visited.
+    """
     result = constrain(score, config_for(max_span))
     assert verify_single_press(result.score) == []
 

@@ -762,3 +762,10 @@ name = "Title text is shrunk, and wrapped if it must be, to fit the frame"
 milestone = "M8"
 status = "done"
 verify = "unit"
+
+[[feature]]
+id = "F-94"
+name = "One key, one press holds even when no span limit is enforced"
+milestone = "M8"
+status = "done"
+verify = "unit"

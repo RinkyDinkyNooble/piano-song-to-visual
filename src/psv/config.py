@@ -133,6 +133,22 @@ class HandsConfig:
     max_span_semitones: int = 12
     #: Overlaps shorter than this do not count as simultaneous.
     overlap_tolerance_s: float = DEFAULT_OVERLAP_TOLERANCE_S
+    #: Whether a key may be struck while another note is still holding it.
+    #:
+    #: Separate from the span limit on purpose, and the separation is the point.
+    #: Span is a judgement about reach, which differs by player and is fair to
+    #: opt out of with `max_span_semitones = 0`. This is not a judgement: a key
+    #: is one lever and no hand can press it twice at once. A score asks for it
+    #: constantly — two voices sharing a staff, one hand holding while the other
+    #: taps — and left alone it reaches the video as tiles drawn on top of each
+    #: other and the synthesiser as a second note-on for a key that never came
+    #: up.
+    #:
+    #: Resolving one can cost music, which is why it can still be turned off:
+    #: a long note under a repeated tap keeps only what precedes the first tap,
+    #: since the engine shortens and removes notes but does not split one into
+    #: two. Off means the score exactly as written, unplayable parts included.
+    single_press: bool = True
 
     @property
     def is_limited(self) -> bool:

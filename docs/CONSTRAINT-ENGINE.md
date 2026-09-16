@@ -21,6 +21,11 @@ There is a second, smaller promise alongside it, described in full under [One ke
 one press](#one-key-one-press): no key is ever struck while another note is still
 holding it. Both are checked before `constrain` returns.
 
+The two are independent, and each has its own way of being declined —
+`hands.max_span_semitones = 0` for the first, `hands.single_press = false` for the
+second. Turning one off does not turn the other off, and whichever is off is said out
+loud rather than quietly skipped.
+
 ## What counts as "held together"
 
 Two notes are held together if they sound at the same time for longer than
@@ -221,8 +226,20 @@ note into two, and the engine moves, shortens and removes notes but does not inv
 So a long note under a repeated tap loses everything after the first tap, which on a score
 with no pedal data is audible. That is the known cost of this pass.
 
-`hands.max_span_semitones = 0` leaves double strikes alone with everything else. That
-setting means the piece as written, and resolving one costs a note.
+**It runs whether or not a span limit is being enforced**, and the two settings are
+deliberately separate. Span is a judgement about how far a hand stretches: it differs by
+player, and `hands.max_span_semitones = 0` is a fair way to decline it. A key being one
+lever is not a judgement. No score is playable that asks for a key twice at once, and no
+setting makes it so.
+
+That separation was missing until 1.0.3. Asking for no span limit returned early, before
+this pass, so every score rendered that way reached the video with tiles drawn on top of
+each other and the synthesiser with a second note-on for a key that never came up.
+
+`hands.single_press = false` is the way out for someone who wants the notation exactly as
+written, unplayable parts included. It costs what this pass costs — the long note under a
+repeated tap, above — and it is reported, both in `constrain`'s summary and as
+`ConstrainResult.single_press_enforced`.
 
 ## Difficulty is a different knob
 

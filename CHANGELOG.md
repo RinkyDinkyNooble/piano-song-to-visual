@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-09-16
+
+### Fixed
+
+- **A score rendered with no span limit still stacked tiles on one key.**
+  `constrain` returned early when `hands.max_span_semitones = 0`, and that
+  return sat in front of the one-key-one-press pass, so the pass never ran.
+  Every video made that way carried the fault `1.0.0` was supposed to have
+  fixed: two voices writing the same pitch reached the picture as one tile
+  drawn on top of another, and the synthesiser as a second note-on for a key
+  that never came up.
+
+  Measured on a Beethoven first movement at span 0: 228 places where two notes
+  held one key, twelve of them in a ten-second stretch. Same pitch, same hand,
+  same onset, one note a sixth the length of the other.
+
+  Span and one key one press are now separate questions, because they always
+  were. How far a hand stretches differs by player and `max_span_semitones = 0`
+  is a fair way to decline it. A key is one lever, and no score that asks for
+  it twice at once is playable at any setting.
+
+### Added
+
+- **`hands.single_press`**, defaulting to true, and `--no-hands-single-press`
+  to turn it off. Off hands back the score as written, double strikes included,
+  for anyone who wants the notation rather than something playable. It applies
+  on both paths through the engine, so the setting means one thing whether or
+  not a span limit is being enforced.
+
+- **`ConstrainResult.single_press_enforced`**, alongside `span_enforced`, and a
+  line in `constrain`'s summary when it is off.
+
+### Changed
+
+- **`constrain`'s summary lists its repairs when span is not enforced.** It
+  used to stop at "span not enforced", which was complete when that path could
+  not edit anything and became a way to lose a note silently once it could.
+
+- The one-key-one-press property test now generates span limits from 0 rather
+  than 1. The one path that skipped the pass was the one path the property
+  never visited.
+
 ## [1.0.2] - 2026-09-11
 
 ### Fixed
