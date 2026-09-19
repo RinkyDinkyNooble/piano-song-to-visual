@@ -491,6 +491,9 @@ reverb = 0.5              # how much room the piano is played in, 0 dry to 1 a
 audio_file = ""           # for backend = "mux": your own recording
 offset_s = 0.0            # nudge that recording into sync
 stereo_width = 0.5        # low notes left, high notes right, as at the keyboard
+velocity_floor = 0        # lift every velocity onto [floor, 127] before it is
+                          # played, so a passage written at ppp stays quiet
+                          # instead of vanishing. 0 is off; 30 is a sane start
 
 [title]                   # a card at the front and a fade at the end, for a
                           # video you will post. Off until `seconds` is set,

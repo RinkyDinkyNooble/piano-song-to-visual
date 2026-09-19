@@ -135,6 +135,8 @@ HELP: dict[str, str] = {
     "audio.soundfont": "path to a .sf2, for the fluidsynth backend",
     "audio.program": "which instrument in that SoundFont; `psv instruments` lists them",
     "audio.reverb": "how much room the piano is played in, 0 dry to 1 a large hall",
+    "audio.velocity_floor": "lift every velocity onto this floor, so a passage "
+    "written at ppp stays quiet instead of vanishing; 0 is off, 30 is a sane start",
     "audio.audio_file": "your own recording, for the mux backend",
     "audio.offset_s": "nudge that recording into sync",
     "practice.tempo": "playback speed; 0.75 is three-quarters of the written tempo",

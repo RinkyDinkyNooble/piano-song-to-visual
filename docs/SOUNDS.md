@@ -105,6 +105,48 @@ what makes a left-hand line audible underneath a busy right hand.
 FluidSynth produces its own stereo image from the SoundFont, so this setting
 does not apply to it.
 
+## When a passage goes silent
+
+MIDI velocity runs 1 to 127, and a synthesiser turns it into amplitude roughly
+as its square. That makes the bottom of the range much lower than it looks: a
+note at velocity 2, in a piece otherwise sitting at 96, comes out about seventy
+decibels down. Not soft. Gone.
+
+Engravers write that. A `ppp` or `pppp` mapped to 2 or 3 is common in exported
+MIDI, and where a whole phrase carries the marking, the soundtrack has a hole
+in it while the falling notes carry on as normal — nothing on screen is drawn
+from velocity, so the picture never shows the fault.
+
+`audio.velocity_floor` lifts every velocity onto the range `[floor, 127]`
+before it reaches either synthesiser:
+
+```toml
+[audio]
+velocity_floor = 30
+```
+
+It is a straight line, so the order is kept: quiet stays quieter than loud, and
+anything already at 127 stays at 127. All that moves is the bottom. At a floor
+of 30 a `ppp` lands about twenty-four decibels under a `fff`, which is close to
+the range a real piano covers, rather than off the end of it.
+
+`0` is the default and means off — a score is played exactly as written. psv
+still says something when it finds a stretch of two seconds or more where every
+note is faint:
+
+```
+notes from 98.5s to 104.5s are written at velocity 2 or under, which
+synthesises to near silence while the picture carries on;
+audio.velocity_floor (try 30) lifts them
+```
+
+Reported rather than corrected, because deciding a written dynamic is wrong is
+your call, not the tool's. `--audio-velocity-floor 30` makes that call for one
+run.
+
+`mux` plays a recording you already have and `none` plays nothing, so neither
+has a velocity to lift.
+
 ## Using a recording instead
 
 If you already have audio of the piece, skip synthesis entirely:

@@ -7,6 +7,6 @@ playable.
 
 from psv.text import Fitted, fit_text
 
-__version__ = "1.0.3"
+__version__ = "1.1.0"
 
 __all__ = ["Fitted", "__version__", "fit_text"]

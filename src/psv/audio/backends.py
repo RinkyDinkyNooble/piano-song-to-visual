@@ -26,9 +26,9 @@ from pathlib import Path
 import numpy as np
 
 from psv.audio.click import mix_clicks
-from psv.config import DEFAULT_REVERB, AudioConfig
+from psv.config import DEFAULT_REVERB, SYNTHESISING_BACKENDS, AudioConfig
 from psv.errors import AudioError as AudioError  # re-exported; see psv.errors
-from psv.model import HIGHEST_KEY, LOWEST_KEY, Pedal, Score
+from psv.model import HIGHEST_KEY, LOWEST_KEY, Note, Pedal, Score
 from psv.practice import Click
 
 log = logging.getLogger(__name__)
@@ -51,6 +51,20 @@ RELEASE_S = 0.18
 #: Seconds of tail kept after the last sound, matching the renderer's.
 TAIL_S = 1.0
 
+#: The top of the MIDI velocity range, and the top of every velocity curve
+#: here. Lifting the floor never makes a fortissimo louder.
+MAX_VELOCITY = 127
+
+#: A note under this is inaudible beside an ordinary one: velocity becomes
+#: amplitude roughly as its square, so 12 against 96 is about thirty-six
+#: decibels down, and 2 against 96 is seventy.
+FAINT_VELOCITY = 12
+
+#: How long a stretch of nothing but faint notes has to last before it is
+#: worth saying so. Shorter than this is a soft phrase; longer is a listener
+#: checking whether their speakers died.
+FAINT_SECONDS = 2.0
+
 
 @dataclass(frozen=True, slots=True)
 class AudioResult:
@@ -67,6 +81,72 @@ class AudioResult:
 
 def pitch_to_hz(pitch: int) -> float:
     return float(A4_HZ * 2.0 ** ((pitch - A4_MIDI) / 12.0))
+
+
+def lift_velocity(velocity: int, floor: int) -> int:
+    """``velocity`` remapped onto ``[floor, 127]``; unchanged when ``floor`` is 0.
+
+    A straight line rather than a curve: ``floor + (127 - floor) * v / 127``.
+    Order survives it, so quiet stays quieter than loud, and 127 maps to 127,
+    so nothing already played at full strength gets louder. All it moves is the
+    bottom of the range.
+
+    That bottom is worth moving because a synthesiser turns velocity into
+    amplitude roughly as its square. A ``ppp`` an engraver wrote as velocity 2,
+    in a piece otherwise sitting at 96, arrives some seventy decibels down:
+    not soft, gone. A floor of 30 puts the same passage about twenty-four
+    decibels under the loud one, which is roughly what a piano itself covers
+    between ``ppp`` and ``fff``.
+    """
+    if floor <= 0:
+        return velocity
+    return round(floor + (MAX_VELOCITY - floor) * velocity / MAX_VELOCITY)
+
+
+def faint_span(score: Score) -> tuple[float, float, int] | None:
+    """The first long stretch where every note is faint, or None.
+
+    Returned as ``(start, end, quietest)`` in score seconds. A stretch counts
+    when nothing at or above `FAINT_VELOCITY` starts inside it and it lasts
+    `FAINT_SECONDS` or more, and it only counts at all if the score has
+    ordinary notes elsewhere: a piece played softly throughout is a piece
+    played softly, not a fault.
+
+    Reported, never corrected. Deciding on the user's behalf that a written
+    dynamic is wrong is `AudioConfig.velocity_floor`'s job, and that setting is
+    off unless asked for. This exists so the reason a soundtrack went quiet is
+    a line in the log rather than an evening with a waveform editor.
+    """
+    notes = sorted(score.notes, key=lambda note: note.start)
+    if not notes or all(note.velocity < FAINT_VELOCITY for note in notes):
+        return None
+
+    run: list[Note] = []
+    for note in notes:
+        if note.velocity < FAINT_VELOCITY:
+            run.append(note)
+            continue
+        found = _extent(run)
+        if found is not None:
+            return found
+        run = []
+    return _extent(run)
+
+
+def _extent(run: Sequence[Note]) -> tuple[float, float, int] | None:
+    """``(start, end, quietest)`` for a run of faint notes, if it is long enough.
+
+    Measured to the last note's end rather than its start, because what a
+    listener hears is the hole, and the hole lasts as long as the notes filling
+    it were meant to.
+    """
+    if not run:
+        return None
+    begin = run[0].start
+    finish = max(note.end for note in run)
+    if finish - begin < FAINT_SECONDS:
+        return None
+    return begin, finish, min(note.velocity for note in run)
 
 
 # -- the built-in synth --------------------------------------------------
@@ -140,6 +220,7 @@ def synthesise(
     start: float = 0.0,
     duration: float | None = None,
     stereo_width: float = 0.0,
+    velocity_floor: int = 0,
 ) -> np.ndarray:
     """Render the score to float32 samples in [-1, 1].
 
@@ -182,7 +263,8 @@ def synthesise(
         for index, weight in enumerate(HARMONICS, start=1):
             wave_form += weight * np.sin(phase * index * time, dtype=np.float32)
 
-        amplitude = (note.velocity / 127.0) ** 1.5
+        velocity = lift_velocity(note.velocity, velocity_floor)
+        amplitude = (velocity / 127.0) ** 1.5
         voice = wave_form * _envelope(length, held) * amplitude
 
         if right is not None:
@@ -297,15 +379,19 @@ def reverb_settings(amount: float) -> dict[str, float]:
 RELEASE, CONTROL, PRESS = 0, 1, 2
 
 
-def synth_events(score: Score) -> list[tuple[float, int, int, int]]:
+def synth_events(
+    score: Score, *, velocity_floor: int = 0
+) -> list[tuple[float, int, int, int]]:
     """Every note and pedal boundary as ``(time, rank, number, value)``.
 
     Sorted, so a caller can feed a synthesiser in order. See `RELEASE` for why
-    the rank matters.
+    the rank matters. ``velocity_floor`` goes through `lift_velocity` on the way
+    past, so a backend driven from this list needs to know nothing about it.
     """
     events: list[tuple[float, int, int, int]] = []
     for note in score.notes:
-        events.append((note.start, PRESS, note.pitch, note.velocity))
+        velocity = lift_velocity(note.velocity, velocity_floor)
+        events.append((note.start, PRESS, note.pitch, velocity))
         events.append((note.end, RELEASE, note.pitch, 0))
     for pedal in score.pedals:
         events.append((pedal.start, CONTROL, int(pedal.pedal), pedal.depth))
@@ -322,6 +408,7 @@ def synthesise_fluidsynth(
     start: float = 0.0,
     duration: float | None = None,
     reverb: float = DEFAULT_REVERB,
+    velocity_floor: int = 0,
 ) -> np.ndarray:
     """Render through FluidSynth, returning interleaved stereo float32.
 
@@ -347,7 +434,7 @@ def synthesise_fluidsynth(
             raise AudioError(f"FluidSynth could not load {soundfont}")
         synth.program_select(0, preset, 0, program)
 
-        events = synth_events(score)
+        events = synth_events(score, velocity_floor=velocity_floor)
 
         blocks: list[np.ndarray] = []
         rendered = 0
@@ -410,9 +497,14 @@ def _builtin(
     note: str,
     clicks: Sequence[Click] = (),
     stereo_width: float = 0.0,
+    velocity_floor: int = 0,
 ) -> AudioResult:
     samples = synthesise(
-        score, start=start, duration=duration, stereo_width=stereo_width
+        score,
+        start=start,
+        duration=duration,
+        stereo_width=stereo_width,
+        velocity_floor=velocity_floor,
     )
     channels = 2 if stereo_width > 0.0 else 1
     samples = mix_clicks(
@@ -453,6 +545,20 @@ def render_audio(
     out_dir.mkdir(parents=True, exist_ok=True)
     backend = config.backend
     width = config.stereo_width
+    floor = config.velocity_floor
+
+    if backend in SYNTHESISING_BACKENDS and floor <= 0:
+        faint = faint_span(score)
+        if faint is not None:
+            begin, finish, quietest = faint
+            log.warning(
+                "notes from %.1fs to %.1fs are written at velocity %d or under, "
+                "which synthesises to near silence while the picture carries on; "
+                "audio.velocity_floor (try 30) lifts them",
+                begin,
+                finish,
+                quietest,
+            )
 
     if backend != "fluidsynth" and config.reverb != DEFAULT_REVERB:
         # Say so rather than implying it happened. Only FluidSynth carries a
@@ -471,7 +577,9 @@ def render_audio(
             source = _mux_source(config, start, duration)
         except AudioError as exc:
             log.warning("%s; falling back to the built-in synth", exc)
-            return _builtin(score, out_dir, start, duration, str(exc), clicks, width)
+            return _builtin(
+                score, out_dir, start, duration, str(exc), clicks, width, floor
+            )
         note = ""
         if clicks:
             note = "clicks cannot be mixed into an existing audio file"
@@ -482,7 +590,7 @@ def render_audio(
         available, why = fluidsynth_available(config.soundfont, config.fluidsynth_bin)
         if not available:
             log.warning("fluidsynth unavailable: %s; using the built-in synth", why)
-            return _builtin(score, out_dir, start, duration, why, clicks, width)
+            return _builtin(score, out_dir, start, duration, why, clicks, width, floor)
         try:
             samples = synthesise_fluidsynth(
                 score,
@@ -491,17 +599,20 @@ def render_audio(
                 start=start,
                 duration=duration,
                 reverb=config.reverb,
+                velocity_floor=floor,
             )
         except (AudioError, OSError, RuntimeError) as exc:
             log.warning("fluidsynth failed: %s; using the built-in synth", exc)
-            return _builtin(score, out_dir, start, duration, str(exc), clicks, width)
+            return _builtin(
+                score, out_dir, start, duration, str(exc), clicks, width, floor
+            )
         samples = mix_clicks(
             samples, clicks, start=start, sample_rate=SAMPLE_RATE, channels=2
         )
         path = write_wav(samples, out_dir / "psv-audio.wav", channels=2)
         return AudioResult(path=path, backend="fluidsynth")
 
-    return _builtin(score, out_dir, start, duration, "", clicks, width)
+    return _builtin(score, out_dir, start, duration, "", clicks, width, floor)
 
 
 def mux_into_video(

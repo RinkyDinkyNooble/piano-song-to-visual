@@ -140,6 +140,8 @@ def test_the_readme_documents_every_config_key() -> None:
         ("[pedals]\nlanes = 4\n", "pedals.lanes"),
         ("[pedals]\nthreshold = 0\n", "pedals.threshold"),
         ("[audio]\nreverb = 2\n", "audio.reverb"),
+        ("[audio]\nvelocity_floor = 127\n", "audio.velocity_floor"),
+        ("[audio]\nvelocity_floor = -1\n", "audio.velocity_floor"),
         ("[audio]\nbackend = 'winamp'\n", "audio.backend"),
         ("[audio]\nbackend = 'fluidsynth'\n", "requires audio.soundfont"),
         ("[audio]\nbackend = 'mux'\n", "requires audio.audio_file"),

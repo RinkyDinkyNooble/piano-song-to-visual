@@ -769,3 +769,10 @@ name = "One key, one press holds even when no span limit is enforced"
 milestone = "M8"
 status = "done"
 verify = "unit"
+
+[[feature]]
+id = "F-95"
+name = "A velocity floor keeps a passage written at ppp quiet instead of silent"
+milestone = "M8"
+status = "done"
+verify = "unit"

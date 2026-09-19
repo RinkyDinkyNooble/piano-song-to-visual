@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-19
+
+### Added
+
+- **`audio.velocity_floor`**, and `--audio-velocity-floor`, for scores whose
+  quiet passages are written so quietly they do not survive being played.
+
+  MIDI velocity runs 1 to 127 and a synthesiser turns it into amplitude roughly
+  as its square, so the bottom of the range is far lower than it looks.
+  Engravers write into it anyway: a `ppp` exported as velocity 2, in a piece
+  otherwise sitting at 96, arrives about seventy decibels down. Not soft. Gone.
+
+  Found on a Liszt transcription where six seconds of the soundtrack were
+  silent — measured at −75 dB against −19 dB either side — while the falling
+  notes carried on as normal, because nothing on screen is drawn from velocity.
+  Every note in the passage was velocity 2 in the source file.
+
+  The setting remaps velocity onto `[floor, 127]` on a straight line before it
+  reaches either synthesising backend. Order is kept, so quiet stays quieter
+  than loud, and 127 still maps to 127, so nothing already at full strength
+  gets louder. A floor of 30 puts that passage about twenty-four decibels under
+  the loud one, roughly the distance a piano itself covers from `ppp` to `fff`.
+
+  `0` is the default and means off. Every render made before this one sounds
+  exactly as it did.
+
+- **A warning when a score has a hole in it.** Two seconds or more where every
+  note is under velocity 12, in a score that has ordinary notes elsewhere, is
+  now named in the log with its start and end and the setting that fixes it.
+  Reported rather than corrected: deciding a written dynamic is wrong is the
+  user's call. A piece played softly throughout is not reported, because it is
+  not a fault.
+
 ## [1.0.3] - 2026-09-16
 
 ### Fixed

@@ -87,6 +87,10 @@ ENCODE_LEVELS = {
 
 DIFFICULTY_LEVELS = ("beginner", "easy", "medium", "hard", "original")
 AUDIO_BACKENDS = ("fluidsynth", "mux", "builtin", "none")
+#: The backends that turn a Score into sound themselves, and so are the only
+#: ones a velocity setting can reach. `mux` plays a recording you already have
+#: and `none` plays nothing.
+SYNTHESISING_BACKENDS = ("fluidsynth", "builtin")
 PRACTICE_HANDS = ("both", "left", "right")
 
 #: Where the alignment rules are drawn. Named here rather than inline in
@@ -528,6 +532,25 @@ class AudioConfig:
     #:
     #: fluidsynth only. The other backends do not go through it and say so.
     reverb: float = DEFAULT_REVERB
+    #: Lift every velocity onto the range ``[velocity_floor, 127]`` before it
+    #: reaches a synthesiser, so the quietest notes stay quieter than the loud
+    #: ones without dropping out of the mix altogether.
+    #:
+    #: 0 is off, and off is the default: a score is played exactly as written.
+    #: That is right until a score is not written sensibly. Engravers routinely
+    #: map a ``ppp`` to velocity 2, and velocity turns into amplitude roughly as
+    #: its square, so those notes land some seventy decibels under a passage at
+    #: 96. Not soft. Silent. A whole phrase written that way reaches the video
+    #: as a hole in the soundtrack while the falling notes carry on as normal,
+    #: because nothing on screen is drawn from velocity.
+    #:
+    #: 30 is a good place to start: it puts ``ppp`` about twenty-four decibels
+    #: under ``fff``, close to the range a real piano covers, and leaves
+    #: anything already at 127 exactly where it was.
+    #:
+    #: Applies to both synthesising backends. ``mux`` is your own recording and
+    #: ``none`` is silence, so neither has a velocity to lift.
+    velocity_floor: int = 0
 
     def validate(self) -> None:
         if not 0.0 <= self.reverb <= 1.0:
@@ -537,6 +560,11 @@ class AudioConfig:
         if not 0.0 <= self.stereo_width <= 1.0:
             raise ConfigError(
                 f"audio.stereo_width must be between 0 and 1, got {self.stereo_width}"
+            )
+        if not 0 <= self.velocity_floor <= 126:
+            raise ConfigError(
+                "audio.velocity_floor must be between 0 and 126, got "
+                f"{self.velocity_floor}"
             )
         if not 0 <= self.program <= 127:
             raise ConfigError(

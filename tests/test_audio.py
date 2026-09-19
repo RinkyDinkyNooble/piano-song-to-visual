@@ -16,7 +16,9 @@ import pytest
 
 from psv.audio import (
     SAMPLE_RATE,
+    faint_span,
     fluidsynth_available,
+    lift_velocity,
     pitch_to_hz,
     render_audio,
     synthesise,
@@ -637,3 +639,151 @@ def test_a_repeated_key_keeps_its_full_length_through_the_synth() -> None:
     samples = synthesise(score, duration=1.6)
     late = samples[int(1.0 * SAMPLE_RATE) : int(1.4 * SAMPLE_RATE)]
     assert float(np.abs(late).max()) > 1e-3, "the repeated note went silent"
+
+
+# -- the velocity floor --------------------------------------------------
+
+
+def _ppp_between_two_loud_passages() -> Score:
+    """A loud bar, a bar written at velocity 2, then a loud bar again.
+
+    The shape of the fault this setting exists for: an engraver maps a `ppp` to
+    the bottom of the velocity range and the middle of the piece arrives as
+    silence while the falling notes carry on as normal.
+    """
+    notes = []
+    for index in range(24):
+        start = index * 0.25
+        velocity = 2 if 2.0 <= start < 4.0 else 96
+        notes.append(
+            Note(
+                pitch=60 + (index % 5),
+                start=start,
+                end=start + 0.25,
+                velocity=velocity,
+                hand=Hand.RIGHT,
+            )
+        )
+    return Score().with_notes(notes)
+
+
+def _decibels(samples: np.ndarray) -> float:
+    return float(20.0 * np.log10(max(float(np.sqrt(np.mean(samples**2))), 1e-12)))
+
+
+@pytest.mark.feature("F-95")
+def test_a_floor_of_zero_changes_no_velocity() -> None:
+    """Off has to mean untouched, or every existing render moves."""
+    assert [lift_velocity(v, 0) for v in (1, 2, 40, 96, 127)] == [1, 2, 40, 96, 127]
+
+
+@pytest.mark.feature("F-95")
+def test_the_floor_lifts_the_bottom_and_leaves_the_top() -> None:
+    assert lift_velocity(127, 30) == 127, "a fortissimo must not get louder"
+    assert lift_velocity(2, 30) > 30, "and a ppp must clear the floor"
+
+
+@pytest.mark.feature("F-95")
+def test_the_floor_keeps_quiet_quieter_than_loud() -> None:
+    """Compression, not flattening. Dynamics that survive are the whole point."""
+    lifted = [lift_velocity(v, 30) for v in range(1, 128)]
+    assert lifted == sorted(lifted)
+    assert lifted[0] < lifted[-1]
+
+
+@pytest.mark.feature("F-95")
+def test_a_ppp_passage_is_inaudible_until_the_floor_lifts_it() -> None:
+    """The regression, measured rather than described.
+
+    Velocity turns into amplitude roughly as its square, so velocity 2 beside a
+    passage at 96 is tens of decibels down: a hole in the soundtrack, not a
+    soft bar. The floor brings it back to a distance a piano actually covers.
+    """
+    score = _ppp_between_two_loud_passages()
+    window = slice(int(2.5 * SAMPLE_RATE), int(3.5 * SAMPLE_RATE))
+
+    as_written = _decibels(synthesise(score, duration=6.0)[window])
+    lifted = _decibels(synthesise(score, duration=6.0, velocity_floor=30)[window])
+
+    assert as_written < -55.0, "the fault under test is supposed to be inaudible"
+    assert lifted > -35.0, "and the floor is supposed to bring it back"
+    assert lifted < _decibels(synthesise(score, duration=6.0, velocity_floor=30)), (
+        "still the quietest part of the piece"
+    )
+
+
+@pytest.mark.feature("F-95")
+def test_the_floor_reaches_the_fluidsynth_event_stream() -> None:
+    """Both synthesising backends, or the setting means two different things."""
+    from psv.audio.backends import PRESS, synth_events
+
+    score = one_note(velocity=2)
+    plain = [v for _, kind, _, v in synth_events(score) if kind == PRESS]
+    lifted = [
+        v for _, kind, _, v in synth_events(score, velocity_floor=30) if kind == PRESS
+    ]
+    assert plain == [2]
+    assert lifted == [lift_velocity(2, 30)]
+
+
+@pytest.mark.feature("F-95")
+def test_a_faint_passage_is_found_and_reported() -> None:
+    begin, finish, quietest = faint_span(_ppp_between_two_loud_passages())
+    assert (begin, quietest) == (2.0, 2)
+    assert finish == pytest.approx(4.0)
+
+
+@pytest.mark.feature("F-95")
+def test_a_piece_played_softly_throughout_is_not_a_fault() -> None:
+    """Soft is a choice. Only a hole beside ordinary notes is worth a warning."""
+    soft = Score().with_notes(
+        [
+            Note(
+                pitch=60, start=i * 0.5, end=i * 0.5 + 0.5, velocity=3, hand=Hand.RIGHT
+            )
+            for i in range(20)
+        ]
+    )
+    assert faint_span(soft) is None
+
+
+@pytest.mark.feature("F-95")
+def test_a_brief_soft_moment_is_not_reported() -> None:
+    score = Score().with_notes(
+        [
+            Note(pitch=60, start=0.0, end=0.5, velocity=96, hand=Hand.RIGHT),
+            Note(pitch=62, start=0.5, end=1.0, velocity=2, hand=Hand.RIGHT),
+            Note(pitch=64, start=1.0, end=1.5, velocity=96, hand=Hand.RIGHT),
+        ]
+    )
+    assert faint_span(score) is None
+
+
+@pytest.mark.feature("F-95")
+def test_rendering_says_why_the_soundtrack_went_quiet(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The setting is no use to anyone who never learns they need it."""
+    with caplog.at_level("WARNING"):
+        render_audio(
+            _ppp_between_two_loud_passages(),
+            AudioConfig(backend="builtin"),
+            tmp_path,
+            duration=6.0,
+        )
+    assert "velocity_floor" in caplog.text
+    assert "2.0s to 4.0s" in caplog.text
+
+
+@pytest.mark.feature("F-95")
+def test_nothing_is_warned_about_once_the_floor_is_set(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level("WARNING"):
+        render_audio(
+            _ppp_between_two_loud_passages(),
+            AudioConfig(backend="builtin", velocity_floor=30),
+            tmp_path,
+            duration=6.0,
+        )
+    assert "velocity_floor" not in caplog.text
