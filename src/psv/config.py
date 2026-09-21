@@ -86,6 +86,19 @@ ENCODE_LEVELS = {
 }
 
 DIFFICULTY_LEVELS = ("beginner", "easy", "medium", "hard", "original")
+#: Every visual effect by name, `pulse` included although it only moves the
+#: background. Here rather than in `psv.render.effects` so a config can be
+#: checked without importing the renderer, and so the renderer, which imports
+#: this module, is not imported back by it.
+EFFECT_KINDS = (
+    "strike_flash",
+    "key_glow",
+    "trail",
+    "particles",
+    "halo",
+    "bloom",
+    "pulse",
+)
 AUDIO_BACKENDS = ("fluidsynth", "mux", "builtin", "none")
 #: Longest press flash allowed. Past this a flash outlasts the gap between
 #: ordinary pedal changes and the footer never settles on the held colour.
@@ -283,14 +296,10 @@ class EffectConfig:
     intensity: float = 0.6
 
     def validate(self) -> None:
-        # Imported here rather than at module scope: the renderer imports this
-        # module, so naming it at the top would be a cycle.
-        from psv.render.effects import KINDS
-
-        if self.kind not in KINDS:
+        if self.kind not in EFFECT_KINDS:
             raise ConfigError(
                 f"unknown visual effect {self.kind!r}. "
-                f"Available: {', '.join(sorted(KINDS))}"
+                f"Available: {', '.join(sorted(EFFECT_KINDS))}"
             )
         if not 0.0 <= self.intensity <= 1.0:
             raise ConfigError(

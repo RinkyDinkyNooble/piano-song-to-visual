@@ -17,6 +17,8 @@ import struct
 from dataclasses import dataclass
 from pathlib import Path
 
+from psv.model import KeyOrdered
+
 #: The General MIDI Level 1 sound set, in program order. Index is the program
 #: number, so `GM_PROGRAMS[0]` is program 0.
 GM_PROGRAMS: tuple[str, ...] = (
@@ -180,15 +182,16 @@ class SoundFontError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
-class Preset:
+class Preset(KeyOrdered):
     """One sound in a SoundFont, at its bank and program number."""
 
     bank: int
     program: int
     name: str
 
-    def __lt__(self, other: Preset) -> bool:
-        return (self.bank, self.program) < (other.bank, other.program)
+    @property
+    def sort_key(self) -> tuple[int, int]:
+        return (self.bank, self.program)
 
 
 def gm_name(program: int) -> str:

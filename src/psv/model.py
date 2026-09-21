@@ -14,6 +14,7 @@ from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from enum import IntEnum, StrEnum
 from pathlib import Path
+from typing import Any, Self
 
 from psv.tempo import Meter, TempoMap, TimeSignature
 
@@ -58,6 +59,36 @@ def is_black_key(pitch: int) -> bool:
     return pitch % 12 in _BLACK_PITCH_CLASSES
 
 
+class KeyOrdered:
+    """All four ordering comparisons, taken from ``sort_key``.
+
+    Equality is left to the dataclass, which compares every field. Two values
+    can therefore sort level without being equal: two presses of one pedal at
+    one instant that last different lengths, say. `functools.total_ordering`
+    builds the missing comparisons out of ``<`` and ``==``, and in that case
+    would report each as greater than the other. Comparing keys throughout
+    cannot disagree with itself.
+    """
+
+    __slots__ = ()
+
+    @property
+    def sort_key(self) -> tuple[Any, ...]:
+        raise NotImplementedError
+
+    def __lt__(self, other: Self) -> bool:
+        return self.sort_key < other.sort_key
+
+    def __le__(self, other: Self) -> bool:
+        return self.sort_key <= other.sort_key
+
+    def __gt__(self, other: Self) -> bool:
+        return self.sort_key > other.sort_key
+
+    def __ge__(self, other: Self) -> bool:
+        return self.sort_key >= other.sort_key
+
+
 def pitch_name(pitch: int) -> str:
     """Scientific pitch notation, e.g. 60 -> C4."""
     names = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
@@ -65,7 +96,7 @@ def pitch_name(pitch: int) -> str:
 
 
 @dataclass(frozen=True, slots=True)
-class Note:
+class Note(KeyOrdered):
     """One key press."""
 
     pitch: int
@@ -95,9 +126,6 @@ class Note:
             self.hand.value,
             self.channel,
         )
-
-    def __lt__(self, other: Note) -> bool:
-        return self.sort_key < other.sort_key
 
     def __post_init__(self) -> None:
         if self.end < self.start:
@@ -177,7 +205,7 @@ class Note:
 
 
 @dataclass(frozen=True, slots=True)
-class PedalEvent:
+class PedalEvent(KeyOrdered):
     """One pedal press, from ``start`` until ``end``.
 
     ``depth`` is the raw controller value. Half-pedalling is real technique, so
@@ -189,8 +217,9 @@ class PedalEvent:
     end: float
     depth: int = 127
 
-    def __lt__(self, other: PedalEvent) -> bool:
-        return (self.start, self.pedal) < (other.start, other.pedal)
+    @property
+    def sort_key(self) -> tuple[float, Pedal]:
+        return (self.start, self.pedal)
 
     def __post_init__(self) -> None:
         if self.end < self.start:
