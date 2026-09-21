@@ -82,6 +82,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   alone; a busier piece or heavier effects will be bigger. `--encode fast
   --visual-crf 25` is the old picture, for drafts.
 
+- **Frames draw nearly three times faster at 4K.** Filling an area from a
+  bare three-value colour made numpy write it three bytes at a time, and a
+  flat 4K background alone took 21.6 ms of a 47 ms frame. Areas are now
+  filled from a row the width of the area, which copies whole: the same fill
+  takes 0.3 ms, and a 4K frame with the master preset's effects 17 ms. The
+  pixels are identical; every reference frame passes unchanged.
+
 - **A render no longer takes the whole computer.** Render workers and the
   encoders they start run below normal priority, so a render uses what is idle
   and gives way to whatever the person at the machine is doing. On Windows that
