@@ -30,17 +30,14 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import numpy as np
 
-from psv.config import VisualConfig
+from psv.config import EFFECT_KINDS, VisualConfig
 from psv.model import Note, Score, is_black_key
 from psv.render.color import RGB, note_color, parse_hex
 from psv.render.geometry import KeyboardGeometry
-
-if TYPE_CHECKING:  # pragma: no cover - import cycle, types only
-    from psv.render.frame import Frame, Layout
+from psv.render.layout import Frame, Layout
 
 #: How far the background lifts at a full-strength pulse, in grey levels.
 PULSE_LIFT = 34
@@ -762,9 +759,10 @@ def pulse_lift(score: Score, time: float, intensity: float) -> float:
     return PULSE_LIFT * min(1.0, weight / PULSE_FULL) * intensity
 
 
-#: Every effect there is, including the one that does not draw. This is what
-#: the config validates a `kind` against.
-KINDS: tuple[str, ...] = (*PAINTERS, "pulse")
+#: Every effect there is, including the one that does not draw. The names
+#: live in config, which validates a `kind` against them without importing the
+#: renderer; a test holds this list and `PAINTERS` to the same set.
+KINDS: tuple[str, ...] = EFFECT_KINDS
 
 
 def background_for(config: VisualConfig, score: Score, time: float) -> str:

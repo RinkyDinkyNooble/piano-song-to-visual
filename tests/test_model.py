@@ -254,13 +254,15 @@ def test_notes_are_computed_once() -> None:
             ),
         )
     )
-    assert [note.pitch for note in score.notes] == [48, 60], "still sorted"
-    assert score.notes is score.notes, "and not rebuilt"
+    first = score.notes
+    assert [note.pitch for note in first] == [48, 60], "still sorted"
+    assert score.notes is first, "and not rebuilt"
 
 
 def test_the_meter_is_computed_once() -> None:
     score = Score(time_signatures=(TimeSignature(0, 0.0, 3, 4),))
-    assert score.meter is score.meter
+    first = score.meter
+    assert score.meter is first
 
 
 def test_a_derived_score_does_not_inherit_a_stale_cache() -> None:
@@ -285,3 +287,24 @@ def test_caching_does_not_affect_equality_or_repr() -> None:
     assert warm == cold
     assert repr(warm) == repr(cold)
     assert "_notes" not in repr(warm)
+
+
+def test_ordering_agrees_with_itself_when_two_values_tie() -> None:
+    """Two presses of one pedal at one instant tie on their sort key but are
+    not equal, because they last different lengths. Every comparison has to
+    say they tie: neither is greater, and each is at most the other."""
+    short = PedalEvent(pedal=Pedal.SUSTAIN, start=1.0, end=1.5)
+    long = PedalEvent(pedal=Pedal.SUSTAIN, start=1.0, end=3.0)
+    assert short != long
+    assert not short < long and not long < short
+    assert not short > long and not long > short
+    assert short <= long and long <= short
+    assert short >= long and long >= short
+
+
+def test_every_comparison_follows_the_sort_key() -> None:
+    early = Note(pitch=60, start=0.0, end=1.0)
+    late = Note(pitch=48, start=0.5, end=1.0)
+    assert early < late and early <= late
+    assert late > early and late >= early
+    assert sorted([late, early]) == [early, late]

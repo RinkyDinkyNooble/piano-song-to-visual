@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Checking a config no longer imports the renderer.** `EffectConfig.validate`
+  looked its effect names up in `psv.render.effects`, which pulled in numpy and
+  the whole drawing stack just to check a string. The names now live in
+  `psv.config` as `EFFECT_KINDS`. That also removes the import cycle between
+  config and the renderer, and a second one between `frame` and `effects`:
+  `Frame`, `Layout` and the lane constants moved to `psv.render.layout`, and
+  are still importable from `psv.render.frame`.
+
+- **`Note`, `PedalEvent` and `Preset` support all four orderings.** They
+  defined `<` only. `<=`, `>` and `>=` now compare the same sort key, so two
+  values that tie on it without being equal report a tie from every direction.
+
 ## [1.2.0] - 2026-09-21
 
 ### Added

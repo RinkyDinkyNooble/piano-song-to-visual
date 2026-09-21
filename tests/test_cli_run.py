@@ -89,8 +89,6 @@ def test_run_works_on_a_real_song(
 def test_run_respects_the_config(
     midi_path: Callable[[str], Path], tmp_path: Path
 ) -> None:
-    from psv.constraints import verify_span
-
     config = tmp_path / "narrow.toml"
     config.write_text(
         "[hands]\nmax_span_semitones = 7\n\n[audio]\nbackend = 'none'\n",
@@ -112,7 +110,6 @@ def test_run_respects_the_config(
         == 0
     )
     assert output.exists()
-    del verify_span
 
 
 @pytest.mark.feature("F-48")
