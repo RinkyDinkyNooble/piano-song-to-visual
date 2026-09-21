@@ -242,11 +242,12 @@ def _radial(
     if near_x <= 0 or near_y <= 0:
         # A centre on an edge has no closest-side ellipse; use a circle.
         radius = max(math.hypot(x, y) for x, y in corners)
-        circle: np.ndarray = np.sqrt(dx**2 + dy**2) / radius
+        circle: np.ndarray = np.hypot(dx, dy) / radius
         return circle
-    scale = max(math.sqrt((x / near_x) ** 2 + (y / near_y) ** 2) for x, y in corners)
+    scale = max(math.hypot(x / near_x, y / near_y) for x, y in corners)
     rx, ry = near_x * scale, near_y * scale
-    return np.sqrt((dx / rx) ** 2 + (dy / ry) ** 2)
+    ellipse: np.ndarray = np.hypot(dx / rx, dy / ry)
+    return ellipse
 
 
 def gradient_float(config: GradientConfig, width: int, height: int) -> np.ndarray:
