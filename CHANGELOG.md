@@ -14,8 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the whole drawing stack just to check a string. The names now live in
   `psv.config` as `EFFECT_KINDS`. That also removes the import cycle between
   config and the renderer, and a second one between `frame` and `effects`:
-  `Frame`, `Layout` and the lane constants moved to `psv.render.layout`, and
-  are still importable from `psv.render.frame`.
+  `Frame`, `Layout`, `lanes_for` and the lane constants moved to
+  `psv.render.layout`. `psv.render` exports what it did, and `Frame` and
+  `Layout` still import from `psv.render.frame`; `lanes_for` and the
+  `KEYBOARD_HEIGHT_FRACTION` and `PEDAL_*` constants now import from
+  `psv.render.layout` only.
 
 - **`Note`, `PedalEvent` and `Preset` support all four orderings.** They
   defined `<` only. `<=`, `>` and `>=` now compare the same sort key, so two

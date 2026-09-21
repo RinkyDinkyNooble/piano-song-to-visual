@@ -36,15 +36,8 @@ from psv.render.color import (
 )
 from psv.render.effects import apply_effects, background_for
 from psv.render.geometry import KeyboardGeometry
-from psv.render.layout import (
-    KEYBOARD_HEIGHT_FRACTION as KEYBOARD_HEIGHT_FRACTION,
-)
-from psv.render.layout import PEDAL_GUTTER_FRACTION as PEDAL_GUTTER_FRACTION
-from psv.render.layout import PEDAL_LANE_FRACTION as PEDAL_LANE_FRACTION
-from psv.render.layout import PEDAL_ORDER as PEDAL_ORDER
 from psv.render.layout import Frame as Frame
 from psv.render.layout import Layout as Layout
-from psv.render.layout import lanes_for as lanes_for
 
 #: How far a bar gradient may take the faded end of a bar from its own colour,
 #: at full strength. Short of black, because a bar has to stay readable as one

@@ -6,14 +6,13 @@
 
 from psv.render.color import note_color, pedal_color, velocity_brightness
 from psv.render.frame import (
-    Layout,
     Palette,
-    lanes_for,
     render_frame,
     visible_notes,
     visible_pedals,
 )
 from psv.render.geometry import KeyboardGeometry, white_index
+from psv.render.layout import Layout, lanes_for
 from psv.render.video import VideoWriteError, iter_frames, render_video
 
 __all__ = [
