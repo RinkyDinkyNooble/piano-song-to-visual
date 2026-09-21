@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-21
+
 ### Fixed
 
 - **Rendering at a slow preset could freeze the computer.** A parallel render
@@ -100,8 +102,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   supplies the binary. `COLOUR_PARAMS` moved to `psv.render.encoder` and is
   still importable from `psv.render.video`; `worker_count` is replaced by
   `psv.render.resources.plan_render`.
-
-### Changed
 
 - **Checking a config no longer imports the renderer.** `EffectConfig.validate`
   looked its effect names up in `psv.render.effects`, which pulled in numpy and
