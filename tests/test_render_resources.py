@@ -148,9 +148,9 @@ def test_this_machine_reports_its_free_memory() -> None:
 def _priority_of(pid: int) -> int:
     """Windows priority class, or POSIX nice value, of a process."""
     if sys.platform == "win32":
-        import ctypes
-        from ctypes import wintypes
+        import ctypes.wintypes
 
+        wintypes = ctypes.wintypes
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         kernel32.OpenProcess.restype = wintypes.HANDLE
         kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]

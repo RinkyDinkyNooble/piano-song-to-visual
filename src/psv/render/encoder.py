@@ -148,9 +148,9 @@ def _set_windows_priority_class(priority_class: int) -> None:
     using `ctypes.windll`.
     """
     if sys.platform == "win32":
-        import ctypes
-        from ctypes import wintypes
+        import ctypes.wintypes
 
+        wintypes = ctypes.wintypes
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         kernel32.GetCurrentProcess.restype = wintypes.HANDLE
         kernel32.SetPriorityClass.argtypes = [wintypes.HANDLE, wintypes.DWORD]

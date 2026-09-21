@@ -25,6 +25,7 @@ from psv.render.video import (
     VideoWriteError,
     frame_times,
     iter_frames,
+    open_encoder,
     render_video,
 )
 from tests.fixtures.midi_builder import FIXTURES
@@ -180,12 +181,11 @@ def test_an_unwritable_destination_fails_before_ffmpeg_starts(
     The message is psv's own rather than a page of ffmpeg stderr, and no
     encoder process is left to clean up for a render that never began.
     """
-    import psv.render.video as video
 
     def fail(*args: object, **kwargs: object) -> object:
         raise AssertionError("ffmpeg was started for a destination it cannot open")
 
-    monkeypatch.setattr(video, "Encoder", fail)
+    monkeypatch.setattr("psv.render.video.Encoder", fail)
 
     blocked = tmp_path / "out.mp4"
     blocked.mkdir()
@@ -328,8 +328,6 @@ def test_consecutive_grey_levels_survive_the_round_trip(tmp_path: Path) -> None:
     Written as a sequence of flat frames rather than as a render, because the
     property belongs to the writer and this way the expected answer is exact.
     """
-    from psv.render.video import open_encoder
-
     levels = list(range(16, 40))
     config = VisualConfig(width=160, height=90, fps=10, encode="small")
     path = tmp_path / "greys.mp4"
@@ -453,14 +451,12 @@ def test_the_default_encode_is_the_best_picture() -> None:
 def test_the_configured_crf_and_preset_reach_the_encoder(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import psv.render.video as video
-
     seen: dict[str, object] = {}
 
     def capture(output: Path, **settings: object) -> object:
         seen.update(settings)
         return None
 
-    monkeypatch.setattr(video, "Encoder", capture)
-    video.open_encoder(VisualConfig(crf=5, encode="fast"), tmp_path / "out.mp4", 2)
+    monkeypatch.setattr("psv.render.video.Encoder", capture)
+    open_encoder(VisualConfig(crf=5, encode="fast"), tmp_path / "out.mp4", 2)
     assert (seen["crf"], seen["preset"], seen["threads"]) == (5, "ultrafast", 2)

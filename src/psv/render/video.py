@@ -33,21 +33,34 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from psv.config import VisualConfig
-from psv.errors import VideoWriteError as VideoWriteError  # re-exported
+from psv.errors import VideoWriteError
 from psv.model import Hand, Score
-from psv.render.encoder import COLOUR_PARAMS as COLOUR_PARAMS  # re-exported
-from psv.render.encoder import Encoder, lower_own_priority
+from psv.render.encoder import COLOUR_PARAMS, Encoder, lower_own_priority
 from psv.render.frame import Frame, Palette, render_frame
-from psv.render.resources import MAX_WORKERS as MAX_WORKERS  # re-exported
 from psv.render.resources import (
-    MIN_FRAMES_TO_SPLIT as MIN_FRAMES_TO_SPLIT,  # re-exported
-)
-from psv.render.resources import (
+    MAX_WORKERS,
+    MIN_FRAMES_TO_SPLIT,
     RenderPlan,
     available_memory_mb,
     logical_cpus,
     plan_render,
 )
+
+# COLOUR_PARAMS, MAX_WORKERS and MIN_FRAMES_TO_SPLIT live in `encoder` and
+# `resources` and are listed here so they stay importable from this module,
+# where they were before 1.3.0.
+__all__ = [
+    "COLOUR_PARAMS",
+    "MAX_WORKERS",
+    "MIN_FRAMES_TO_SPLIT",
+    "TAIL_S",
+    "VideoWriteError",
+    "frame_times",
+    "iter_frames",
+    "open_encoder",
+    "plan_for",
+    "render_video",
+]
 
 log = logging.getLogger(__name__)
 
