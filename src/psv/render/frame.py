@@ -75,6 +75,13 @@ MUTED_HAND_MIX = 0.26
 #: that is both reliably present in MIDI and the one most players actually use.
 PEDAL_ORDER: tuple[Pedal, ...] = (Pedal.SOFT, Pedal.SOSTENUTO, Pedal.SUSTAIN)
 
+#: How far toward white a pedal footer goes at the instant of a press, before
+#: `VisualConfig.pedal_press_flash` fades it back. Short of white, so the flash
+#: still carries the pedal's hue and reads as that lane lighting rather than as
+#: a hole punched in the picture.
+PEDAL_FLASH_PEAK = 0.7
+PEDAL_FLASH_TOWARD: RGB = (255, 255, 255)
+
 
 @dataclass(frozen=True, slots=True)
 class Palette:
@@ -209,9 +216,9 @@ def render_frame(
     sounding = _draw_falling_notes(
         frame, score, config, layout, geometry, palette, time, focus
     )
-    active_pedals = _draw_pedal_lanes(frame, score, config, layout, palette, time)
+    held_pedals = _draw_pedal_lanes(frame, score, config, layout, palette, time)
     _draw_keyboard(frame, layout, geometry, palette, sounding, config)
-    _draw_pedal_indicators(frame, layout, palette, active_pedals, config)
+    _draw_pedal_indicators(frame, layout, palette, held_pedals, config, time)
     apply_effects(frame, score, config, time, layout, geometry)
     return frame
 
@@ -633,12 +640,16 @@ def _draw_pedal_lanes(
     layout: Layout,
     palette: Palette,
     time: float,
-) -> dict[Pedal, RGB]:
+) -> dict[Pedal, PedalEvent]:
     """Pedal presses fall down their own lanes, exactly as notes do.
 
     Depth is shown as brightness, the same channel loudness uses, so a
     half-pedal reads as a dimmer bar rather than looking identical to a full
-    one.
+    one. With `VisualConfig.pedal_bars_match_notes` each press is also drawn
+    through `_draw_bar`, outline and rounding included.
+
+    Returns the press each lane is holding at ``time``. Where two overlap, the
+    later one, since that is the press the foot made most recently.
     """
     if not layout.pedals:
         return {}
@@ -649,7 +660,8 @@ def _draw_pedal_lanes(
         _fill(frame, left, 0, left + 1, layout.height, palette.lane_edge)
 
     window_end = time + layout.lookahead_s
-    active: dict[Pedal, RGB] = {}
+    held: dict[Pedal, PedalEvent] = {}
+    border = round(config.width * config.note_border)
 
     for event in score.pedals:
         if event.pedal not in layout.pedals:
@@ -657,43 +669,72 @@ def _draw_pedal_lanes(
         if event.start >= window_end or event.end <= time:
             continue
 
-        colour = pedal_color(event.depth, config.colors)
         if event.active_at(time):
-            active[event.pedal] = colour
+            earlier = held.get(event.pedal)
+            if earlier is None or event.start >= earlier.start:
+                held[event.pedal] = event
 
-        bottom = layout.time_to_y(event.start, time)
+        colour = pedal_color(event.depth, config.colors)
+        bottom = min(layout.time_to_y(event.start, time), layout.keyboard_top)
         top = layout.time_to_y(event.end, time)
         left, right = layout.lane_span(event.pedal)
         inset = (right - left) * 0.18
-        _fill(
-            frame,
-            left + inset,
-            top,
-            right - inset,
-            min(bottom, layout.keyboard_top),
-            colour,
-        )
+        if config.pedal_bars_match_notes:
+            _draw_bar(
+                frame,
+                left + inset,
+                top,
+                right - inset,
+                bottom,
+                colour,
+                border=border,
+                shade=config.note_border_shade,
+                gradient=config.bar_gradient,
+                radius=config.note_radius,
+            )
+        else:
+            _fill(frame, left + inset, top, right - inset, bottom, colour)
 
-    return active
+    return held
 
 
 def _draw_pedal_indicators(
     frame: Frame,
     layout: Layout,
     palette: Palette,
-    active: dict[Pedal, RGB],
+    held: dict[Pedal, PedalEvent],
     config: VisualConfig,
+    time: float,
 ) -> None:
     """The lane footers, which light while their pedal is held."""
-    del config
     if not layout.pedals:
         return
     top = layout.keyboard_top + 1
     for pedal in layout.pedals:
         left, right = layout.lane_span(pedal)
-        colour = active.get(pedal, palette.lane_edge)
+        event = held.get(pedal)
+        colour = (
+            palette.lane_edge
+            if event is None
+            else pedal_footer_color(event, config, time)
+        )
         inset = (right - left) * 0.18
         _fill(frame, left + inset, top, right - inset, layout.height, colour)
+
+
+def pedal_footer_color(event: PedalEvent, config: VisualConfig, time: float) -> RGB:
+    """The footer colour while ``event`` is held, flash included.
+
+    The flash is worked out from how long ago the press was, never from the
+    previous frame, so a frame rendered alone in another process gets the same
+    footer as one rendered in sequence.
+    """
+    colour = pedal_color(event.depth, config.colors)
+    length = config.pedal_press_flash
+    since = time - event.start
+    if length <= 0.0 or not 0.0 <= since < length:
+        return colour
+    return blend(colour, PEDAL_FLASH_TOWARD, PEDAL_FLASH_PEAK * (1.0 - since / length))
 
 
 # -- keyboard ------------------------------------------------------------

@@ -304,3 +304,122 @@ def test_every_visual_combination_renders(
     frame = render_frame(score, config, 1.0, pedal_lanes=lanes)
     assert frame.shape == (SMALL.height, SMALL.width, 3)
     assert frame.max() > 0
+
+
+# -- seeing a pedal change -----------------------------------------------
+#
+# A sustain pedal is changed far more often than it is released: lifted and
+# pressed again inside one frame. Measured on the files this was reported
+# against, 201 of the Liszt sonata's 247 changes and 271 of Moonlight's 392
+# have a lift shorter than a frame at 30fps. Everything below is about making
+# that visible.
+
+#: A change with no lift at all, which is how most of them arrive.
+CHANGED = Score(
+    pedals=(
+        PedalEvent(pedal=Pedal.SUSTAIN, start=1.0, end=2.0),
+        PedalEvent(pedal=Pedal.SUSTAIN, start=2.0, end=3.0),
+    )
+)
+#: Wide enough that a pedal bar has room for an outline and a rounded corner.
+WIDE = replace(PLAIN, width=640, height=360)
+
+
+def _lane_column(config: VisualConfig) -> tuple[Layout, int]:
+    layout = Layout.from_config(config, 1)
+    left, right = layout.lane_span(Pedal.SUSTAIN)
+    return layout, round((left + right) / 2)
+
+
+def _across_the_change(config: VisualConfig) -> np.ndarray:
+    """The lane's centre column, a few rows either side of where the two meet."""
+    layout, column = _lane_column(config)
+    frame = render_frame(CHANGED, config, 0.5, pedal_lanes=1)
+    seam = round(layout.time_to_y(2.0, 0.5))
+    return frame[seam - 4 : seam + 4, column]
+
+
+def _footer(config: VisualConfig, score: Score, time: float) -> tuple[int, ...]:
+    layout, column = _lane_column(config)
+    frame = render_frame(score, config, time, pedal_lanes=1)
+    return tuple(int(v) for v in frame[layout.keyboard_top + 4, column])
+
+
+@pytest.mark.feature("F-96")
+def test_a_flat_pedal_lane_draws_a_change_as_one_strip() -> None:
+    """The fault, pinned. Also the promise that off still means what it did:
+    every render before this setting existed looks exactly like this."""
+    rows = _across_the_change(WIDE)
+    assert (rows == rows[0]).all(), "two presses with no lift draw as one bar"
+
+
+@pytest.mark.feature("F-96")
+def test_matching_notes_splits_a_change_with_no_lift() -> None:
+    """The outline is what splits them, as it splits repeats on one key."""
+    rows = _across_the_change(replace(WIDE, pedal_bars_match_notes=True))
+    assert not (rows == rows[0]).all(), "the change should show as a seam"
+
+
+@pytest.mark.feature("F-96")
+@pytest.mark.parametrize(
+    "setting",
+    [
+        {"note_border": 0.006},
+        {"note_border_shade": 0.8},
+        {"note_radius": 0.5},
+        {"bar_gradient": 0.9},
+    ],
+)
+def test_each_note_setting_reaches_pedal_bars_only_when_asked(
+    setting: dict[str, float],
+) -> None:
+    """Following the notes means all of their settings, not a hand-picked few,
+    and only once the lane has been told to follow them."""
+    score = Score(pedals=(PedalEvent(pedal=Pedal.SUSTAIN, start=1.0, end=2.5),))
+    layout, _ = _lane_column(WIDE)
+    left, right = layout.lane_span(Pedal.SUSTAIN)
+    columns = slice(round(left), round(right))
+
+    def lane(config: VisualConfig) -> np.ndarray:
+        return render_frame(score, config, 0.5, pedal_lanes=1)[
+            : layout.keyboard_top, columns
+        ]
+
+    flat = replace(WIDE, **setting)  # type: ignore[arg-type]
+    matching = replace(WIDE, pedal_bars_match_notes=True, **setting)  # type: ignore[arg-type]
+    plain_matching = replace(WIDE, pedal_bars_match_notes=True)
+    assert np.array_equal(lane(flat), lane(WIDE)), "a flat lane ignores it"
+    assert not np.array_equal(lane(matching), lane(plain_matching)), (
+        f"{setting} did not reach the pedal bar"
+    )
+
+
+@pytest.mark.feature("F-96")
+def test_the_footer_flashes_at_a_change_the_held_colour_cannot_show() -> None:
+    """Held before the change and held after it, so without the flash the
+    footer is the same colour on both sides of the one moment that matters."""
+    flashing = replace(WIDE, pedal_press_flash=0.25)
+    at_press = _footer(flashing, CHANGED, 2.01)
+    settled = _footer(flashing, CHANGED, 2.5)
+    before = _footer(flashing, CHANGED, 1.9)
+
+    assert sum(at_press) > sum(settled), "the press should light the footer"
+    assert settled == before, "and it should settle back to the held colour"
+    assert _footer(WIDE, CHANGED, 2.01) == _footer(WIDE, CHANGED, 1.9), (
+        "with the flash off, a change leaves the footer untouched"
+    )
+
+
+@pytest.mark.feature("F-96")
+def test_the_flash_fades_rather_than_switching_off() -> None:
+    """A fade reads as the moment having passed; a hard cut reads as flicker."""
+    from psv.render.frame import pedal_footer_color
+
+    config = replace(WIDE, pedal_press_flash=0.3)
+    press = CHANGED.pedals[1]
+    brightness = [
+        sum(pedal_footer_color(press, config, press.start + since))
+        for since in (0.0, 0.1, 0.2, 0.29, 0.3, 0.6)
+    ]
+    assert brightness == sorted(brightness, reverse=True)
+    assert brightness[0] > brightness[3] > brightness[4] == brightness[5]

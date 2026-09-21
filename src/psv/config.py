@@ -87,6 +87,9 @@ ENCODE_LEVELS = {
 
 DIFFICULTY_LEVELS = ("beginner", "easy", "medium", "hard", "original")
 AUDIO_BACKENDS = ("fluidsynth", "mux", "builtin", "none")
+#: Longest press flash allowed. Past this a flash outlasts the gap between
+#: ordinary pedal changes and the footer never settles on the held colour.
+MAX_PEDAL_PRESS_FLASH = 2.0
 #: The backends that turn a Score into sound themselves, and so are the only
 #: ones a velocity setting can reach. `mux` plays a recording you already have
 #: and `none` plays nothing.
@@ -342,6 +345,25 @@ class VisualConfig:
     #: fades the top of the bar, negative fades the bottom, so which end looks
     #: lit is a choice rather than a fixed opinion.
     bar_gradient: float = 0.0
+    #: Draw pedal presses the way notes are drawn, with `note_border`,
+    #: `note_border_shade`, `note_radius` and `bar_gradient`. Off is the flat
+    #: strip pedal lanes have always been.
+    #:
+    #: The outline is the part that matters. A sustain pedal is usually
+    #: changed rather than released: lifted and pressed again inside a single
+    #: frame, which is under a millisecond in most MIDI files. Drawn flat, two
+    #: presses meeting like that are one unbroken strip. Outlined, they are two
+    #: bars, for the same reason four repeats on one key are four notes.
+    pedal_bars_match_notes: bool = False
+    #: Seconds the footer under a pedal lane flashes toward white each time
+    #: its pedal goes down, fading back to the pedal colour. 0 is off.
+    #:
+    #: The footer already shows whether a pedal is held. It cannot show that a
+    #: pedal was changed, because a change is held on both sides of it; the
+    #: flash is the one thing that happens at the press itself. Toward white
+    #: rather than darker, because a pedal colour dark enough to sit under the
+    #: music has no room left below it.
+    pedal_press_flash: float = 0.0
     #: A vertical gradient behind everything, top colour and bottom colour.
     #: Both empty leaves `background` in charge.
     #:
@@ -431,6 +453,11 @@ class VisualConfig:
             raise ConfigError(
                 "visual.note_border_shade must be between -1 and 1, got "
                 f"{self.note_border_shade}"
+            )
+        if not 0.0 <= self.pedal_press_flash <= MAX_PEDAL_PRESS_FLASH:
+            raise ConfigError(
+                "visual.pedal_press_flash must be between 0 and "
+                f"{MAX_PEDAL_PRESS_FLASH} seconds, got {self.pedal_press_flash}"
             )
         if not -1.0 <= self.bar_gradient <= 1.0:
             raise ConfigError(

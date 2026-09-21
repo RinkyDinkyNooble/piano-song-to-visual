@@ -140,6 +140,8 @@ def test_the_readme_documents_every_config_key() -> None:
         ("[pedals]\nlanes = 4\n", "pedals.lanes"),
         ("[pedals]\nthreshold = 0\n", "pedals.threshold"),
         ("[audio]\nreverb = 2\n", "audio.reverb"),
+        ("[visual]\npedal_press_flash = -0.1\n", "visual.pedal_press_flash"),
+        ("[visual]\npedal_press_flash = 2.5\n", "visual.pedal_press_flash"),
         ("[audio]\nvelocity_floor = 127\n", "audio.velocity_floor"),
         ("[audio]\nvelocity_floor = -1\n", "audio.velocity_floor"),
         ("[audio]\nbackend = 'winamp'\n", "audio.backend"),

@@ -444,6 +444,12 @@ note_radius = 0.0         # rounds the ends of each bar, as a fraction of the
                           # black-key bar is narrower and wants less
 bar_gradient = 0.0        # brightness ramp along each bar. Positive fades the
                           # top, negative fades the bottom
+pedal_bars_match_notes = false  # draw pedal presses with the four settings
+                          # above, as notes are. The outline is what shows a
+                          # pedal change: most are lifted and re-pressed inside
+                          # one frame, and flat they draw as one strip
+pedal_press_flash = 0.0   # seconds the pedal footer flashes toward white at
+                          # each press, fading back. 0 is off; 0.25 is plenty
 gradient_top = ""         # a vertical gradient behind everything. Set both ends
 gradient_bottom = ""      # to use it; it then replaces `background` and may
                           # have a hue, which `background` may not

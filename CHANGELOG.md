@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-21
+
+### Added
+
+- **`visual.pedal_bars_match_notes`**, and `--visual-pedal-bars-match-notes`,
+  which draws pedal presses the way notes are drawn: `note_border`,
+  `note_border_shade`, `note_radius` and `bar_gradient` all apply.
+
+  The outline is the part that matters. A sustain pedal is changed far more
+  often than it is released, and a change is a lift and a press inside one
+  frame. Measured on the files this was reported against: 201 of the Liszt
+  B minor sonata's 247 changes and 271 of the Moonlight first movement's 392
+  lift for less than a frame at 30fps, 269 of those for no time at all. The
+  lane drew each run of them as one unbroken strip, so the sound changed
+  pedal and the picture never did. Outlined, a change is a seam between two
+  bars, for the same reason four repeats on one key are four notes.
+
+- **`visual.pedal_press_flash`**, and `--visual-pedal-press-flash`: seconds
+  the footer under a pedal lane flashes toward white at each press, fading
+  back to the pedal colour. The footer already showed whether a pedal was
+  held; it could not show a change, because a change is held on both sides
+  of it. Toward white rather than darker because a pedal colour dark enough
+  to sit under the music, as most themes pick, has no room below it.
+
+  Worked out from how long ago the press was rather than from the previous
+  frame, so a frame rendered alone in another process gets the same footer.
+
+Both are off by default, and off draws exactly what earlier versions drew.
+
 ## [1.1.0] - 2026-09-19
 
 ### Added

@@ -123,6 +123,10 @@ HELP: dict[str, str] = {
     "visual.note_border": "outline on each bar, as a fraction of the frame width",
     "visual.note_radius": "rounds the ends of each bar, as a fraction of its width",
     "visual.bar_gradient": "brightness ramp down each bar; negative fades the bottom",
+    "visual.pedal_bars_match_notes": "draw pedal presses with the notes' border, "
+    "radius and gradient, so a quick pedal change shows as two bars",
+    "visual.pedal_press_flash": "seconds the pedal footer flashes at each press; "
+    "0 is off, 0.25 is plenty",
     "visual.gradient_top": "background gradient; set both ends or neither",
     "visual.gradient_bottom": "background gradient; set both ends or neither",
     "visual.workers": "processes to render with; 0 picks one per core",

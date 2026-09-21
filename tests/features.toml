@@ -776,3 +776,10 @@ name = "A velocity floor keeps a passage written at ppp quiet instead of silent"
 milestone = "M8"
 status = "done"
 verify = "unit"
+
+[[feature]]
+id = "F-96"
+name = "A pedal change is visible: pedal bars drawn like notes, and a flash at each press"
+milestone = "M8"
+status = "done"
+verify = "unit"
