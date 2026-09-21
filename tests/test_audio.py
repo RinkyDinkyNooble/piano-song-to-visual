@@ -728,7 +728,9 @@ def test_the_floor_reaches_the_fluidsynth_event_stream() -> None:
 
 @pytest.mark.feature("F-95")
 def test_a_faint_passage_is_found_and_reported() -> None:
-    begin, finish, quietest = faint_span(_ppp_between_two_loud_passages())
+    found = faint_span(_ppp_between_two_loud_passages())
+    assert found is not None
+    begin, finish, quietest = found
     assert (begin, quietest) == (2.0, 2)
     assert finish == pytest.approx(4.0)
 
