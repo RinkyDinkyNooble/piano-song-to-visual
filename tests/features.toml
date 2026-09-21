@@ -783,3 +783,10 @@ name = "A pedal change is visible: pedal bars drawn like notes, and a flash at e
 milestone = "M8"
 status = "done"
 verify = "unit"
+
+[[feature]]
+id = "F-97"
+name = "A render sizes itself to free memory and cores, and runs below normal priority"
+milestone = "M8"
+status = "done"
+verify = "unit"

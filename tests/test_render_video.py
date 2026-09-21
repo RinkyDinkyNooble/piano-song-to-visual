@@ -26,7 +26,6 @@ from psv.render.video import (
     frame_times,
     iter_frames,
     render_video,
-    worker_count,
 )
 from tests.fixtures.midi_builder import FIXTURES
 from tests.probe import decoded_frames, frame_count, video_meta
@@ -176,20 +175,17 @@ def test_a_real_song_renders_end_to_end(tmp_path: Path) -> None:
 def test_an_unwritable_destination_fails_before_ffmpeg_starts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Letting ffmpeg discover the bad path leaks its stdin.
+    """A path psv cannot open is reported by psv, before ffmpeg is started.
 
-    imageio-ffmpeg closes that pipe only while the process is still alive, and
-    one that failed to open its output has already exited, so the pipe falls to
-    the garbage collector and surfaces on POSIX as a ResourceWarning charged to
-    some unrelated later test. The only fix available from outside the library
-    is not to start ffmpeg at all, so that is what this pins.
+    The message is psv's own rather than a page of ffmpeg stderr, and no
+    encoder process is left to clean up for a render that never began.
     """
-    import imageio_ffmpeg
+    import psv.render.video as video
 
     def fail(*args: object, **kwargs: object) -> object:
         raise AssertionError("ffmpeg was started for a destination it cannot open")
 
-    monkeypatch.setattr(imageio_ffmpeg, "write_frames", fail)
+    monkeypatch.setattr(video, "Encoder", fail)
 
     blocked = tmp_path / "out.mp4"
     blocked.mkdir()
@@ -222,21 +218,37 @@ def long_enough() -> tuple[Score, VisualConfig, float]:
     )
 
 
+def workers_for(requested: int, total: int) -> int:
+    """The planner's worker count with memory to spare, so only cores and the
+    job decide. Memory has tests of its own in test_render_resources."""
+    from psv.render.resources import plan_render
+
+    return plan_render(
+        total,
+        requested,
+        width=64,
+        height=48,
+        preset="medium",
+        cpus=12,
+        available_mb=1e9,
+    ).workers
+
+
 @pytest.mark.feature("F-69")
-def test_worker_count_leaves_short_renders_alone() -> None:
+def test_short_renders_are_left_alone() -> None:
     """A worker pays for an interpreter and an ffmpeg process before it draws
     anything. Below a few hundred frames that costs more than it saves."""
-    assert worker_count(0, MIN_FRAMES_TO_SPLIT - 1) == 1
-    assert worker_count(8, MIN_FRAMES_TO_SPLIT - 1) == 1
+    assert workers_for(0, MIN_FRAMES_TO_SPLIT - 1) == 1
+    assert workers_for(8, MIN_FRAMES_TO_SPLIT - 1) == 1
 
 
 @pytest.mark.feature("F-69")
-def test_worker_count_honours_one_and_caps_the_rest() -> None:
-    assert worker_count(1, 100_000) == 1, "1 must mean the single-process path"
-    assert worker_count(0, 100_000) >= 1
-    assert worker_count(64, 100_000) == MAX_WORKERS
+def test_one_worker_is_honoured_and_the_rest_are_capped() -> None:
+    assert workers_for(1, 100_000) == 1, "1 must mean the single-process path"
+    assert workers_for(0, 100_000) >= 1
+    assert workers_for(64, 100_000) == MAX_WORKERS
     # Never more workers than there is work to give them.
-    assert worker_count(64, MIN_FRAMES_TO_SPLIT) == 2
+    assert workers_for(64, MIN_FRAMES_TO_SPLIT) == 2
 
 
 @pytest.mark.feature("F-69")
@@ -316,19 +328,17 @@ def test_consecutive_grey_levels_survive_the_round_trip(tmp_path: Path) -> None:
     Written as a sequence of flat frames rather than as a render, because the
     property belongs to the writer and this way the expected answer is exact.
     """
-    from psv.render.video import _open_writer
+    from psv.render.video import open_encoder
 
     levels = list(range(16, 40))
     config = VisualConfig(width=160, height=90, fps=10, encode="small")
     path = tmp_path / "greys.mp4"
 
-    writer = _open_writer(config, path)
-    try:
+    with open_encoder(config, path) as encoder:
         for level in levels:
-            frame = np.full((config.height, config.width, 3), level, dtype=np.uint8)
-            writer.send(np.ascontiguousarray(frame))
-    finally:
-        writer.close()
+            encoder.write(
+                np.full((config.height, config.width, 3), level, dtype=np.uint8)
+            )
 
     decoded = decoded_frames(path, config.width, config.height)
     assert len(decoded) == len(levels)

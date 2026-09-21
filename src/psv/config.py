@@ -388,8 +388,8 @@ class VisualConfig:
     #: The order is the composition order: a halo under particles is a different
     #: picture from particles under a halo.
     effects: tuple[EffectConfig, ...] = ()
-    #: How many processes draw and encode the video at once. 0 asks for one
-    #: per core, 1 renders in a single process the way this always did.
+    #: How many processes draw and encode the video at once. 0 asks for as
+    #: many as the cores and free memory allow, 1 renders in a single process.
     #:
     #: Frames are independent and `render_frame` is a pure function of the score
     #: and a time, so the timeline can be cut into spans and each span rendered
@@ -397,6 +397,10 @@ class VisualConfig:
     #: computes `start + index / fps` rather than adding repeatedly, so a span
     #: beginning at frame k produces the same timestamps counting from zero
     #: would.
+    #:
+    #: A number other than 0 or 1 is a most, not an order: free memory can
+    #: lower it, because each worker runs its own encoder and at 4K a slow
+    #: preset costs gigabytes each. `psv.render.resources` has the arithmetic.
     workers: int = 0
     #: One of ENCODE_LEVELS. Trades file size against render time.
     encode: str = "balanced"

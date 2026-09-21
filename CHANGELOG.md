@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Rendering at a slow preset could freeze the computer.** A parallel render
+  started one worker per core, up to eight, and each ran its own x264 encoder
+  with x264's default of one and a half threads per core and a lookahead of
+  frames in each. Measured on the 16 GB Windows machine it was reported on, a
+  4K `medium` worker needs 1.6 GB even with its threads capped, so eight need
+  at least 12.8 GB, with 6 to 8 GB free. The machine swapped until it stopped
+  responding. `ultrafast` keeps almost no lookahead, which is why `--encode
+  fast` was the only setting that worked.
+
+  The worker count is now planned against free memory as well as cores, from a
+  per-preset model fitted to real parallel renders (see
+  `psv.render.resources`), and each encoder gets two threads rather than
+  eighteen. `visual.workers` other than 0 or 1 is now a most rather than an
+  order, for the same reason. The log says what set the count and how much
+  memory the plan expects.
+
+  Capping threads made renders lighter and faster, not only safer: 1200 frames
+  of 1080p60 at `fast` went from 6.6 s and 2.2 GB to 6.0 s and 0.7 GB. On the
+  same machine, 4K at `medium` now plans two workers and peaked at 3.2 GB.
+
+### Changed
+
+- **A render no longer takes the whole computer.** Render workers and the
+  encoders they start run below normal priority, so a render uses what is idle
+  and gives way to whatever the person at the machine is doing. On Windows that
+  needed the process handle typed as 64-bit for `SetPriorityClass`, which
+  otherwise fails without a word; a test reads the class back.
+
+- psv starts ffmpeg itself rather than through `imageio_ffmpeg.write_frames`,
+  which had no way to set its threads or priority. `imageio-ffmpeg` still
+  supplies the binary. `COLOUR_PARAMS` moved to `psv.render.encoder` and is
+  still importable from `psv.render.video`; `worker_count` is replaced by
+  `psv.render.resources.plan_render`.
+
 ### Changed
 
 - **Checking a config no longer imports the renderer.** `EffectConfig.validate`

@@ -31,67 +31,32 @@ from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
-
-import numpy as np
 
 from psv.config import VisualConfig
 from psv.errors import VideoWriteError as VideoWriteError  # re-exported
 from psv.model import Hand, Score
+from psv.render.encoder import COLOUR_PARAMS as COLOUR_PARAMS  # re-exported
+from psv.render.encoder import Encoder, lower_own_priority
 from psv.render.frame import Frame, Palette, render_frame
+from psv.render.resources import MAX_WORKERS as MAX_WORKERS  # re-exported
+from psv.render.resources import (
+    MIN_FRAMES_TO_SPLIT as MIN_FRAMES_TO_SPLIT,  # re-exported
+)
+from psv.render.resources import (
+    RenderPlan,
+    available_memory_mb,
+    logical_cpus,
+    plan_render,
+)
 
 log = logging.getLogger(__name__)
 
 #: Seconds of silence left after the last note so the final bar is not cut off.
 TAIL_S = 1.0
 
-#: Below this many frames, splitting the work costs more than it saves: each
-#: worker pays for a Python interpreter and an ffmpeg process before it draws
-#: anything.
-MIN_FRAMES_TO_SPLIT = 240
-
-#: More workers than this stops helping and starts competing. Measured: eight
-#: is the best setting on a twelve-thread six-core machine, and twelve is
-#: slightly worse.
-MAX_WORKERS = 8
-
-#: Write full-range colour, and say so in the stream.
-#:
-#: h264 defaults to the television range, where 0-255 is squeezed into 16-235.
-#: That is right for camera footage and wrong for a picture drawn in RGB: about
-#: one grey level in seven has nowhere to land, so consecutive levels collapse
-#: into one. Nothing notices until something moves slowly across a large flat
-#: area, and then it does. The `pulse` effect walks the background up a level at
-#: a time, and 18, 19, 20, 21 came back as 17, 18, 19, 20, with a level repeated
-#: here and two skipped there: a smooth brighten arriving as an uneven stutter.
-#:
-#: `pc` keeps 0-255. The colourspace is named alongside it because a stream
-#: tagged half way is how this class of bug happens; the tags have to describe
-#: what was actually written. bt709 primaries are sRGB primaries, which is what
-#: the colours in the config are.
-#:
-#: The scale filter is not redundant with `-color_range`. That option sets the
-#: tag, and whether the conversion follows is up to the build: on Windows it
-#: did, and on Linux it wrote television-range samples and labelled them full,
-#: so a decoder handed the levels back offset by sixteen and squeezed. Naming
-#: the range in the filter is what actually performs the conversion. Only CI
-#: could catch that, and it did.
-#:
-#: Measured over a 1080p render of real output: mean round-trip error per
-#: channel falls from 0.441 to 0.319, and every background level the pulse walks
-#: through comes back as itself instead of collapsing into its neighbour.
-COLOUR_PARAMS = [
-    "-vf",
-    "scale=in_range=full:out_range=full",
-    "-color_range",
-    "pc",
-    "-colorspace",
-    "bt709",
-    "-color_primaries",
-    "bt709",
-    "-color_trc",
-    "bt709",
-]
+#: x264's constant rate factor. What imageio-ffmpeg's default quality of 5
+#: worked out to while it was starting ffmpeg: ``int((1 - 5 / 10) * 51)``.
+CRF = 25
 
 
 def frame_times(duration: float, fps: int, *, start: float = 0.0) -> Iterator[float]:
@@ -144,64 +109,54 @@ class _Span:
     palette: Palette | None
     pedal_lanes: int
     focus: Hand | None
+    encoder_threads: int
 
 
-def _open_writer(config: VisualConfig, output: Path) -> Any:
-    """An ffmpeg writer for one file, with this project's settings."""
-    import imageio_ffmpeg
-
-    try:
-        with output.open("wb"):
-            pass
-    except OSError as exc:
-        raise VideoWriteError(f"could not write {output}: {exc}") from exc
-
-    writer = imageio_ffmpeg.write_frames(
-        str(output),
-        size=(config.width, config.height),
+def open_encoder(config: VisualConfig, output: Path, threads: int = 0) -> Encoder:
+    """An encoder for one file, with this project's settings."""
+    return Encoder(
+        output,
+        width=config.width,
+        height=config.height,
         fps=config.fps,
-        # Without this, imageio pads the frame up to a multiple of 16 and the
-        # output silently differs from the size that was asked for. Config
-        # already requires even dimensions, which is what h264 actually needs.
-        macro_block_size=1,
-        ffmpeg_log_level="error",
-        output_params=["-preset", config.encoder_preset, *COLOUR_PARAMS],
+        preset=config.encoder_preset,
+        crf=CRF,
+        threads=threads,
     )
-    writer.send(None)
-    return writer
 
 
 def _render_span(span: _Span) -> int:
     """Draw and encode one span. This is what runs in a worker process."""
-    writer = _open_writer(span.config, Path(span.output))
-    try:
+    with open_encoder(span.config, Path(span.output), span.encoder_threads) as encoder:
         for index in range(span.first, span.first + span.count):
-            frame = render_frame(
-                span.score,
-                span.config,
-                span.start + index / span.config.fps,
-                palette=span.palette,
-                pedal_lanes=span.pedal_lanes,
-                focus=span.focus,
+            encoder.write(
+                render_frame(
+                    span.score,
+                    span.config,
+                    span.start + index / span.config.fps,
+                    palette=span.palette,
+                    pedal_lanes=span.pedal_lanes,
+                    focus=span.focus,
+                )
             )
-            writer.send(np.ascontiguousarray(frame))
-    finally:
-        writer.close()
     return span.count
 
 
-def worker_count(requested: int, total_frames: int) -> int:
-    """How many processes to actually use.
+def plan_for(config: VisualConfig, total_frames: int) -> RenderPlan:
+    """How many processes this render gets, given the machine as it is now.
 
-    Zero asks for one per core. Short renders are not split at all: a worker
-    pays for a Python interpreter and an ffmpeg process before it draws
-    anything, and below a few hundred frames that costs more than it saves.
+    See `psv.render.resources` for how, and why the answer depends on memory
+    as well as cores.
     """
-    if requested == 1 or total_frames < MIN_FRAMES_TO_SPLIT:
-        return 1
-    wanted = requested or (multiprocessing.cpu_count() or 1)
-    fits = max(1, total_frames // (MIN_FRAMES_TO_SPLIT // 2))
-    return max(1, min(wanted, MAX_WORKERS, fits))
+    return plan_render(
+        total_frames,
+        config.workers,
+        width=config.width,
+        height=config.height,
+        preset=config.encoder_preset,
+        cpus=logical_cpus(),
+        available_mb=available_memory_mb(),
+    )
 
 
 def _spans(
@@ -215,6 +170,7 @@ def _spans(
     palette: Palette | None,
     pedal_lanes: int,
     focus: Hand | None,
+    encoder_threads: int,
 ) -> list[_Span]:
     spans = []
     for index in range(workers):
@@ -233,6 +189,7 @@ def _spans(
                 palette=palette,
                 pedal_lanes=pedal_lanes,
                 focus=focus,
+                encoder_threads=encoder_threads,
             )
         )
     return spans
@@ -281,7 +238,7 @@ def _render_in_parallel(
     config: VisualConfig,
     output: Path,
     total: int,
-    workers: int,
+    plan: RenderPlan,
     *,
     start: float,
     palette: Palette | None,
@@ -296,18 +253,26 @@ def _render_in_parallel(
             config,
             scratch,
             total,
-            workers,
+            plan.workers,
             start=start,
             palette=palette,
             pedal_lanes=pedal_lanes,
             focus=focus,
+            encoder_threads=plan.encoder_threads,
         )
         # Spawn on every platform rather than fork, so what is tested is what
         # runs. Forking a process that has threads is deprecated in 3.12, and
         # this project turns warnings into errors.
         context = multiprocessing.get_context("spawn")
         done = 0
-        with ProcessPoolExecutor(max_workers=len(spans), mp_context=context) as pool:
+        # Each worker lowers its own priority as it starts, and the encoder it
+        # launches inherits that, so the render takes what the computer is not
+        # otherwise using.
+        with ProcessPoolExecutor(
+            max_workers=len(spans),
+            mp_context=context,
+            initializer=lower_own_priority,
+        ) as pool:
             futures = [pool.submit(_render_span, span) for span in spans]
             for future in as_completed(futures):
                 done += future.result()
@@ -354,18 +319,10 @@ def render_video(
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    # Open the destination before handing it to ffmpeg, for two reasons.
-    #
-    # The error is better: a path that is a directory, or not writable, says so
-    # here instead of arriving as a page of ffmpeg stderr.
-    #
-    # And it avoids a leak in imageio-ffmpeg. Its writer closes ffmpeg's stdin
-    # only `if p.poll() is None`, so a process that died opening its output has
-    # already exited and that pipe is left to the garbage collector. On POSIX
-    # that surfaces later as a ResourceWarning from a destructor, which this
-    # project treats as an error, and it is charged to whichever test happens to
-    # be running at the time. Not reaching that path is the only fix available
-    # from outside the library.
+    # Open the destination before starting anything. A path that is a
+    # directory, or not writable, says so here in one line, instead of after a
+    # parallel render has drawn every frame and the join fails, or as ffmpeg's
+    # stderr.
     try:
         with output.open("wb"):
             pass
@@ -375,26 +332,30 @@ def render_video(
     if duration is None:
         duration = max(0.0, score.duration - start) + TAIL_S
     total = max(1, round(duration * config.fps))
-    workers = worker_count(config.workers, total)
+    plan = plan_for(config, total)
 
     log.info(
-        "rendering %d frames at %dx%d %dfps to %s, %s encode, %s",
+        "rendering %d frames at %dx%d %dfps to %s, %s encode, %s "
+        "(set by %s; about %.1f GB), %d encoder threads each",
         total,
         config.width,
         config.height,
         config.fps,
         output,
         config.encode,
-        f"{workers} processes" if workers > 1 else "one process",
+        f"{plan.workers} processes" if plan.workers > 1 else "one process",
+        plan.limited_by,
+        plan.expected_mb / 1024,
+        plan.encoder_threads,
     )
 
-    if workers > 1:
+    if plan.workers > 1:
         _render_in_parallel(
             score,
             config,
             output,
             total,
-            workers,
+            plan,
             start=start,
             palette=palette,
             pedal_lanes=pedal_lanes,
@@ -404,8 +365,7 @@ def render_video(
         log.info("wrote %s", output)
         return output
 
-    writer = _open_writer(config, output)
-    try:
+    with open_encoder(config, output, plan.encoder_threads) as encoder:
         for index, frame in enumerate(
             iter_frames(
                 score,
@@ -418,13 +378,9 @@ def render_video(
             ),
             start=1,
         ):
-            writer.send(np.ascontiguousarray(frame))
+            encoder.write(frame)
             if on_frame is not None:
                 on_frame(index, total)
-    except (OSError, RuntimeError) as exc:
-        raise VideoWriteError(f"could not write {output}: {exc}") from exc
-    finally:
-        writer.close()
 
     log.info("wrote %s", output)
     return output

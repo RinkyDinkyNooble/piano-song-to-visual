@@ -453,8 +453,9 @@ pedal_press_flash = 0.0   # seconds the pedal footer flashes toward white at
 gradient_top = ""         # a vertical gradient behind everything. Set both ends
 gradient_bottom = ""      # to use it; it then replaces `background` and may
                           # have a hue, which `background` may not
-workers = 0               # processes to render with; 0 is one per core,
-                          # 1 renders in a single process
+workers = 0               # processes to render with; 0 is as many as the
+                          # cores and free memory allow, 1 renders in a single
+                          # process, and any other number is a most
 encode = "balanced"       # small | balanced | fast: how long the encoder
                           # spends compressing, against how big the file is
 
