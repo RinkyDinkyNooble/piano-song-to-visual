@@ -71,7 +71,7 @@ jobs:
     permissions:
       id-token: write # the OIDC token, and the only permission needed to upload
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
