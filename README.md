@@ -142,38 +142,40 @@ twice: `|: :|`, first- and second-time bars, D.C., D.S., segno, coda and fine.
 [docs/MUSICXML.md](docs/MUSICXML.md) covers what the reader handles and where
 it stops.
 
-### How long a render takes
+### How long a render takes, and how good it looks
 
 Frames are drawn independently, so the timeline is cut into spans and each span
-is rendered and encoded by its own process. Two settings control it, and they
-matter far more together than apart:
+is drawn and encoded by its own process. psv picks how many from the cores and
+the free memory: each worker runs its own encoder, and at 4K a slow encoder
+holds over a gigabyte of frames, so a 4K render gets fewer workers than a 1080p
+one. The log says how many it chose and what set the number. Everything a render
+starts runs below normal priority, so the computer stays usable while it works.
 
 ```bash
-psv run song.mid -o out.mp4                   # both defaults
-psv run song.mid -o out.mp4 --encode fast     # quickest, biggest file
-psv run song.mid -o out.mp4 --workers 1       # one process, as it used to be
+psv run song.mid -o out.mp4                   # the defaults: the best picture
+psv run song.mid -o out.mp4 --encode fast     # a quick draft
+psv run song.mid -o out.mp4 --workers 1       # one process
 ```
 
-`--encode` chooses how long the encoder spends looking for things to compress.
-It changes the file size, not the picture:
+Two settings decide the picture. `--visual-crf` is how much detail the encoder
+may throw away, lower keeping more. `--encode` is how hard it works to keep it.
+What they trade, measured on a Chopin étude with a dark background, counting
+dark pixels that were still in the source but flickered after encoding: the
+faint static that shows around moving tiles.
 
-| | render time | file size |
-| --- | --- | --- |
-| `small` | slowest | smallest |
-| `balanced` | encodes about 1.4x quicker | about 1.3x |
-| `fast` | encodes about 2.1x quicker | about 2.8x |
+| CRF | flicker beside tiles | flicker elsewhere | file size |
+| --- | --- | --- | --- |
+| 25 (psv before 1.3) | 6.3% | 0.12% | 1x |
+| 12 | 3.1% | 0.04% | 2.3x |
+| **8 (default)** | 2.0% | 0.03% | 2.6x |
+| 4 | 1.4% | 0.02% | 3.3x |
 
-On its own a faster encoder buys almost nothing, because a single-process
-render waits on the drawing rather than on the encoder. It is the combination
-that pays. Für Elise at 1080p60, on a six-core machine:
-
-| | time |
-| --- | --- |
-| one process, `small` | 1:41 |
-| the defaults | 0:44 |
-| `--encode fast` | 0:34 |
-
-A short render is never split, since a worker costs a Python interpreter and an
+A lower CRF cost no render time at all: at 4K60 the drawing is what takes the
+time, and 10 seconds took 21.9 s at CRF 25 and 21.7 s at 12. `--encode fast`
+leaves five times the flicker away from the tiles at the same CRF (0.70% against
+0.13% at 25), in return for a quicker encode. On a twelve-thread machine, 1200
+frames of 1080p60 took 6.0 s at `fast` and 8.4 s at `small`, the default. A
+short render is never split, since a worker costs a Python interpreter and an
 ffmpeg process before it draws anything.
 
 Before committing to a file, it is worth asking what is actually in it:
@@ -456,8 +458,10 @@ gradient_bottom = ""      # to use it; it then replaces `background` and may
 workers = 0               # processes to render with; 0 is as many as the
                           # cores and free memory allow, 1 renders in a single
                           # process, and any other number is a most
-encode = "balanced"       # small | balanced | fast: how long the encoder
-                          # spends compressing, against how big the file is
+encode = "small"          # small | balanced | fast: how hard the encoder
+                          # works. small keeps the most; fast is for drafts
+crf = 8                   # how much detail the encoder may drop, 1 to 51;
+                          # lower keeps more and makes a bigger file
 
 [visual.colors]           # hue = which hand, brightness = how loud
 left_hand  = "#4a90d9"

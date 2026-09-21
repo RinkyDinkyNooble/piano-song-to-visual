@@ -70,20 +70,26 @@ UNLIMITED_SPAN = 0
 #: nothing; it only decides where the split between the hands sits.
 NOMINAL_SPAN = 12
 
-#: How hard the encoder works to make the file small, and what that costs in
-#: render time. Named after the choice rather than after x264's preset names,
-#: since the thing being traded is file size against waiting.
+#: How hard the encoder works, and what that costs in render time. Named after
+#: the choice rather than after x264's preset names.
 #:
-#: Measured on a 40-second 1080p60 render: `small` is x264's default and is the
-#: slowest, `balanced` encodes about 1.4x faster for about 1.3x the file, and
-#: `fast` about 2.1x faster for about 2.8x the file. None of them changes the
-#: picture in a way anyone can see; they change how long the encoder spends
-#: looking for things to compress.
+#: Not only file size. At the same CRF, `fast` (x264's `ultrafast`) left five
+#: times the faint flicker in dark areas away from the tiles that `small` did,
+#: measured at 720p: 0.70% of still pixels against 0.13%. It saves less time
+#: than it looks, because drawing is most of a render: 1200 frames of 1080p60
+#: took 6.0 s at `fast` and 8.4 s at `small` on twelve threads. `small` also
+#: holds the most frames in memory, which `psv.render.resources` plans for.
 ENCODE_LEVELS = {
     "small": "medium",
     "balanced": "veryfast",
     "fast": "ultrafast",
 }
+
+#: The range `visual.crf` may take. 0 would be lossless, and x264 writes
+#: lossless only in the High 4:4:4 Predictive profile, checked with ffprobe;
+#: 1 and up stay in High, the profile YouTube asks for.
+MIN_CRF = 1
+MAX_CRF = 51
 
 DIFFICULTY_LEVELS = ("beginner", "easy", "medium", "hard", "original")
 #: Every visual effect by name, `pulse` included although it only moves the
@@ -402,8 +408,17 @@ class VisualConfig:
     #: lower it, because each worker runs its own encoder and at 4K a slow
     #: preset costs gigabytes each. `psv.render.resources` has the arithmetic.
     workers: int = 0
-    #: One of ENCODE_LEVELS. Trades file size against render time.
-    encode: str = "balanced"
+    #: One of ENCODE_LEVELS. The best picture by default; `fast` for drafts.
+    encode: str = "small"
+    #: x264's constant rate factor: how much detail the encoder may throw away.
+    #: Lower keeps more and makes a bigger file. 1 to 51.
+    #:
+    #: 8 by default. Measured against the 25 psv used before 1.3, it cut the
+    #: flicker around moving tiles to a third and elsewhere to a quarter, for
+    #: 2.6 times the file and no render time: at 4K the drawing is the slow
+    #: part, and CRF 25 and 12 took the same 22 seconds for ten of video. Below
+    #: 8 the gains shrink while the file keeps growing.
+    crf: int = 8
     colors: ColorConfig = field(default_factory=ColorConfig)
     grid: GridConfig = field(default_factory=GridConfig)
 
@@ -499,6 +514,12 @@ class VisualConfig:
             )
         if self.workers < 0:
             raise ConfigError(f"visual.workers must be 0 or more, got {self.workers}")
+        if not MIN_CRF <= self.crf <= MAX_CRF:
+            raise ConfigError(
+                f"visual.crf must be between {MIN_CRF} and {MAX_CRF}, got {self.crf}. "
+                "0 is lossless, which x264 can only write in the High 4:4:4 "
+                "Predictive profile, and YouTube and most players want High"
+            )
         if self.encode not in ENCODE_LEVELS:
             raise ConfigError(
                 f"visual.encode must be one of {', '.join(ENCODE_LEVELS)}, "

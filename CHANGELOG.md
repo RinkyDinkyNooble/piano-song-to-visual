@@ -31,6 +31,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The best picture by default.** `visual.encode` defaults to `small`
+  (x264's `medium`) rather than `balanced`, and a new `visual.crf`, and
+  `--visual-crf`, sets how much detail the encoder may drop, defaulting to 8.
+  psv never chose one before: imageio-ffmpeg's default quality came to CRF 25.
+
+  Measured by counting dark pixels that were still in the source but
+  flickered after encoding, the faint static around moving tiles: at CRF 8 it
+  is a third of what CRF 25 left beside the tiles and a quarter elsewhere, for
+  2.6 times the file and no render time. At 4K60 the drawing is the slow part,
+  and ten seconds took 21.9 s at CRF 25 and 21.7 s at 12. `fast` is not only a
+  bigger file: at the same CRF it left five times the flicker away from the
+  tiles. CRF 0 is refused, because x264 writes lossless only in the High 4:4:4
+  Predictive profile, which YouTube and most players do not take.
+
+  Files are larger. The étude measured comes to roughly 60 MB for four minutes
+  of 4K60, about 2 Mbps, where YouTube recommends uploading 12 Mbps for 1080p60
+  alone; a busier piece or heavier effects will be bigger. `--encode fast
+  --visual-crf 25` is the old picture, for drafts.
+
 - **A render no longer takes the whole computer.** Render workers and the
   encoders they start run below normal priority, so a render uses what is idle
   and gives way to whatever the person at the machine is doing. On Windows that

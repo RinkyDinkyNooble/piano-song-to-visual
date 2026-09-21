@@ -141,6 +141,8 @@ def test_the_readme_documents_every_config_key() -> None:
         ("[pedals]\nthreshold = 0\n", "pedals.threshold"),
         ("[audio]\nreverb = 2\n", "audio.reverb"),
         ("[visual]\npedal_press_flash = -0.1\n", "visual.pedal_press_flash"),
+        ("[visual]\ncrf = 0\n", "High 4:4:4 Predictive"),
+        ("[visual]\ncrf = 52\n", "visual.crf"),
         ("[visual]\npedal_press_flash = 2.5\n", "visual.pedal_press_flash"),
         ("[audio]\nvelocity_floor = 127\n", "audio.velocity_floor"),
         ("[audio]\nvelocity_floor = -1\n", "audio.velocity_floor"),
@@ -222,8 +224,9 @@ def test_a_negative_worker_count_is_refused(tmp_path: Path) -> None:
 @pytest.mark.feature("F-69")
 def test_the_render_settings_have_working_defaults() -> None:
     visual = Config.load(None).visual
-    assert visual.workers == 0, "0 means one process per core"
-    assert visual.encode == "balanced"
+    assert visual.workers == 0, "0 means as many as the cores and memory allow"
+    assert visual.encode == "small", "the best picture unless asked otherwise"
+    assert visual.crf == 8
 
 
 # -- the three tiers -----------------------------------------------------

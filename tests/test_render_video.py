@@ -439,3 +439,28 @@ def test_encode_names_map_to_x264_presets() -> None:
     assert VisualConfig(encode="small").encoder_preset == "medium"
     assert VisualConfig(encode="balanced").encoder_preset == "veryfast"
     assert VisualConfig(encode="fast").encoder_preset == "ultrafast"
+
+
+@pytest.mark.feature("F-98")
+def test_the_default_encode_is_the_best_picture() -> None:
+    """Quality over speed where they conflict, and here they barely do."""
+    config = VisualConfig()
+    assert config.encoder_preset == "medium"
+    assert config.crf <= 8
+
+
+@pytest.mark.feature("F-98")
+def test_the_configured_crf_and_preset_reach_the_encoder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import psv.render.video as video
+
+    seen: dict[str, object] = {}
+
+    def capture(output: Path, **settings: object) -> object:
+        seen.update(settings)
+        return None
+
+    monkeypatch.setattr(video, "Encoder", capture)
+    video.open_encoder(VisualConfig(crf=5, encode="fast"), tmp_path / "out.mp4", 2)
+    assert (seen["crf"], seen["preset"], seen["threads"]) == (5, "ultrafast", 2)

@@ -790,3 +790,10 @@ name = "A render sizes itself to free memory and cores, and runs below normal pr
 milestone = "M8"
 status = "done"
 verify = "unit"
+
+[[feature]]
+id = "F-98"
+name = "The best picture by default: a CRF setting, and the slowest encode as the default"
+milestone = "M8"
+status = "done"
+verify = "unit"

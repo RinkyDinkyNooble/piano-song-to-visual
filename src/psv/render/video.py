@@ -54,10 +54,6 @@ log = logging.getLogger(__name__)
 #: Seconds of silence left after the last note so the final bar is not cut off.
 TAIL_S = 1.0
 
-#: x264's constant rate factor. What imageio-ffmpeg's default quality of 5
-#: worked out to while it was starting ffmpeg: ``int((1 - 5 / 10) * 51)``.
-CRF = 25
-
 
 def frame_times(duration: float, fps: int, *, start: float = 0.0) -> Iterator[float]:
     """Yield the timestamp of every frame.
@@ -120,7 +116,7 @@ def open_encoder(config: VisualConfig, output: Path, threads: int = 0) -> Encode
         height=config.height,
         fps=config.fps,
         preset=config.encoder_preset,
-        crf=CRF,
+        crf=config.crf,
         threads=threads,
     )
 

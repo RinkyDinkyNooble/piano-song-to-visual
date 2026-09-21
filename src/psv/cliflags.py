@@ -129,10 +129,12 @@ HELP: dict[str, str] = {
     "0 is off, 0.25 is plenty",
     "visual.gradient_top": "background gradient; set both ends or neither",
     "visual.gradient_bottom": "background gradient; set both ends or neither",
+    "visual.crf": "how much detail the encoder may drop, 1 to 51; lower keeps "
+    "more and makes a bigger file",
     "visual.workers": "processes to render with; 0 fits them to the cores and "
     "free memory",
-    "visual.encode": "how hard the encoder works: `small` is slowest and smallest, "
-    "`fast` is quickest and about three times the file",
+    "visual.encode": "how hard the encoder works: `small` keeps the most detail, "
+    "`fast` is for drafts",
     "visual.colors.left_hand": "hex colour for the left hand",
     "visual.colors.right_hand": "hex colour for the right hand",
     "visual.grid.opacity": "how faint the alignment rules are",
