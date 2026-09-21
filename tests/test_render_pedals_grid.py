@@ -16,7 +16,8 @@ from psv.config import VisualConfig
 from psv.constraints import ensure_hands
 from psv.midi import read_midi
 from psv.model import Pedal, PedalEvent, Score
-from psv.render.frame import Layout, lanes_for, render_frame
+from psv.render.frame import Layout, render_frame
+from psv.render.layout import lanes_for
 from tests.fixtures.midi_builder import FIXTURES
 from tests.test_render_frame import (
     NO_LANES,

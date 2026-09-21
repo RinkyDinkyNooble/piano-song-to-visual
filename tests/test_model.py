@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import operator
 from dataclasses import replace
 
 import pytest
@@ -296,15 +297,19 @@ def test_ordering_agrees_with_itself_when_two_values_tie() -> None:
     short = PedalEvent(pedal=Pedal.SUSTAIN, start=1.0, end=1.5)
     long = PedalEvent(pedal=Pedal.SUSTAIN, start=1.0, end=3.0)
     assert short != long
-    assert not short < long and not long < short
-    assert not short > long and not long > short
-    assert short <= long and long <= short
-    assert short >= long and long >= short
+    for strict in (operator.lt, operator.gt):
+        assert not strict(short, long), strict.__name__
+        assert not strict(long, short), strict.__name__
+    for loose in (operator.le, operator.ge):
+        assert loose(short, long), loose.__name__
+        assert loose(long, short), loose.__name__
 
 
 def test_every_comparison_follows_the_sort_key() -> None:
     early = Note(pitch=60, start=0.0, end=1.0)
     late = Note(pitch=48, start=0.5, end=1.0)
-    assert early < late and early <= late
-    assert late > early and late >= early
+    for before in (operator.lt, operator.le):
+        assert before(early, late), before.__name__
+    for after in (operator.gt, operator.ge):
+        assert after(late, early), after.__name__
     assert sorted([late, early]) == [early, late]
