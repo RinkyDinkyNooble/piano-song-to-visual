@@ -29,6 +29,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of 1080p60 at `fast` went from 6.6 s and 2.2 GB to 6.0 s and 0.7 GB. On the
   same machine, 4K at `medium` now plans two workers and peaked at 3.2 GB.
 
+### Added
+
+- **`[visual.gradient]`: background gradients of any number of colours, in
+  any direction or shape.** Modelled on CSS Images rather than invented:
+  `stops` are colours at positions from 0 to 1, placed by the CSS fixup rules
+  when a position is left out; a stop's `hint` moves where the halfway colour
+  to the next one falls, by CSS's own formula; `shape` is `linear` at any
+  `angle`, `radial`, an ellipse to the farthest corner, or `conic`, a sweep
+  round `center_x` and `center_y`. Colours blend in Oklab by default, as CSS
+  now does, because blending encoded sRGB goes dark and muddy between two
+  hues; `space = "srgb"` and `"linear-srgb"` are there too.
+
+  ```toml
+  [visual.gradient]
+  shape = "radial"
+  stops = [
+    { color = "#3a0f1c", at = 0.0 },
+    { color = "#120622", at = 0.55, hint = 0.3 },
+    { color = "#050203" },
+  ]
+  ```
+
+  Checked against the specifications, not against itself: Oklab against the
+  values CSS Images 4 publishes for red and green, and stop placement against
+  its worked fixup examples. A gradient is worked out once per render size, in
+  a quarter of a second at 4K, and then costs a frame no more than a flat
+  background does. The grid is blended with the pixels under each line, so it
+  stays equally faint across a gradient running any way.
+
+  `gradient_top` and `gradient_bottom` still work and draw exactly what they
+  did; setting them and `stops` together is refused as ambiguous.
+
 ### Changed
 
 - **The best picture by default.** `visual.encode` defaults to `small`

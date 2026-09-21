@@ -141,7 +141,7 @@ def test_half_a_gradient_is_a_warning_and_renders(
     with caplog.at_level(logging.WARNING, logger="psv.config"):
         config = Config.load(path)
 
-    assert config.visual.gradient is None
+    assert config.visual.gradient_ends is None
     assert "the background stays the flat" in caplog.text
 
 

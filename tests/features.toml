@@ -797,3 +797,10 @@ name = "The best picture by default: a CRF setting, and the slowest encode as th
 milestone = "M8"
 status = "done"
 verify = "unit"
+
+[[feature]]
+id = "F-99"
+name = "Background gradients of any number of colours and shapes, blended as CSS blends them"
+milestone = "M8"
+status = "done"
+verify = "unit"

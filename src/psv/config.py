@@ -27,6 +27,7 @@ here so it cannot be set to something the constraint engine would ignore.
 from __future__ import annotations
 
 import logging
+import math
 import tomllib
 from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
@@ -286,6 +287,103 @@ class GridConfig:
             )
 
 
+#: The shapes a background gradient can take. See `psv.render.gradient`.
+GRADIENT_SHAPES = ("linear", "radial", "conic")
+#: The spaces a gradient can blend its colours in. Oklab is what CSS uses by
+#: default, and the reason: blending encoded sRGB goes dark and muddy between
+#: two hues. `srgb` matches what the two-colour gradient has always drawn.
+GRADIENT_SPACES = ("oklab", "linear-srgb", "srgb")
+
+
+@dataclass(frozen=True, slots=True)
+class GradientStop:
+    """One colour in a background gradient, and where it sits."""
+
+    color: str = ""
+    #: How far along the gradient, 0 at its start and 1 at its end. Left out,
+    #: the stop is placed as CSS places it: the first at 0, the last at 1, and
+    #: any in between spread evenly between the stops around them.
+    at: float | None = None
+    #: Where between this stop and the next the halfway colour falls, as a
+    #: fraction of the way. 0.5 is an even blend; 0.2 hurries toward the next
+    #: colour and then lingers in it. Only meaningful before another stop.
+    hint: float = 0.5
+
+    def validate(self, where: str) -> None:
+        if not is_hex(self.color):
+            raise ConfigError(
+                f"{where}.color must be a hex colour like '#140e28', got {self.color!r}"
+            )
+        at = self.at
+        if at is not None and (
+            isinstance(at, bool)
+            or not isinstance(at, int | float)
+            or not math.isfinite(at)
+        ):
+            raise ConfigError(f"{where}.at must be a number, got {at!r}")
+        if not 0.0 < self.hint < 1.0:
+            raise ConfigError(
+                f"{where}.hint must be between 0 and 1, not either end, got {self.hint}"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class GradientConfig:
+    """A background gradient of any number of colours, in the CSS model.
+
+    Empty `stops` means no gradient. The two-colour `visual.gradient_top` and
+    `visual.gradient_bottom` still work, and are exactly this with two stops,
+    straight down, blended in sRGB.
+    """
+
+    #: One of GRADIENT_SHAPES.
+    shape: str = "linear"
+    #: Degrees, as CSS measures them: 0 points up and they turn clockwise, so
+    #: 180 runs top to bottom and 90 left to right. For `conic`, where the
+    #: sweep starts.
+    angle: float = 180.0
+    #: Where a `radial` or `conic` gradient is centred, as fractions of the
+    #: frame's width and height.
+    center_x: float = 0.5
+    center_y: float = 0.5
+    #: One of GRADIENT_SPACES.
+    space: str = "oklab"
+    stops: tuple[GradientStop, ...] = ()
+
+    def validate(self) -> None:
+        if self.shape not in GRADIENT_SHAPES:
+            raise ConfigError(
+                f"visual.gradient.shape must be one of {GRADIENT_SHAPES}, got "
+                f"{self.shape!r}"
+            )
+        if self.space not in GRADIENT_SPACES:
+            raise ConfigError(
+                f"visual.gradient.space must be one of {GRADIENT_SPACES}, got "
+                f"{self.space!r}"
+            )
+        if not math.isfinite(self.angle):
+            raise ConfigError(f"visual.gradient.angle must be finite, got {self.angle}")
+        for name in ("center_x", "center_y"):
+            if not 0.0 <= getattr(self, name) <= 1.0:
+                raise ConfigError(
+                    f"visual.gradient.{name} must be between 0 and 1, got "
+                    f"{getattr(self, name)}"
+                )
+        if len(self.stops) == 1:
+            raise ConfigError(
+                "visual.gradient needs at least two stops; for one colour, set "
+                "visual.background"
+            )
+        for index, stop in enumerate(self.stops):
+            stop.validate(f"visual.gradient.stops[{index}]")
+        if self.stops and self.stops[-1].hint != 0.5:
+            raise ConfigError(
+                "visual.gradient.stops: the last stop has a hint, but a hint "
+                "places the halfway colour between a stop and the next one, and "
+                "the last stop has no next one"
+            )
+
+
 @dataclass(frozen=True, slots=True)
 class EffectConfig:
     """One optional visual effect, and how strongly it is drawn.
@@ -388,6 +486,9 @@ class VisualConfig:
     #: the hues that say which hand is playing.
     gradient_top: str = ""
     gradient_bottom: str = ""
+    #: A gradient of two or more colours, in any direction or shape. See
+    #: `GradientConfig`; the two keys above are its simplest case.
+    gradient: GradientConfig = field(default_factory=GradientConfig)
     #: Optional effects, drawn in the order they are listed. Empty by default,
     #: because a practice aid and a piece of spectacle want opposite things.
     #:
@@ -428,8 +529,8 @@ class VisualConfig:
         return ENCODE_LEVELS[self.encode]
 
     @property
-    def gradient(self) -> tuple[str, str] | None:
-        """The background gradient's two colours, or None for a flat fill."""
+    def gradient_ends(self) -> tuple[str, str] | None:
+        """The two-colour gradient's colours, or None if it is not set."""
         if self.gradient_top and self.gradient_bottom:
             return self.gradient_top, self.gradient_bottom
         return None
@@ -507,6 +608,12 @@ class VisualConfig:
                 raise ConfigError(
                     f"visual.{name} must be a hex colour like '#140e28', got {value!r}"
                 )
+        self.gradient.validate()
+        if self.gradient.stops and (self.gradient_top or self.gradient_bottom):
+            raise ConfigError(
+                "visual.gradient.stops and visual.gradient_top/gradient_bottom are "
+                "two ways to set one background; use one of them"
+            )
         if not 0.0 <= self.black_key_darkening <= 1.0:
             raise ConfigError(
                 "visual.black_key_darkening must be between 0 and 1, "

@@ -463,6 +463,21 @@ encode = "small"          # small | balanced | fast: how hard the encoder
 crf = 8                   # how much detail the encoder may drop, 1 to 51;
                           # lower keeps more and makes a bigger file
 
+[visual.gradient]         # any number of colours, in any direction, blended
+                          # the way CSS blends them. Empty stops: no gradient
+shape = "linear"          # linear | radial | conic
+angle = 180.0             # degrees, 0 up and clockwise: 180 is top to bottom,
+                          # 90 left to right. Where a conic sweep starts
+center_x = 0.5            # the centre of a radial or conic gradient, as a
+center_y = 0.5            # fraction of the frame's width and height
+space = "oklab"           # oklab | linear-srgb | srgb. Oklab keeps the middle
+                          # of a blend from going dark and muddy
+stops = []                # e.g. [{ color = "#1c0a12", at = 0.0 },
+                          #       { color = "#2a0f3a", at = 0.45, hint = 0.3 },
+                          #       { color = "#050203" }]
+                          # `at` left out is spread evenly; `hint` is where
+                          # the halfway colour falls on the way to the next
+
 [visual.colors]           # hue = which hand, brightness = how loud
 left_hand  = "#4a90d9"
 right_hand = "#5fb87a"

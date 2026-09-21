@@ -18,7 +18,7 @@ is faint enough to read past. See ``color.py`` for why saturation is left alone.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -36,6 +36,7 @@ from psv.render.color import (
 )
 from psv.render.effects import apply_effects, background_for
 from psv.render.geometry import KeyboardGeometry
+from psv.render.gradient import gradient_image
 from psv.render.layout import Frame as Frame
 from psv.render.layout import Layout as Layout
 
@@ -101,12 +102,12 @@ def render_frame(
     faintly, because knowing where it is is half the reason to practise hands
     separately; it is the soundtrack that goes quiet, not the picture.
     """
-    gradient = background_column(config, config.height)
+    behind = backdrop(config, config.width, config.height)
     # A `pulse` effect moves the background, so it has to be settled before the
     # fill rather than painted over it afterwards. That is why it is the one
     # effect that costs nothing: the fill happens either way.
     lit = background_for(config, score, time)
-    palette = palette or Palette(background=_nominal_background(config, gradient, lit))
+    palette = palette or Palette(background=_nominal_background(config, behind, lit))
     layout = Layout.from_config(config, pedal_lanes)
     geometry = KeyboardGeometry(
         width=layout.keyboard_width,
@@ -115,12 +116,12 @@ def render_frame(
     )
 
     frame = np.empty((layout.height, layout.width, 3), dtype=np.uint8)
-    if gradient is None:
+    if behind is None:
         frame[:, :] = palette.background
     else:
-        frame[:, :] = gradient[:, None, :]
+        frame[:] = behind
 
-    _draw_grid(frame, score, config, layout, geometry, palette, time, gradient)
+    _draw_grid(frame, score, config, layout, geometry, palette, time, behind)
     sounding = _draw_falling_notes(
         frame, score, config, layout, geometry, palette, time, focus
     )
@@ -131,14 +132,26 @@ def render_frame(
     return frame
 
 
-def background_column(config: VisualConfig, height: int) -> np.ndarray | None:
-    """One colour per row for a gradient background, or None for a flat fill.
+def backdrop(config: VisualConfig, width: int, height: int) -> np.ndarray | None:
+    """What a frame is filled with before anything is drawn, or None for flat.
 
-    Costs nothing worth measuring over the flat fill it replaces: it is the
-    same write to the same pixels from a different source, and filling the
-    background is already most of what a frame costs.
+    Shaped ``(height, 1, 3)`` when every row is one colour and
+    ``(height, width, 3)`` when it is not, so it fills a frame by broadcasting
+    either way and a gradient straight down costs a column, not a frame.
     """
-    pair = config.gradient
+    if config.gradient.stops:
+        return gradient_image(config.gradient, width, height)
+    column = background_column(config, height)
+    return None if column is None else column[:, None, :]
+
+
+def background_column(config: VisualConfig, height: int) -> np.ndarray | None:
+    """One colour per row for the two-colour gradient, or None if it is unset.
+
+    Blended in sRGB, row by row, which is what it has always drawn; the
+    stop-based `visual.gradient` is the one that blends in Oklab.
+    """
+    pair = config.gradient_ends
     if pair is None:
         return None
     top = np.array(parse_hex(pair[0]), dtype=np.float64)
@@ -148,7 +161,7 @@ def background_column(config: VisualConfig, height: int) -> np.ndarray | None:
 
 
 def _nominal_background(
-    config: VisualConfig, gradient: np.ndarray | None, lit: str | None = None
+    config: VisualConfig, behind: np.ndarray | None, lit: str | None = None
 ) -> RGB:
     """One colour standing for the background, for the things that need one.
 
@@ -159,9 +172,9 @@ def _nominal_background(
     ``lit`` is the background after a `pulse` effect has had its say, which is
     what actually gets filled.
     """
-    if gradient is None:
+    if behind is None:
         return parse_hex(lit if lit is not None else config.background)
-    middle = gradient[len(gradient) // 2]
+    middle = behind[behind.shape[0] // 2, behind.shape[1] // 2]
     return (int(middle[0]), int(middle[1]), int(middle[2]))
 
 
@@ -230,9 +243,9 @@ def _fill_rows(
     top: float,
     right: float,
     bottom: float,
-    column: np.ndarray,
+    colours: Callable[[slice, slice], np.ndarray],
 ) -> None:
-    """Fill a rectangle from a colour per row of the frame."""
+    """Fill a rectangle with whatever ``colours`` gives for its rows and columns."""
     height, width = frame.shape[:2]
     x0 = max(0, round(left))
     x1 = min(width, round(right))
@@ -240,7 +253,7 @@ def _fill_rows(
     y1 = min(height, round(bottom))
     if x1 <= x0 or y1 <= y0:
         return
-    frame[y0:y1, x0:x1] = column[y0:y1, None, :]
+    frame[y0:y1, x0:x1] = colours(slice(y0, y1), slice(x0, x1))
 
 
 # -- the alignment grid --------------------------------------------------
@@ -254,7 +267,7 @@ def _draw_grid(
     geometry: KeyboardGeometry,
     palette: Palette,
     time: float,
-    gradient: np.ndarray | None,
+    behind: np.ndarray | None,
 ) -> None:
     """Faint rules for reading the picture, drawn under everything else.
 
@@ -265,7 +278,7 @@ def _draw_grid(
     grid = config.grid
     if grid.opacity <= 0:
         return
-    column = _grid_colours(palette, gradient, layout.height, grid.opacity)
+    column = _grid_colours(palette, behind, layout.height, grid.opacity)
 
     if grid.pitch_lines != "none":
         step = 12 if grid.pitch_lines == "octave" else 7
@@ -283,25 +296,47 @@ def _draw_grid(
 
 def _grid_colours(
     palette: Palette,
-    gradient: np.ndarray | None,
+    behind: np.ndarray | None,
     height: int,
     opacity: float,
-) -> np.ndarray:
-    """What colour the grid is on each row of the frame.
+) -> Callable[[slice, slice], np.ndarray]:
+    """What colour the grid is over any rectangle of the frame.
 
-    Mixed with the background a row at a time, so the grid stays equally faint
-    all the way down a gradient instead of disappearing into its dark end.
+    Mixed with the background under each line rather than with one nominal
+    colour, so the grid stays equally faint across a gradient instead of
+    disappearing into its dark end.
+
+    A background that changes only down the frame gets its grid colours worked
+    out once, a row each. One that changes across it too is blended under each
+    line as the line is drawn: the lines cover a few thousand pixels, and
+    blending all of a 4K frame to use those made every frame four times slower.
 
     The colour is drawn rather than composited, which is what keeps a crossing
     of two lines exactly as faint as either line alone. Compositing blends twice
     where they meet and leaves a brighter dot at every intersection.
     """
-    if gradient is None:
-        flat = blend(palette.background, palette.grid, opacity)
-        return np.tile(np.array(flat, dtype=np.uint8), (height, 1))
     over = np.array(palette.grid, dtype=np.float64)
-    under = gradient.astype(np.float64)
-    return np.rint(under + (over - under) * opacity).astype(np.uint8)
+    if behind is not None and behind.shape[1] > 1:
+        image = behind
+
+        def blended(rows: slice, columns: slice) -> np.ndarray:
+            under = image[rows, columns].astype(np.float64)
+            return np.rint(under + (over - under) * opacity).astype(np.uint8)
+
+        return blended
+
+    if behind is None:
+        flat = blend(palette.background, palette.grid, opacity)
+        column = np.tile(np.array(flat, dtype=np.uint8), (height, 1, 1))
+    else:
+        under = behind.astype(np.float64)
+        column = np.rint(under + (over - under) * opacity).astype(np.uint8)
+
+    def by_row(rows: slice, columns: slice) -> np.ndarray:
+        del columns  # one colour per row, whatever the columns
+        return column[rows]
+
+    return by_row
 
 
 def _beat_line_times(
